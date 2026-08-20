@@ -126,22 +126,31 @@ git clone --branch master https://github.com/RA-RP/SOPPO.git SOPPO
 
 ### 3.3 环境准备
 
-在服务器允许安装依赖的节点执行：
+`gn001` 的系统默认只有 Python 3.6.8，不能直接用于本项目；服务器已经提供 `python/3.10.4` module。更新到包含本修正的代码版本后，在 `gn001` 执行：
 
 ```bash
+source /home-ssd/Soft/modules/bashrc
+module load python/3.10.4
+python3 --version
+
 export SERVER_BASE=/home-ssd/Users/nsgm_jiangwh/youchang
 cd "$SERVER_BASE/SOPPO/code/scripts/cluster"
 export RUN_CONTEXT=cluster
 bash 00_server_setup.sh
 ```
 
-该脚本应创建 Git 外的 `envs/`、`cache/`、`data/`、`models/`、`runs/`、`exports/` 和 `platform_logs/`，并拒绝错误的 Git 布局。它还会在最后创建 `$SERVER_BASE/activate_env.sh`。
+`python3 --version` 应显示 `Python 3.10.4`。修正后的脚本也会在未加载时尝试自动加载该 module，并在找不到 Python 3.10 时于安装前终止；不要使用 `/usr/bin/python3` 的 Python 3.6.8，也不需要手动加载 Conda。
+
+该脚本创建 Git 外的 `cache/`、`data/`、`models/`、`runs/`、`exports/` 和 `platform_logs/`，使用 Python 3.10 创建标准 venv `$SERVER_BASE/envs/youc`，并拒绝错误的 Git 布局。它还会在最后创建 `$SERVER_BASE/activate_env.sh`。
 
 完成后立即确认：
 
 ```bash
 ls -l "$SERVER_BASE/activate_env.sh"
+"$SERVER_BASE/envs/youc/bin/python" --version
 ```
+
+如果仍出现 `conda: command not found`，说明服务器上的 `SOPPO` 仍是旧代码；先停止，不要继续 `01`—`08`，并将服务器仓库更新到包含本指南和新版 `00_server_setup.sh` 的提交。
 
 ## 4. 分阶段命令接口
 

@@ -202,9 +202,11 @@ training:
 ## 5. 服务器执行流程
 
 ### 阶段 -1：环境准备（`00_server_setup.sh`）
-- 创建路径环境：`<SERVER_BASE>/envs/youc`
+- 在 `gn001` 加载服务器 `python/3.10.4` module；拒绝默认的 Python 3.6.8
+- 创建标准 Python venv：`<SERVER_BASE>/envs/youc`（不依赖 Conda）
 - 安装依赖（`requirements.lock.txt`）
 - 环境检查：CUDA、PyTorch、HuggingFace
+- 生成后续会话入口：`<SERVER_BASE>/activate_env.sh`
 - 输出：`environment_summary.json`
 
 ### 阶段 0：单元测试（`01_server_tests.sh`）
