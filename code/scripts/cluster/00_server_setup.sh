@@ -97,15 +97,18 @@ echo ""
 echo "Setting cache directories and loading network proxy..."
 
 export PIP_CACHE_DIR="$CACHE_ROOT/pip"
+export PIP_DEFAULT_TIMEOUT="${PIP_DEFAULT_TIMEOUT:-180}"
+export PIP_RETRIES="${PIP_RETRIES:-10}"
 export CONDA_PKGS_DIRS="$CACHE_ROOT/conda/pkgs"
 export HF_HOME="$CACHE_ROOT/huggingface"
 export TRANSFORMERS_CACHE="$CACHE_ROOT/huggingface/transformers"
 export MODELSCOPE_CACHE="$CACHE_ROOT/modelscope"
 
-source /home-ssd/Soft/modules/bashrc
-module load proxy/proxy
+soppo_load_proxy
 
 echo "✓ Cache paths and network proxy configured"
+echo "  pip timeout: ${PIP_DEFAULT_TIMEOUT}s"
+echo "  pip retries: $PIP_RETRIES"
 
 # ===================================================
 # 创建 Conda 路径环境
@@ -240,9 +243,12 @@ if [[ ! -f "$RUNTIME_HELPER" ]]; then
 fi
 source "$RUNTIME_HELPER"
 soppo_activate_env "$ENV_DIR" || return 1 2>/dev/null || exit 1
+soppo_load_proxy || return 1 2>/dev/null || exit 1
 
 # Set cache paths
 export PIP_CACHE_DIR="$BASE_DIR/cache/pip"
+export PIP_DEFAULT_TIMEOUT="${PIP_DEFAULT_TIMEOUT:-180}"
+export PIP_RETRIES="${PIP_RETRIES:-10}"
 export CONDA_PKGS_DIRS="$BASE_DIR/cache/conda/pkgs"
 export HF_HOME="$BASE_DIR/cache/huggingface"
 export TRANSFORMERS_CACHE="$BASE_DIR/cache/huggingface/transformers"
@@ -250,12 +256,6 @@ export MODELSCOPE_CACHE="$BASE_DIR/cache/modelscope"
 
 # Set PYTHONPATH
 export PYTHONPATH="$BASE_DIR/SOPPO/code:${PYTHONPATH:-}"
-
-# Load proxy (if on compile node)
-if command -v module &> /dev/null; then
-    source /home-ssd/Soft/modules/bashrc 2>/dev/null || true
-    module load proxy/proxy 2>/dev/null || true
-fi
 
 echo "Environment activated: $BASE_DIR/envs/youc"
 echo "Python: $(which python)"

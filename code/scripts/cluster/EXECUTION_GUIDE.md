@@ -152,6 +152,24 @@ ls -l "$SERVER_BASE/activate_env.sh"
 
 如果脚本仍尝试加载 `python/3.10.4`，说明服务器上的 `SOPPO` 仍是旧代码；先停止，不要继续 `01`—`08`，并将服务器仓库更新到包含本指南、新版 `00_server_setup.sh` 和 `runtime_env.sh` 的提交。
 
+若 PyTorch 的 NVIDIA CUDA wheel 下载出现 `ReadTimeoutError`，不需要删除 `$SERVER_BASE/envs/youc`。脚本默认使用 180 秒超时和 10 次重试；更新脚本后直接重跑即可。也可以在本次服务器会话临时覆盖：
+
+```bash
+export PIP_DEFAULT_TIMEOUT=180
+export PIP_RETRIES=10
+bash 00_server_setup.sh
+```
+
+重跑会复用已经创建的 Conda 环境以及 `$SERVER_BASE/cache/pip` 中成功下载的文件。如果同一 NVIDIA 地址在加长超时后仍失败，应停止并改用 PyTorch 官方 Conda 渠道方案，而不是删除环境或反复从头安装。
+
+若 `02_prepare_data.sh` 在 Hugging Face Hub 报 `ProxyError`，说明当前服务器会话没有正确加载集群代理。新版 `02` 会自行加载 `proxy/proxy` 并固定 `HF_HOME`/`HF_DATASETS_CACHE`；更新代码后可直接重跑，不需要删除已创建的数据目录。旧版脚本的本次会话临时修复是：
+
+```bash
+source /home-ssd/Soft/modules/bashrc
+module load proxy/proxy
+bash 02_prepare_data.sh
+```
+
 ## 4. 分阶段命令接口
 
 ### 4.1 每次重新登录服务器后：只初始化一次会话

@@ -5,13 +5,9 @@
 SOPPO_MODULES_INIT="/home-ssd/Soft/modules/bashrc"
 SOPPO_MINIFORGE_MODULE="miniforge3/25.11.0-0"
 SOPPO_CONDA_VERSION="25.11.0"
+SOPPO_PROXY_MODULE="proxy/proxy"
 
-soppo_load_miniforge() {
-    if command -v conda >/dev/null 2>&1 \
-        && [[ "$(conda --version 2>/dev/null)" == "conda $SOPPO_CONDA_VERSION" ]]; then
-        return 0
-    fi
-
+soppo_init_modules() {
     if [[ ! -f "$SOPPO_MODULES_INIT" ]]; then
         echo "ERROR: Module initialization file not found: $SOPPO_MODULES_INIT" >&2
         return 1
@@ -22,6 +18,15 @@ soppo_load_miniforge() {
         echo "ERROR: The cluster module command is unavailable" >&2
         return 1
     fi
+}
+
+soppo_load_miniforge() {
+    if command -v conda >/dev/null 2>&1 \
+        && [[ "$(conda --version 2>/dev/null)" == "conda $SOPPO_CONDA_VERSION" ]]; then
+        return 0
+    fi
+
+    soppo_init_modules || return 1
 
     echo "Loading server module: $SOPPO_MINIFORGE_MODULE"
     if ! module load "$SOPPO_MINIFORGE_MODULE"; then
@@ -32,6 +37,16 @@ soppo_load_miniforge() {
     if ! command -v conda >/dev/null 2>&1 \
         || [[ "$(conda --version 2>/dev/null)" != "conda $SOPPO_CONDA_VERSION" ]]; then
         echo "ERROR: conda $SOPPO_CONDA_VERSION is unavailable after loading $SOPPO_MINIFORGE_MODULE" >&2
+        return 1
+    fi
+}
+
+soppo_load_proxy() {
+    soppo_init_modules || return 1
+
+    echo "Loading server module: $SOPPO_PROXY_MODULE"
+    if ! module load "$SOPPO_PROXY_MODULE"; then
+        echo "ERROR: Failed to load $SOPPO_PROXY_MODULE" >&2
         return 1
     fi
 }

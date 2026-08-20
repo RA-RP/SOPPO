@@ -29,6 +29,11 @@ echo "Data output: $DATA_DIR"
 # Activate environment
 source "$SCRIPT_DIR/runtime_env.sh"
 soppo_activate_env "$ENV_DIR"
+soppo_load_proxy
+
+export HF_HOME="$CACHE_ROOT/huggingface"
+export HF_DATASETS_CACHE="$CACHE_ROOT/huggingface/datasets"
+export TRANSFORMERS_CACHE="$CACHE_ROOT/huggingface/transformers"
 
 # Add code to PYTHONPATH
 export PYTHONPATH="$CODE_DIR:${PYTHONPATH:-}"

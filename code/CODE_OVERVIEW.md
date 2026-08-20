@@ -205,7 +205,7 @@ training:
 ### 阶段 -1：环境准备（`00_server_setup.sh`）
 - 在 `gn001` 通过 `runtime_env.sh` 加载已验证的 `miniforge3/25.11.0-0` module
 - 创建固定 Python 3.10 的 Conda 路径环境：`<SERVER_BASE>/envs/youc`
-- 安装依赖（`requirements.lock.txt`）
+- 安装依赖（`requirements.lock.txt`）；pip 默认超时 180 秒、重试 10 次并复用 Git 外缓存
 - 环境检查：CUDA、PyTorch、HuggingFace
 - 生成后续会话入口：`<SERVER_BASE>/activate_env.sh`
 - 输出：`environment_summary.json`
@@ -218,6 +218,7 @@ training:
 - 输出：`test_results.txt`
 
 ### 阶段 1：数据准备（`02_prepare_data.sh`）
+- 自动加载服务器 `proxy/proxy` module，并把 Hugging Face 数据缓存固定到 Git 外的 `<SERVER_BASE>/cache/huggingface/`
 - 下载 UltraFeedback，采样 10k
 - 划分、去重、标签隐藏、位置随机化
 - 生成 manifest_public.json（**可回传**）
