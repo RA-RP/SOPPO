@@ -21,6 +21,12 @@ venv/
 # Research execution artifacts must remain on the server
 /data/
 /datasets/
+/envs/
+/cache/
+/models/
+/runs/
+/exports/
+/platform_logs/
 outputs/
 checkpoints/
 wandb/

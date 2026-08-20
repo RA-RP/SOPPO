@@ -1,6 +1,14 @@
-# `work/`：研究执行区
+# `SOPPO/`：研究执行区与唯一 Git 仓库
 
 本目录把上游想法与资料转化为可复现代码和逐轮研究证据。
+
+## Git 与服务器目录边界
+
+- 本目录是本地与服务器上的唯一 Git 仓库根；只允许本目录下存在 `.git/`。
+- `code/observe/LLM-output-density/` 是由本仓库统一管理的普通目录，不得保留或创建嵌套 `.git/`。
+- 本地仓库路径是 `ICLR/SOPPO/`；本地 `ICLR/` 自身不是 Git 仓库。
+- 服务器仓库路径是 `<SERVER_BASE>/SOPPO/`；静态资料位于与其平级的 `<SERVER_BASE>/ICLR/`，后者没有 `.git/`。
+- 服务器环境、缓存、数据、模型、运行产物和回传摘要分别位于 `<SERVER_BASE>/{envs,cache,data,models,runs,exports}/`，不得写入 Git 仓库。
 
 ## 子目录职责
 
@@ -25,10 +33,10 @@
 
 - 当前 cycle：`cycle-20260818-01`
 - 唯一活动阶段：`EXP_DISCUSSION`
-- 当前入口：`human_read/exp/current_experiment.md` v0.1
+- 当前入口：`human_read/exp/current_experiment.md` v0.3 MVP
 - 已完成门禁：理论 v0.2 已获用户明确通过（2026-08-19）
 - 锁定阶段：`CODE_IMPLEMENTATION`、`SERVER_EXECUTION`、`RESULT_HANDOFF`、`NEXTCYCLE_DISCUSSION`
-- 下一解锁条件：用户明确通过实验设计 v0.1，并将确认记录到实验当前文件；该确认只解锁代码阶段。
+- 下一解锁条件：用户明确通过实验设计 v0.3 MVP，并将确认记录到实验当前文件；该确认只解锁代码阶段。
 
 ## 标识与交叉引用
 
@@ -47,5 +55,5 @@
 ## 执行位置
 
 - 本地只维护源码、配置、实验设计和人类可读记录，不安装项目依赖，也不运行任何涉及依赖、数据、模型、测试、评价或 GPU 的命令。
-- 所有可执行研究任务必须依据 `../machine/` 的运行手册提交到服务器；CPU 单元测试、数据审计和统计聚合也不例外。
+- 所有可执行研究任务必须依据本地 `../machine/` 的运行手册提交到服务器；CPU 单元测试、数据审计和统计聚合也不例外。
 - 服务器保存数据、模型、逐样本输出和原始日志。本地 `exp/` 与 `human_read/` 只保存聚合摘要、配置文本、校验值和远程证据索引。

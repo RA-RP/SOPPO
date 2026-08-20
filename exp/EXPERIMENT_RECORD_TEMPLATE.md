@@ -1,6 +1,6 @@
 # <experiment ID>：<简短名称>
 
-> 将本文件复制为 `work/exp/<experiment_id>/README.md`，并替换所有占位符。
+> 获得服务器执行授权后，将本文件复制为 `SOPPO/exp/<experiment_id>/README.md`，并替换所有占位符。
 
 ## 元信息
 

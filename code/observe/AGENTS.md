@@ -6,9 +6,9 @@
 
 - 保留既有项目的代码、配置、数据说明和结果原貌，不把旧项目结果直接当作当前项目的实验结论。
 - 整理 `c_{\varepsilon}` 或 `C_{\gamma}` 时至少说明：数学定义、计算输入、计算时机、输出含义、假设条件、数值稳定性和已知局限。
-- 当前理论若使用这里的方法，应在 `../work/human_read/theory/current_theory.md` 中明确引用来源和改动。
-- 当前代码若实现或移植该观测方法，应在 `../work/code/CODE_OVERVIEW.md` 中记录模块位置、接口和与原实现的差异。
-- 当前实验若验证该观测方法，应在对应的 `../work/exp/<experiment_id>/` 中保留配置与原始产物，在 `../work/human_read/result/` 中写人类可读的解释。
+- 当前理论若使用这里的方法，应在 `../../human_read/theory/current_theory.md` 中明确引用来源和改动。
+- 当前代码若实现或移植该观测方法，应在 `../CODE_OVERVIEW.md` 中记录模块位置、接口和与原实现的差异。
+- 当前实验若验证该观测方法，应在对应的 `../../exp/<experiment_id>/` 中保留配置与远程证据索引，在 `../../human_read/result/` 中写人类可读的解释。
 
 ## `c_{\varepsilon}` 相对功能压缩指标索引
 
@@ -88,8 +88,8 @@ c_epsilon_equal5 = mean_m(relative_functional_contraction_module), m in {v,o,gat
 服务器脚本入口：
 
 ```bash
-python /root/LLM-output-density/experiments/opd_sft_h1/scripts/cycle09_relative_functional_contraction.py --phase audit
-python /root/LLM-output-density/experiments/opd_sft_h1/scripts/cycle09_relative_functional_contraction.py --phase derive
+python <SERVER_BASE>/SOPPO/code/observe/LLM-output-density/experiments/opd_sft_h1/scripts/cycle09_relative_functional_contraction.py --phase audit
+python <SERVER_BASE>/SOPPO/code/observe/LLM-output-density/experiments/opd_sft_h1/scripts/cycle09_relative_functional_contraction.py --phase derive
 ```
 
 `audit` 生成 coverage/missing registry；`derive` 从已验证的 `r_epsilon` source rows 派生 module 审计表与 all-cells 聚合表。需要 output-link 分析时才继续跑 `aggregate-outputs`、`analyze` 等阶段；本地工作区不得运行这些项目脚本。
@@ -209,7 +209,7 @@ C_gamma^{(k)}(X <- S; layer, module)
 4. 运行：
 
 ```bash
-cd /Users/rarp/Desktop/ICLR/observe/LLM-output-density/GetSlice
+cd <SERVER_BASE>/SOPPO/code/observe/LLM-output-density/GetSlice
 python slice.py --config /path/to/config.json
 ```
 

@@ -1,313 +1,149 @@
-# 深圳超算集群执行指南
+# SOPPO 服务器执行指南
 
-**Cycle**: cycle-20260818-01  
-**Experiment**: v0.3 MVP  
-**基础路径**: `/home-ssd/Users/nsgm_jiangwh/youchang`
+> **状态：LOCKED。** 本文件只定义服务器目录与命令接口，不构成上传或执行授权。只有实验设计获明确批准、代码交接完成，并且用户明确确认“当前代码版本可以提交服务器”后，才能执行下列服务器命令。
 
----
+## 1. 唯一目录合同
 
-## 节点类型说明
+服务器私有配置中的 `<SERVER_BASE>` 是用户项目根目录。目标结构如下：
 
-| 节点类型 | 地址 | 用途 | 限制 |
-|---------|------|------|------|
-| **登录节点** | 10.32.48.56 (mn006) | SSH 登录，提交作业，查看结果 | 禁止运行程序 |
-| **编译节点** | gn001 (10.32.34.65) | 安装软件，下载数据，编译代码 | 需从登录节点 ssh 跳转 |
-| **计算节点** | 自动分配 | 运行训练任务 | 通过 sbatch 提交 |
-
----
-
-## 阶段执行清单
-
-### 前置准备
-
-1. **连接 VPN**
-   ```
-   地址: https://dsjvpn.nsccsz.cn:4443
-   使用微信小程序"腾讯身份验证器"获取安全码
-   ```
-
-2. **登录到登录节点**
-   ```bash
-   ssh nsgm_jiangwh@10.32.48.56
-   ```
-
-3. **克隆 SOPPO 仓库**
-   ```bash
-   # 在编译节点执行
-   cd /home-ssd/Users/nsgm_jiangwh/youchang
-   
-   # 加载网络代理
-   source /home-ssd/Soft/modules/bashrc
-   module load proxy/proxy
-   
-   # 克隆仓库
-   git clone https://github.com/RA-RP/SOPPO.git
-   ```
-
----
-
-### 阶段 -1：环境准备
-
-**在编译节点执行**
-
-```bash
-# 1. 从登录节点跳转到编译节点
-ssh gn001
-
-# 2. 进入代码目录
-cd /home-ssd/Users/nsgm_jiangwh/youchang/SOPPO/code/scripts/cluster
-
-# 3. 运行环境设置脚本
-bash 00_server_setup.sh
+```text
+<SERVER_BASE>/
+├── ICLR/                              # 静态资料镜像，无 .git
+├── SOPPO/                             # 唯一 Git 仓库
+│   ├── .git/
+│   ├── code/
+│   │   ├── src/
+│   │   ├── configs/
+│   │   ├── scripts/cluster/
+│   │   └── observe/LLM-output-density/  # 普通目录，无嵌套 .git
+│   ├── human_read/
+│   └── exp/                       # 仅小型摘要和远程索引
+├── envs/youc/                         # Git 外
+├── cache/{pip,huggingface,modelscope}/
+├── data/
+├── models/
+├── runs/<experiment_id>/             # 重量级实验产物
+├── exports/<experiment_id>/          # 可回传白名单
+├── platform_logs/
+├── project_config.json
+└── activate_env.sh
 ```
 
-**完成标志**：
-- ✓ 创建 conda 环境 `youc`
-- ✓ 安装 PyTorch 2.4.0 + CUDA 12.1
-- ✓ 安装所有依赖
-- ✓ 生成 `project_config.json`
+三个 Git 不变量：
 
-**预计时间**：10-20 分钟
+```text
+必须存在：<SERVER_BASE>/SOPPO/.git
+必须不存在：<SERVER_BASE>/ICLR/.git
+必须不存在：<SERVER_BASE>/SOPPO/code/observe/LLM-output-density/.git
+```
 
----
+`ICLR/` 与 `SOPPO/` 必须平级；服务器上不存在 `<SERVER_BASE>/ICLR/SOPPO/`。
 
-### 阶段 0：单元测试
+## 2. 路径变量
 
-**在编译节点执行**
+集群脚本通过 `server_paths.sh` 从自身位置推导路径：
 
 ```bash
-# 1. 激活环境
-source /home-ssd/Users/nsgm_jiangwh/youchang/activate_env.sh
+SERVER_BASE=<SERVER_BASE>
+ICLR_ROOT=$SERVER_BASE/ICLR
+SOPPO_ROOT=$SERVER_BASE/SOPPO
+CODE_ROOT=$SOPPO_ROOT/code
+OBSERVE_ROOT=$CODE_ROOT/observe/LLM-output-density
 
-# 2. 运行测试
-cd /home-ssd/Users/nsgm_jiangwh/youchang/SOPPO/code/scripts/cluster
+ENV_ROOT=$SERVER_BASE/envs
+CACHE_ROOT=$SERVER_BASE/cache
+DATA_ROOT=$SERVER_BASE/data
+MODEL_ROOT=$SERVER_BASE/models
+RUN_ROOT=$SERVER_BASE/runs
+EXPORT_ROOT=$SERVER_BASE/exports
+PLATFORM_LOG_ROOT=$SERVER_BASE/platform_logs
+```
+
+除非运行手册明确记录覆盖值，其他脚本不得自行硬编码 `/nfs4/ICLR`、本地 `/Users/...` 或旧的 `ICLR/work` 路径。
+
+## 3. 服务器准备流程
+
+以下命令只能在 `SERVER_EXECUTION` 获授权后运行。
+
+### 3.1 准备静态 ICLR 镜像
+
+通过获准的文件传输方式把本地静态资料同步到 `<SERVER_BASE>/ICLR/`，同步时排除：
+
+```text
+.git/
+SOPPO/
+.DS_Store
+```
+
+`ICLR/` 不使用 `git clone`，也不得在服务器上执行 `git init`。
+
+### 3.2 克隆唯一仓库
+
+```bash
+cd <SERVER_BASE>
+git clone <SOPPO_REMOTE> SOPPO
+```
+
+不得把克隆目标写成 `ICLR` 或 `ICLR/SOPPO`。
+
+### 3.3 环境准备
+
+在服务器允许安装依赖的节点执行：
+
+```bash
+cd <SERVER_BASE>/SOPPO/code/scripts/cluster
+RUN_CONTEXT=cluster bash 00_server_setup.sh
+```
+
+该脚本应创建 Git 外的 `envs/`、`cache/`、`data/`、`models/`、`runs/`、`exports/` 和 `platform_logs/`，并拒绝错误的 Git 布局。
+
+## 4. 分阶段命令接口
+
+每个阶段完成后都应暂停，回传允许的聚合状态，并等待下一阶段确认。
+
+```bash
+source <SERVER_BASE>/activate_env.sh
+cd <SERVER_BASE>/SOPPO/code/scripts/cluster
+export RUN_CONTEXT=cluster
+
 bash 01_server_tests.sh
-```
-
-**完成标志**：
-- ✓ L_PE 数值正确性测试通过
-- ✓ 梯度路径测试通过
-- ✓ DPO loss 测试通过
-
-**预计时间**：2-5 分钟
-
----
-
-### 阶段 1：数据准备
-
-**在编译节点执行**（需要网络代理下载数据）
-
-```bash
-# 1. 激活环境（如未激活）
-source /home-ssd/Users/nsgm_jiangwh/youchang/activate_env.sh
-
-# 2. 运行数据准备
-cd /home-ssd/Users/nsgm_jiangwh/youchang/SOPPO/code/scripts/cluster
 bash 02_prepare_data.sh
-```
-
-**完成标志**：
-- ✓ 下载 UltraFeedback 10k 样本
-- ✓ 生成 6 个 JSONL 文件
-- ✓ 位置随机化审计通过
-- ✓ 跨集合泄漏检查通过
-
-**预计时间**：10-30 分钟（取决于网络）
-
----
-
-### 阶段 2-4：预实验和主实验
-
-**在登录节点提交作业**
-
-```bash
-# 1. 返回登录节点
-exit  # 从编译节点退出
-
-# 2. 准备训练脚本
-cd /home-ssd/Users/nsgm_jiangwh/youchang/SOPPO/code/scripts/cluster
-
-# 3. 提交预实验作业
-sbatch 03_preexperiment.sh
-
-# 4. 查看作业状态
-squeue -u nsgm_jiangwh
-
-# 5. 预实验完成后，提交主实验
-sbatch 05_run_main.sh
-```
-
-**完成标志**：
-- ✓ 预实验锁定 (ε, β, lr)
-- ✓ 8 次训练完成
-- ✓ 每个方法生成 checkpoints 和 logs
-
-**预计时间**：1-2 天
-
----
-
-### 阶段 5-7：观测和评估
-
-**在编译节点或登录节点执行**
-
-```bash
-# C_ε 观测
+bash 03_preexperiment.sh
+bash 04_lambda_search.sh
+bash 05_run_main.sh
 bash 06_c_epsilon.sh
-
-# 测试评估
 bash 07_evaluate.sh
-
-# 结果聚合
 bash 08_aggregate.sh
 ```
 
-**完成标志**：
-- ✓ C_ε 轨迹生成
-- ✓ 测试指标计算
-- ✓ 白名单结果导出
+这些入口当前仍含待服务器验证或占位实现；目录修正不等于数值、训练或评价逻辑已经通过验证。
 
-**预计时间**：半天
+## 5. 产物边界
 
----
+服务器保留、不得回传：
 
-## 常用命令
+- 原始或处理后数据、私有标签；
+- 模型、adapter、checkpoint、optimizer state；
+- token cache、embedding、逐样本预测和可能包含样本文本的原始日志；
+- 包目录、虚拟环境和依赖缓存。
 
-### 环境管理
+允许回传到本地 `SOPPO/exp/<experiment_id>/`：
 
-```bash
-# 激活环境
-source /home-ssd/Users/nsgm_jiangwh/youchang/activate_env.sh
+- 聚合 Markdown；
+- 无样本级内容的汇总 JSON/CSV；
+- 汇总图表；
+- 最终配置、公开 manifest、环境摘要和校验值；
+- 任务状态、失败摘要及远程路径索引。
 
-# 查看 conda 环境
-conda env list
+## 6. 静态核验
 
-# 检查 Python 和包
-python --version
-pip list | grep torch
-```
-
-### 作业管理
+服务器执行前至少核验：
 
 ```bash
-# 提交作业
-sbatch script.sh
-
-# 查看队列
-squeue -u nsgm_jiangwh
-
-# 取消作业
-scancel <job_id>
-
-# 查看作业详情
-scontrol show job <job_id>
-
-# 查看已完成作业
-sacct -u nsgm_jiangwh
+test -d <SERVER_BASE>/SOPPO/.git
+test ! -e <SERVER_BASE>/ICLR/.git
+test ! -e <SERVER_BASE>/SOPPO/code/observe/LLM-output-density/.git
+bash -n <SERVER_BASE>/SOPPO/code/scripts/cluster/*.sh
 ```
 
-### 存储管理
-
-```bash
-# 查看存储使用情况
-lfs quota -u nsgm_jiangwh /home-ssd/ -h
-
-# 查看目录大小
-du -sh /home-ssd/Users/nsgm_jiangwh/youchang/*
-
-# 清理缓存
-rm -rf /home-ssd/Users/nsgm_jiangwh/youchang/cache/*
-```
-
-### 文件传输
-
-```bash
-# 从本地上传
-sftp nsgm_jiangwh@10.32.48.56
-put -r /local/path /home-ssd/Users/nsgm_jiangwh/youchang/
-
-# 下载到本地
-get -r /home-ssd/Users/nsgm_jiangwh/youchang/export_local /local/path
-```
-
----
-
-## 目录结构
-
-```
-/home-ssd/Users/nsgm_jiangwh/youchang/
-├── SOPPO/                   # Git 仓库（轻量）
-│   └── code/               # 源码、脚本、配置
-├── envs/                    # Conda 环境
-│   └── youc/
-├── data/                    # 数据集
-│   └── ultrafeedback/
-├── models/                  # 模型
-├── exp/                     # 实验结果（重量级）
-│   └── cycle-20260818-01/
-├── logs/                    # 日志
-├── export_local/            # 可回传的结果
-├── cache/                   # 缓存
-├── project_config.json      # 项目配置
-└── activate_env.sh          # 环境激活脚本
-```
-
----
-
-## 故障排查
-
-### 问题 1：conda 命令不可用
-
-```bash
-# 初始化 conda
-eval "$(conda shell.bash hook)"
-```
-
-### 问题 2：网络代理加载失败
-
-```bash
-# 手动加载（仅在编译节点）
-source /home-ssd/Soft/modules/bashrc
-module load proxy/proxy
-```
-
-### 问题 3：CUDA 不可用
-
-```bash
-# 检查 GPU
-nvidia-smi
-
-# 检查 PyTorch
-python -c "import torch; print(torch.cuda.is_available())"
-```
-
-### 问题 4：作业失败
-
-```bash
-# 查看作业输出
-cat job.<job_id>.out
-
-# 查看作业错误
-sacct -j <job_id> --format=JobID,State,ExitCode
-```
-
----
-
-## 注意事项
-
-1. ✅ **编译节点**：安装软件、下载数据
-2. ✅ **登录节点**：提交作业、查看结果
-3. ❌ **禁止在登录节点运行程序**（会被管理员警告）
-4. ✅ **检查存储配额**：避免超额导致作业失败
-5. ✅ **保留失败作业现场**：便于技术支持分析
-
----
-
-## 支持联系
-
-- **服务台邮箱**: service@nsccsz.cn
-- **工单系统**: https://www.nsccsz.cn/tms/login.html
-- **投诉必须明确包含**："投诉"字样
-
----
-
-**最后更新**: 2026-08-20
+上述检查只验证目录与 shell 语法；项目测试、环境检查、数据处理和模型操作仍必须作为已授权服务器任务执行。

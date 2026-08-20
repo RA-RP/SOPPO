@@ -140,10 +140,10 @@
 | 环境 | Python 虚拟环境与依赖 | 服务器创建，不回传本地 |
 | 缓存 | HuggingFace/ModelScope 下载缓存 | 避免重复下载 |
 | 数据 | UltraFeedback 原始与处理后数据 | 包含 private_labels |
-| 模型 | Qwen3-4B checkpoint | 初步：`/jiangwenhao/Qwen/3_4B` |
+| 模型 | Qwen3-4B checkpoint | `<SERVER_BASE>/models/Qwen3-4B` |
 | 实验产物 | Logs, checkpoints, metrics | 按 experiment_id/method/seed 组织 |
 
-**具体路径确定**：留待代码阶段穿透完成后核实并记录。
+**路径状态**：目录合同已统一为 `<SERVER_BASE>/ICLR` 与 `<SERVER_BASE>/SOPPO` 平级；实际目录、模型与挂载是否存在，待获得服务器执行授权后核验并记录。
 
 ### 3.4 数据集准备
 
@@ -170,7 +170,7 @@
 
 服务器端生成并冻结：
 ```
-/nfs4/ICLR/data/ultrafeedback/<revision>/
+<SERVER_BASE>/data/ultrafeedback/<revision>/
 ├── labeled_train.jsonl        # 900 样本
 ├── labeled_val.jsonl          # 100 样本（从 1k labeled 划出）
 ├── unlabeled_train.jsonl      # 8k 样本，只含 (x, y_a, y_b)，位置随机
@@ -195,7 +195,7 @@
 - **模型**：Qwen3-4B（Instruct 版本）
 - **参数量**：~4B
 - **下载方式**：`modelscope download --model Qwen/Qwen3-4B`
-- **服务器路径**：待确认（初步：`/jiangwenhao/Qwen/3_4B`）
+- **服务器路径合同**：`<SERVER_BASE>/models/Qwen3-4B`（实际存在性待授权后核验）
 - **Reference 模型**：与训练模型共享权重，训练时冻结
 
 #### 序列长度配置
@@ -215,7 +215,7 @@
 
 #### 环境创建
 服务器任务：`scripts/cluster/00_server_setup.sh`
-- 创建虚拟环境：`/nfs4/ICLR/envs/mvp-v0.1`
+- 创建路径环境：`<SERVER_BASE>/envs/youc`
 - 安装锁定依赖：`requirements.lock.txt`
 - 检查：代码/挂载/磁盘/网络/驱动/PyTorch-CUDA/HuggingFace 访问
 - 输出：`server_preflight.json`（环境摘要）
@@ -593,7 +593,7 @@ c_{ε,D,t,m} = (r_{ε,D,0,m} - r_{ε,D,t,m}) / r_{ε,D,0,m}
 
 #### GetSlice 运行
 ```bash
-cd /Users/rarp/Desktop/ICLR/observe/LLM-output-density/GetSlice
+cd <SERVER_BASE>/SOPPO/code/observe/LLM-output-density/GetSlice
 python slice.py --config config_<method>_<seed>_<ckpt>.json
 ```
 
@@ -656,7 +656,7 @@ relative_functional_contraction_equal5.csv
 ### 8.6 产物
 
 ```
-/nfs4/ICLR/runs/exp-20260819-01-mvp/<METHOD>/seed-<SEED>/diagnostics/c_epsilon/
+<SERVER_BASE>/runs/exp-20260819-01-mvp/<METHOD>/seed-<SEED>/diagnostics/c_epsilon/
 ├── step_020/
 │   ├── sMat_S.json
 │   ├── xMat_X_S.json
@@ -928,7 +928,7 @@ Brier = (1 / |D_test|) × Σ_i (p_i - z_i)²
 
 **数据**：
 ```
-/nfs4/ICLR/data/ultrafeedback/<revision>/
+<SERVER_BASE>/data/ultrafeedback/<revision>/
 ├── labeled_train.jsonl
 ├── labeled_val.jsonl
 ├── unlabeled_train.jsonl
@@ -938,7 +938,7 @@ Brier = (1 / |D_test|) × Σ_i (p_i - z_i)²
 
 **Checkpoints**：
 ```
-/nfs4/ICLR/runs/exp-20260819-01-mvp/<METHOD>/seed-<SEED>/checkpoints/
+<SERVER_BASE>/runs/exp-20260819-01-mvp/<METHOD>/seed-<SEED>/checkpoints/
 ├── step_best/       # 保留
 └── step_last/       # 保留
 # 其他中间 ckpts 在 C_ε 观测后可删除
@@ -946,13 +946,13 @@ Brier = (1 / |D_test|) × Σ_i (p_i - z_i)²
 
 **逐样本预测**：
 ```
-/nfs4/ICLR/runs/exp-20260819-01-mvp/<METHOD>/seed-<SEED>/predictions/
+<SERVER_BASE>/runs/exp-20260819-01-mvp/<METHOD>/seed-<SEED>/predictions/
 └── test_predictions.jsonl  # 服务器保留，不回传
 ```
 
 **C_ε 中间产物**：
 ```
-/nfs4/ICLR/runs/exp-20260819-01-mvp/<METHOD>/seed-<SEED>/diagnostics/c_epsilon/
+<SERVER_BASE>/runs/exp-20260819-01-mvp/<METHOD>/seed-<SEED>/diagnostics/c_epsilon/
 ├── sMat_*.json
 ├── xMat_*.json
 └── profile_*.pt
@@ -962,7 +962,7 @@ Brier = (1 / |D_test|) × Σ_i (p_i - z_i)²
 
 **聚合指标**：
 ```
-/Users/rarp/Desktop/ICLR/work/exp/exp-20260819-01-mvp/export_local/
+/Users/rarp/Desktop/ICLR/SOPPO/exp/exp-20260819-01-mvp/export_local/
 ├── summary.json              # 方法/种子级聚合
 ├── metrics.csv               # 一行对应方法/种子
 ├── comparison.md             # 人类可读对比报告
@@ -999,7 +999,7 @@ Brier = (1 / |D_test|) × Σ_i (p_i - z_i)²
 
 ### 11.4 结果报告
 
-**主报告**：`/Users/rarp/Desktop/ICLR/work/human_read/result/current_result.md`
+**主报告**：`/Users/rarp/Desktop/ICLR/SOPPO/human_read/result/current_result.md`
 - 实验设计回顾
 - 核心发现（H1, H2, H3 是否成立）
 - 方法对比（Acc, Brier, c_ε）
@@ -1043,9 +1043,9 @@ Brier = (1 / |D_test|) × Σ_i (p_i - z_i)²
 ```
 理论明确通过（✅）
   → 实验设计逐项讨论并明确通过（⏳）
-    → CODE_IMPLEMENTATION：在 work/code 编写源码/配置/服务器脚本并更新 CODE_OVERVIEW（🔒）
+    → CODE_IMPLEMENTATION：在 SOPPO/code 编写源码/配置/服务器脚本并更新 CODE_OVERVIEW（🔒）
       → 用户明确确认代码交接完成、可以提交服务器（🔒）
-        → SERVER_EXECUTION：SFTP 上传已确认代码
+        → SERVER_EXECUTION：按获批方式同步已确认的 SOPPO 代码
           → 服务器测试、数据、smoke、训练、评价与聚合
             → RESULT_HANDOFF
 ```

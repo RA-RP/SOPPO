@@ -15,10 +15,12 @@ if [[ "${RUN_CONTEXT:-}" != "cluster" ]]; then
     exit 1
 fi
 
-# Parse arguments
-ENV_DIR=${1:-"/nfs4/ICLR/envs/mvp-v0.1"}
-CODE_DIR=${2:-"/nfs4/ICLR/code/cycle-20260818-01"}
-OUTPUT_DIR=${3:-"/nfs4/ICLR/work/cycle-20260818-01"}
+# Parse arguments from the shared server path contract.
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/server_paths.sh"
+ENV_DIR=${1:-"$ENV_ROOT/youc"}
+CODE_DIR=${2:-"$CODE_ROOT"}
+OUTPUT_DIR=${3:-"$RUN_ROOT/$EXPERIMENT_ID/server_tests"}
 
 echo "Environment: $ENV_DIR"
 echo "Code: $CODE_DIR"
@@ -28,7 +30,7 @@ echo "Output: $OUTPUT_DIR"
 source "$ENV_DIR/bin/activate"
 
 # Add code directory to PYTHONPATH
-export PYTHONPATH="$CODE_DIR:$PYTHONPATH"
+export PYTHONPATH="$CODE_DIR:${PYTHONPATH:-}"
 
 # Create test output directory
 TEST_OUTPUT="$OUTPUT_DIR/tests"

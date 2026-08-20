@@ -1,18 +1,18 @@
 # 代码总览
 
-> **状态**：`CODE_IMPLEMENTATION` 已完成，待用户确认。当前 Cycle ID：`cycle-20260818-01`，理论 v0.2 已通过，实验设计 v0.3 MVP 已通过（2026-08-19）。代码版本待确认后记录。
+> **状态**：锁定的预实现草案。当前 Cycle ID：`cycle-20260818-01`；理论 v0.2 已通过，但 `human_read/exp/current_experiment.md` v0.3 MVP 仍记录为待用户明确通过，因此当前唯一活动阶段仍是 `EXP_DISCUSSION`。
 
 ## 0. 阶段与授权
 
 - **Cycle ID**：`cycle-20260818-01`
-- **当前阶段**：`CODE_IMPLEMENTATION`（已完成实现，待交接确认）
+- **当前阶段**：`EXP_DISCUSSION`；`CODE_IMPLEMENTATION` 未解锁
 - **理论批准**：v0.2（2026-08-19）
-- **实验设计批准**：v0.3 MVP（2026-08-19）
-- **代码版本**：0.1.0-mvp（待用户确认后锁定）
-- **代码交接状态**：待用户明确确认"当前代码版本可以提交服务器"
-- **服务器执行授权**：无（需代码交接确认后解锁）
+- **实验设计批准**：无；v0.3 MVP 待用户明确通过
+- **代码版本**：无已批准版本；现有文件仅为预实现草案
+- **代码交接状态**：未开始
+- **服务器执行授权**：无
 
-**重要**：本地已完成代码编写，但未运行、未测试、未安装依赖。所有验证将在服务器执行。
+**重要**：现有源码和脚本不构成已获批实现。只有实验设计明确通过后，才能正式进入代码阶段逐项复核、修订和交接；当前不得上传或执行。
 
 ---
 
@@ -72,6 +72,7 @@ SOPPO/code/
 │   ├── dpo_pe.yaml                # DPO+PE 配置
 │   └── dpo100.yaml                # DPO-100% 配置
 ├── scripts/cluster/               # 服务器执行脚本
+│   ├── server_paths.sh            # ICLR/SOPPO 平级目录合同
 │   ├── 00_server_setup.sh         # 环境准备
 │   ├── 01_server_tests.sh         # 单元测试
 │   ├── 02_prepare_data.sh         # 数据准备
@@ -201,7 +202,7 @@ training:
 ## 5. 服务器执行流程
 
 ### 阶段 -1：环境准备（`00_server_setup.sh`）
-- 创建虚拟环境：`/nfs4/ICLR/envs/mvp-v0.1`
+- 创建路径环境：`<SERVER_BASE>/envs/youc`
 - 安装依赖（`requirements.lock.txt`）
 - 环境检查：CUDA、PyTorch、HuggingFace
 - 输出：`environment_summary.json`
@@ -245,7 +246,7 @@ training:
 - 输出：checkpoints/, logs/, diagnostics/
 
 ### 阶段 5：C_ε 观测（`06_c_epsilon.sh`）
-- 使用 `/Users/rarp/Desktop/ICLR/observe/LLM-output-density/GetSlice`
+- 使用 `<SERVER_BASE>/SOPPO/code/observe/LLM-output-density/GetSlice`
 - 每个方法 × 10 checkpoints = 80 次 GetSlice
 - s_nsamples=128, x_nsamples=128
 - 观测功能方向压缩（c_ε）
@@ -286,7 +287,7 @@ C_ε 观测 → c_epsilon_trajectory.csv
   ↓ 07_evaluate.sh
 测试评估 → test_metrics.json
   ↓ 08_aggregate.sh
-白名单导出 → export_local/
+白名单导出 → <SERVER_BASE>/exports/<experiment_id>/
 ```
 
 ---
@@ -374,7 +375,7 @@ else:
 ### 9.2 白名单（可回传本地）
 
 ```
-export_local/
+<SERVER_BASE>/exports/<experiment_id>/
 ├── summary.json              # 方法级聚合
 ├── metrics.csv               # 一行一个方法
 ├── comparison.md             # 人类可读报告
@@ -430,42 +431,31 @@ export_local/
 
 | 交接项 | 实验设计章节 | 源码/配置/入口 | 本地静态复核 | 服务器待验证 | 状态 |
 |--------|-------------|---------------|-------------|-------------|------|
-| 数据与标签隔离 | §3.3, §4 | `src/data/*.py`, `02_prepare_data.sh` | ✓ 代码已编写 | 数据审计、隔离测试 | ✅ 已实现 |
-| 方法与损失 | §5 | `src/model/*.py` | ✓ 代码已编写 | 数值、梯度、集成测试 | ✅ 已实现 |
-| 对照组与公平性 | §5.1, §5.2 | `configs/mvp/*.yaml`, `trainer.py` | ✓ 配置一致 | 共同配置审计 | ✅ 已实现 |
-| 超参数与配置 | §5.2, §4 | `configs/mvp/base.yaml` | ✓ 配置完整 | 配置生效快照 | ✅ 已实现 |
-| λ scheduler | §5.2.2 | `src/training/scheduler.py` | ✓ 3 种已实现 | 调度正确性 | ✅ 已实现 |
-| 评价与诊断 | §5.4, §9 | `src/evaluation/*.py`, `diagnostics.py` | ✓ 代码已编写 | 指标计算正确性 | ✅ 已实现 |
-| 运行脚本 | §3-7 | `scripts/cluster/*.sh` | ✓ 8 个脚本完整 | Smoke、拒绝覆盖 | ✅ 已实现 |
-| C_ε 观测 | §8 | `06_c_epsilon.sh` | ✓ 计划完整 | GetSlice 运行 | ✅ 已实现 |
+| 数据与标签隔离 | §3.3, §4 | `src/data/*.py`, `02_prepare_data.sh` | 待代码阶段复核 | 数据审计、隔离测试 | 锁定草案 |
+| 方法与损失 | §5 | `src/model/*.py` | 待代码阶段复核 | 数值、梯度、集成测试 | 锁定草案 |
+| 对照组与公平性 | §5.1, §5.2 | `configs/mvp/*.yaml`, `trainer.py` | 待代码阶段复核 | 共同配置审计 | 锁定草案 |
+| 超参数与配置 | §5.2, §4 | `configs/mvp/base.yaml` | 待代码阶段复核 | 配置生效快照 | 锁定草案 |
+| λ scheduler | §5.2.2 | `src/training/scheduler.py` | 待代码阶段复核 | 调度正确性 | 锁定草案 |
+| 评价与诊断 | §5.4, §9 | `src/evaluation/*.py`, `diagnostics.py` | 待代码阶段复核 | 指标计算正确性 | 锁定草案 |
+| 运行脚本 | §3-7 | `scripts/cluster/*.sh` | 仅完成目录合同修正 | Smoke、拒绝覆盖 | 锁定草案 |
+| C_ε 观测 | §8 | `06_c_epsilon.sh` | 待代码阶段复核 | GetSlice 运行 | 锁定草案 |
 
-**所有核心模块已实现**，待服务器验证。
+**本表尚未形成正式代码交接。** 目录合同修正不代表研究实现已经通过复核。
 
 ---
 
 ## 13. 代码版本与静态校验
 
-- **代码版本**：0.1.0-mvp
-- **静态校验值**：待用户确认后生成（如 git commit hash）
+- **代码版本**：无已批准版本；`0.1.0-mvp` 仅为旧草案标签
+- **静态校验值**：待实验批准并完成正式代码阶段后生成
 - **依赖版本**：已锁定在 `requirements.lock.txt`
 - **配置版本**：与实验设计 v0.3 MVP 一致
 
 ---
 
-## 14. 用户确认请求
+## 14. 当前门禁
 
-**代码实现已完成**，包括：
-1. ✅ 所有源码、配置、脚本已编写
-2. ✅ 本文件（CODE_OVERVIEW.md）已完整记录
-3. ✅ 每个阶段的服务器执行命令已明确
-4. ✅ 本地约束已遵守（未安装/导入/运行）
-5. ✅ 待服务器验证项已明确标注
-
-**请求用户确认**：
-
-> "当前代码版本（0.1.0-mvp）可以提交服务器"
-
-只有用户明确确认后，才能解锁 `SERVER_EXECUTION` 阶段。
+当前不能请求代码交接确认。必须先由用户明确通过 `human_read/exp/current_experiment.md` 的具体版本，再进入 `CODE_IMPLEMENTATION` 对现有草案逐项复核和修订。完成正式交接后，才可请求用户确认“当前代码版本可以提交服务器”。
 
 ---
 
@@ -473,7 +463,7 @@ export_local/
 
 ### 已知限制
 - MVP 仅单种子（seed=42），不进行统计显著性检验
-- 服务器具体路径待穿透完成后确定
+- 服务器目录合同已统一为 `<SERVER_BASE>/ICLR` 与 `<SERVER_BASE>/SOPPO` 平级，但实际服务器存在性仍待授权后核验
 - 部分服务器脚本为计划框架，需补充实际训练/评估逻辑
 - C_ε 观测需手动生成 GetSlice 配置
 
@@ -485,4 +475,4 @@ export_local/
 
 ---
 
-**状态总结**：代码实现阶段已完成，所有交付物已就绪，待用户审核并明确确认后进入服务器执行阶段。
+**状态总结**：当前仍处于 `EXP_DISCUSSION`。现有代码是锁定草案；目录与 Git 结构修正不解锁代码实现或服务器执行。

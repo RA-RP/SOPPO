@@ -1,4 +1,4 @@
-# `work/human_read/`：研究迭代主入口
+# `SOPPO/human_read/`：研究迭代主入口
 
 本目录是实验与 idea 碰撞、供用户逐轮仔细阅读和逐门决策的地方。每轮严格按 `theory → exp → code → 服务器执行 → result → nextCycle` 推进；代码阶段的主文档位于 `../code/CODE_OVERVIEW.md`。
 
@@ -25,7 +25,7 @@
 
 - Cycle ID：`cycle-20260818-01`
 - 唯一活动阶段：`EXP_DISCUSSION`
-- 当前讨论对象：`exp/current_experiment.md` v0.1
+- 当前讨论对象：`exp/current_experiment.md` v0.3 MVP
 - 理论通过状态：v0.2 已明确通过（2026-08-19）
 - 实验设计通过状态：待用户明确确认
 - `CODE_IMPLEMENTATION` 及其后续阶段：全部锁定

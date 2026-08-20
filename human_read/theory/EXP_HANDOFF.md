@@ -122,7 +122,7 @@ $$\boxed{L = L_{\text{DPO}}(D_L) + \lambda L_{\text{PE}}(D_U)}$$
 
 ## 你的任务
 
-1. **阅读完整理论**：`/Users/rarp/Desktop/ICLR/work/human_read/theory/current_theory.md`
+1. **阅读完整理论**：`/Users/rarp/Desktop/ICLR/SOPPO/human_read/theory/current_theory.md`
 2. **设计预实验**：Headroom 验证（1k 样本 DPO-100% vs SFT baseline）
 3. **设计主实验**：
    - 数据处理流程（隐藏标签、随机交换、划分、验证）
@@ -137,10 +137,10 @@ $$\boxed{L = L_{\text{DPO}}(D_L) + \lambda L_{\text{PE}}(D_U)}$$
 ## 门禁约束
 
 - 在用户**明确通过**实验设计前，**不得**进入 `CODE_IMPLEMENTATION`
-- 实验设计通过后，只能在 `/Users/rarp/Desktop/ICLR/work/code/` 编写源码、配置和服务器脚本，并维护 `CODE_OVERVIEW.md`；此时仍不得上传服务器或启动任务
+- 实验设计通过后，只能在 `/Users/rarp/Desktop/ICLR/SOPPO/code/` 编写源码、配置和服务器脚本，并维护 `CODE_OVERVIEW.md`；此时仍不得上传服务器或启动任务
 - 只有代码交接完成且用户明确确认当前代码版本可以提交服务器后，才能进入 `SERVER_EXECUTION`
-- 实验设计必须记录在 `/Users/rarp/Desktop/ICLR/work/human_read/exp/current_experiment.md`
-- 参考 `/Users/rarp/Desktop/ICLR/work/human_read/exp/AGENTS.md` 了解 exp 阶段的维护规则
+- 实验设计必须记录在 `/Users/rarp/Desktop/ICLR/SOPPO/human_read/exp/current_experiment.md`
+- 参考 `/Users/rarp/Desktop/ICLR/SOPPO/human_read/exp/AGENTS.md` 了解 exp 阶段的维护规则
 
 ---
 

@@ -15,11 +15,14 @@ if [[ "${RUN_CONTEXT:-}" != "cluster" ]]; then
     exit 1
 fi
 
-# Parse arguments
-ENV_DIR=${1:-"/nfs4/ICLR/envs/mvp-v0.1"}
-CODE_DIR=${2:-"/nfs4/ICLR/code/cycle-20260818-01"}
-EXPERIMENT_DIR=${3:-"/nfs4/ICLR/runs/exp-mvp-seed42"}
-LOCAL_EXPORT_DIR=${4:-"/nfs4/ICLR/export_local/exp-mvp-seed42"}
+# Parse arguments from the shared server path contract.
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/server_paths.sh"
+ENV_DIR=${1:-"$ENV_ROOT/youc"}
+CODE_DIR=${2:-"$CODE_ROOT"}
+EXPERIMENT_DIR=${3:-"$RUN_ROOT/$EXPERIMENT_ID"}
+LOCAL_EXPORT_DIR=${4:-"$EXPORT_ROOT/$EXPERIMENT_ID"}
+DATA_DIR="$DATA_ROOT/ultrafeedback/mvp-v0.3"
 
 echo "Environment: $ENV_DIR"
 echo "Code: $CODE_DIR"
@@ -28,7 +31,7 @@ echo "Local export: $LOCAL_EXPORT_DIR"
 
 # Activate environment
 source "$ENV_DIR/bin/activate"
-export PYTHONPATH="$CODE_DIR:$PYTHONPATH"
+export PYTHONPATH="$CODE_DIR:${PYTHONPATH:-}"
 
 # Create export directory
 mkdir -p "$LOCAL_EXPORT_DIR"
@@ -110,7 +113,7 @@ cat > "$LOCAL_EXPORT_DIR/task_registry.json" <<EOF
   "tasks": {
     "data_preparation": {
       "status": "completed",
-      "output": "$EXPERIMENT_DIR/../../data/ultrafeedback/mvp-v0.3"
+      "output": "$DATA_DIR"
     },
     "preexperiment": {
       "status": "completed",
@@ -142,7 +145,7 @@ Server Product Locations
 ========================
 
 Data:
-  Base: $EXPERIMENT_DIR/../../data/ultrafeedback/mvp-v0.3
+  Base: $DATA_DIR
   Labeled train: labeled_train.jsonl
   Labeled val: labeled_val.jsonl
   Unlabeled train: unlabeled_train.jsonl
@@ -150,7 +153,7 @@ Data:
   Private labels: private_labels/
 
 Model:
-  Base: /jiangwenhao/Qwen/3_4B
+  Base: $MODEL_ROOT/Qwen3-4B
 
 Experiments:
   Base: $EXPERIMENT_DIR

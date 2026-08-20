@@ -15,11 +15,13 @@ if [[ "${RUN_CONTEXT:-}" != "cluster" ]]; then
     exit 1
 fi
 
-# Parse arguments
-ENV_DIR=${1:-"/nfs4/ICLR/envs/mvp-v0.1"}
-CODE_DIR=${2:-"/nfs4/ICLR/code/cycle-20260818-01"}
-DATA_DIR=${3:-"/nfs4/ICLR/data/ultrafeedback/mvp-v0.3"}
-EXPERIMENT_DIR=${4:-"/nfs4/ICLR/runs/exp-mvp-seed42"}
+# Parse arguments from the shared server path contract.
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/server_paths.sh"
+ENV_DIR=${1:-"$ENV_ROOT/youc"}
+CODE_DIR=${2:-"$CODE_ROOT"}
+DATA_DIR=${3:-"$DATA_ROOT/ultrafeedback/mvp-v0.3"}
+EXPERIMENT_DIR=${4:-"$RUN_ROOT/$EXPERIMENT_ID"}
 
 echo "Environment: $ENV_DIR"
 echo "Code: $CODE_DIR"
@@ -28,7 +30,7 @@ echo "Experiment: $EXPERIMENT_DIR"
 
 # Activate environment
 source "$ENV_DIR/bin/activate"
-export PYTHONPATH="$CODE_DIR:$PYTHONPATH"
+export PYTHONPATH="$CODE_DIR:${PYTHONPATH:-}"
 
 echo ""
 echo "=== Test Evaluation Configuration ==="

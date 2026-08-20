@@ -2,18 +2,18 @@
 
 **生成时间**: 2026-08-19  
 **Cycle ID**: `cycle-20260818-01`  
-**实验设计版本**: v0.3 MVP（已通过）  
+**实验设计版本**: v0.3 MVP（待用户明确通过）
 **目标角色**: Code agent  
-**当前阶段**: `CODE_IMPLEMENTATION`（已解锁）
+**当前阶段**: `EXP_DISCUSSION`；本文档是锁定草案
 
 ---
 
 ## 1. 门禁状态
 
 ✅ **理论批准**: `../theory/current_theory.md` v0.2（已通过，2026-08-19）  
-✅ **实验设计批准**: `current_experiment.md` v0.3 MVP（已通过，2026-08-19）  
-🔓 **CODE_IMPLEMENTATION**: 已解锁  
-⏳ **服务器执行授权**: 待代码实现完成并经用户明确确认
+⏳ **实验设计批准**: `current_experiment.md` v0.3 MVP 待用户明确通过
+🔒 **CODE_IMPLEMENTATION**: 未解锁
+🔒 **服务器执行授权**: 无
 
 ---
 
@@ -21,7 +21,7 @@
 
 ### 2.1 核心目标
 
-将**已通过的实验设计 v0.3 MVP** 转化为可在服务器执行的代码、配置和脚本。
+实验设计 v0.3 MVP 明确通过后，才能把它转化为可在服务器执行的代码、配置和脚本。当前只能保留和阅读本锁定草案，不得据此实现或上传。
 
 ### 2.2 交付物
 
@@ -50,7 +50,7 @@
 
 ### 2.4 完成标准
 
-代码实现完成后，你需要：
+门禁解锁并完成正式代码实现后，需要：
 1. 在 `CODE_OVERVIEW.md` 中记录完整的模块、接口、数据流
 2. 提供每个阶段的服务器执行命令
 3. 明确标注"待服务器验证"的项（如数值稳定性、梯度正确性）
@@ -152,7 +152,7 @@
 
 **下载方式**：`modelscope download --model Qwen/Qwen3-4B`
 
-**服务器路径**：初步为 `/jiangwenhao/Qwen/3_4B`（待穿透完成后确认）
+**服务器路径合同**：`<SERVER_BASE>/models/Qwen3-4B`（实际存在性待授权后核验）
 
 **序列长度**：max_seq_len = 2048
 
@@ -445,7 +445,7 @@ c_{ε,D,t,m} = (r_{ε,D,0,m} - r_{ε,D,t,m}) / r_{ε,D,0,m}
 **重要**：s_nsamples 和 x_nsamples 设置为 **128**（与 batch_size 一致）
 
 **实现路径**：
-1. 使用 `/Users/rarp/Desktop/ICLR/observe/LLM-output-density/GetSlice/slice.py`
+1. 使用 `<SERVER_BASE>/SOPPO/code/observe/LLM-output-density/GetSlice/slice.py`
 2. 准备 S 侧和 X 侧 JSONL 数据
 3. 为每个 method × checkpoint 运行 GetSlice
 4. 后处理：使用 `cycle09_relative_functional_contraction.py` 和 `cycle09_equal5_non_qk.py`
@@ -772,9 +772,9 @@ def compute_l_pe(p_i, epsilon):
 
 ```
 ✅ 理论通过
-✅ 实验设计通过
-✅ 代码实现完成
-⏳ 用户明确确认代码可提交 → 解锁 SERVER_EXECUTION
+⏳ 实验设计待明确通过 → 才能解锁 CODE_IMPLEMENTATION
+🔒 代码实现与交接未开始
+🔒 SERVER_EXECUTION 无授权
 ```
 
 ---
@@ -796,8 +796,8 @@ def compute_l_pe(p_i, epsilon):
 - `../../../machine/A800_standard_MVP_runbook.md`（运行手册模板）
 
 **C_ε 观测工具**：
-- `/Users/rarp/Desktop/ICLR/observe/LLM-output-density/GetSlice/`
-- `/Users/rarp/Desktop/ICLR/observe/AGENTS.md`（C_ε 定义与使用）
+- `/Users/rarp/Desktop/ICLR/SOPPO/code/observe/LLM-output-density/GetSlice/`
+- `/Users/rarp/Desktop/ICLR/SOPPO/code/observe/AGENTS.md`（C_ε 定义与使用）
 
 ---
 
@@ -820,9 +820,11 @@ A：在代码中实现应急方案（gradient checkpointing, 调整 batch size�
 
 ---
 
-## 14. 你的下一步
+## 14. 门禁解锁后的步骤
 
-1. **阅读完整实验设计**：`current_experiment.md` v0.3 MVP
+以下步骤当前锁定，只有实验设计 v0.3 MVP 获用户明确通过后才能开始：
+
+1. **阅读已批准的完整实验设计**：`current_experiment.md` v0.3 MVP
 2. **设计代码架构**：模块划分、接口设计
 3. **编写代码**（本地纯文本编辑，不运行）：
    - 数据处理模块
@@ -833,8 +835,4 @@ A：在代码中实现应急方案（gradient checkpointing, 调整 batch size�
 4. **编写 CODE_OVERVIEW.md**：完整记录实现细节
 5. **向用户确认**："当前代码版本可以提交服务器"
 
-**重要**：遵守本地硬约束，不安装/不导入/不运行。
-
----
-
-祝代码实现顺利！有任何疑问，请与用户讨论。🚀
+**重要**：当前仍在实验讨论阶段；遵守本地硬约束，不安装、不导入、不运行，也不把预写文件称为已批准实现。
