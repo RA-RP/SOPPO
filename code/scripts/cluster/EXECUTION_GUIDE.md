@@ -31,11 +31,17 @@
    ssh nsgm_jiangwh@10.32.48.56
    ```
 
-3. **上传 ICLR 文件夹**
+3. **克隆 SOPPO 仓库**
    ```bash
-   # 本地执行
-   sftp nsgm_jiangwh@10.32.48.56
-   put -r /path/to/ICLR /home-ssd/Users/nsgm_jiangwh/youchang/
+   # 在编译节点执行
+   cd /home-ssd/Users/nsgm_jiangwh/youchang
+   
+   # 加载网络代理
+   source /home-ssd/Soft/modules/bashrc
+   module load proxy/proxy
+   
+   # 克隆仓库
+   git clone https://github.com/RA-RP/SOPPO.git
    ```
 
 ---
@@ -49,7 +55,7 @@
 ssh gn001
 
 # 2. 进入代码目录
-cd /home-ssd/Users/nsgm_jiangwh/youchang/ICLR/work/code/scripts/cluster
+cd /home-ssd/Users/nsgm_jiangwh/youchang/SOPPO/code/scripts/cluster
 
 # 3. 运行环境设置脚本
 bash 00_server_setup.sh
@@ -74,7 +80,7 @@ bash 00_server_setup.sh
 source /home-ssd/Users/nsgm_jiangwh/youchang/activate_env.sh
 
 # 2. 运行测试
-cd /home-ssd/Users/nsgm_jiangwh/youchang/ICLR/work/code/scripts/cluster
+cd /home-ssd/Users/nsgm_jiangwh/youchang/SOPPO/code/scripts/cluster
 bash 01_server_tests.sh
 ```
 
@@ -96,7 +102,7 @@ bash 01_server_tests.sh
 source /home-ssd/Users/nsgm_jiangwh/youchang/activate_env.sh
 
 # 2. 运行数据准备
-cd /home-ssd/Users/nsgm_jiangwh/youchang/ICLR/work/code/scripts/cluster
+cd /home-ssd/Users/nsgm_jiangwh/youchang/SOPPO/code/scripts/cluster
 bash 02_prepare_data.sh
 ```
 
@@ -119,7 +125,7 @@ bash 02_prepare_data.sh
 exit  # 从编译节点退出
 
 # 2. 准备训练脚本
-cd /home-ssd/Users/nsgm_jiangwh/youchang/ICLR/work/code/scripts/cluster
+cd /home-ssd/Users/nsgm_jiangwh/youchang/SOPPO/code/scripts/cluster
 
 # 3. 提交预实验作业
 sbatch 03_preexperiment.sh
@@ -229,8 +235,8 @@ get -r /home-ssd/Users/nsgm_jiangwh/youchang/export_local /local/path
 
 ```
 /home-ssd/Users/nsgm_jiangwh/youchang/
-├── ICLR/                    # Git 仓库（轻量）
-│   └── work/code/          # 源码、脚本、配置
+├── SOPPO/                   # Git 仓库（轻量）
+│   └── code/               # 源码、脚本、配置
 ├── envs/                    # Conda 环境
 │   └── youc/
 ├── data/                    # 数据集

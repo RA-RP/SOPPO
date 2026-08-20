@@ -42,7 +42,7 @@
 ## 2. 目录结构
 
 ```
-work/code/
+SOPPO/code/
 ├── src/
 │   ├── __init__.py
 │   ├── data/                      # 数据处理模块

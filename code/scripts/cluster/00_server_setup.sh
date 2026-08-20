@@ -15,17 +15,17 @@ echo "Date: $(date)"
 # ===================================================
 
 BASE_DIR="/home-ssd/Users/nsgm_jiangwh/youchang"
-ICLR_DIR="$BASE_DIR/ICLR"
-CODE_DIR="$ICLR_DIR/work/code"
+SOPPO_DIR="$BASE_DIR/SOPPO"
+CODE_DIR="$SOPPO_DIR/code"
 
 echo "Base directory: $BASE_DIR"
-echo "ICLR directory: $ICLR_DIR"
+echo "SOPPO directory: $SOPPO_DIR"
 echo "Code directory: $CODE_DIR"
 
-# 验证 ICLR 目录存在
-if [[ ! -d "$ICLR_DIR" ]]; then
-    echo "ERROR: ICLR directory not found at $ICLR_DIR"
-    echo "Please upload ICLR folder first"
+# 验证 SOPPO 目录存在
+if [[ ! -d "$SOPPO_DIR" ]]; then
+    echo "ERROR: SOPPO directory not found at $SOPPO_DIR"
+    echo "Please upload SOPPO folder first"
     exit 1
 fi
 
@@ -178,7 +178,7 @@ cat > "$PROJECT_CONFIG" <<EOF
 {
   "cycle_id": "cycle-20260818-01",
   "base_dir": "$BASE_DIR",
-  "iclr_dir": "$ICLR_DIR",
+  "soppo_dir": "$SOPPO_DIR",
   "code_dir": "$CODE_DIR",
   "env_name": "$ENV_NAME",
   "data_dir": "$BASE_DIR/data",
@@ -213,7 +213,7 @@ export TRANSFORMERS_CACHE="$BASE_DIR/cache/huggingface/transformers"
 export MODELSCOPE_CACHE="$BASE_DIR/cache/modelscope"
 
 # Set PYTHONPATH
-export PYTHONPATH="$BASE_DIR/ICLR/work/code:$PYTHONPATH"
+export PYTHONPATH="$BASE_DIR/SOPPO/code:$PYTHONPATH"
 
 # Load proxy (if on compile node)
 if command -v module &> /dev/null; then
