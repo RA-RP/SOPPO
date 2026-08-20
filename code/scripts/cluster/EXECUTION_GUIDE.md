@@ -2,9 +2,46 @@
 
 > **状态：LOCKED。** 本文件只定义服务器目录与命令接口，不构成上传或执行授权。只有实验设计获明确批准、代码交接完成，并且用户明确确认“当前代码版本可以提交服务器”后，才能执行下列服务器命令。
 
+## 0. 先说明命令中的三个容易混淆之处
+
+本服务器当前记录的实际根目录是：
+
+```text
+/home-ssd/Users/nsgm_jiangwh/youchang
+```
+
+文档中的 `<SERVER_BASE>` 只是这个绝对路径的占位符，**不能把尖括号原样输入 shell**。为了减少重复输入，登录服务器后先定义一次：
+
+```bash
+export SERVER_BASE=/home-ssd/Users/nsgm_jiangwh/youchang
+```
+
+原命令中的三行分别表示：
+
+```bash
+source "$SERVER_BASE/activate_env.sh"                 # 激活 Python 环境并设置缓存、PYTHONPATH
+cd "$SERVER_BASE/SOPPO/code/scripts/cluster"         # 进入八个阶段脚本所在目录
+export RUN_CONTEXT=cluster                            # 声明当前是服务器会话；脚本用它阻止本地误执行
+```
+
+`activate_env.sh` **不在 Git 仓库中**。它由服务器首次成功运行 `00_server_setup.sh` 后生成，实际位置是：
+
+```text
+/home-ssd/Users/nsgm_jiangwh/youchang/activate_env.sh
+```
+
+因此，尚未运行完 `00_server_setup.sh` 时看不到它是正常的。可在服务器检查：
+
+```bash
+export SERVER_BASE=/home-ssd/Users/nsgm_jiangwh/youchang
+ls -l "$SERVER_BASE/activate_env.sh"
+```
+
+若返回 `No such file or directory`，不要继续执行 `01`—`08`；先按第 3.3 节完成一次性环境准备。
+
 ## 1. 唯一目录合同
 
-服务器私有配置中的 `<SERVER_BASE>` 是用户项目根目录。目标结构如下：
+`<SERVER_BASE>` 表示 `/home-ssd/Users/nsgm_jiangwh/youchang`。目标结构如下：
 
 ```text
 <SERVER_BASE>/
@@ -41,22 +78,22 @@
 
 ## 2. 路径变量
 
-集群脚本通过 `server_paths.sh` 从自身位置推导路径：
+集群脚本通过 `server_paths.sh` 从自身位置自动推导路径，用户通常只需设置 `SERVER_BASE` 方便导航，无需逐个设置以下变量：
 
 ```bash
-SERVER_BASE=<SERVER_BASE>
-ICLR_ROOT=$SERVER_BASE/ICLR
-SOPPO_ROOT=$SERVER_BASE/SOPPO
-CODE_ROOT=$SOPPO_ROOT/code
-OBSERVE_ROOT=$CODE_ROOT/observe/LLM-output-density
+export SERVER_BASE=/home-ssd/Users/nsgm_jiangwh/youchang
+ICLR_ROOT="$SERVER_BASE/ICLR"
+SOPPO_ROOT="$SERVER_BASE/SOPPO"
+CODE_ROOT="$SOPPO_ROOT/code"
+OBSERVE_ROOT="$CODE_ROOT/observe/LLM-output-density"
 
-ENV_ROOT=$SERVER_BASE/envs
-CACHE_ROOT=$SERVER_BASE/cache
-DATA_ROOT=$SERVER_BASE/data
-MODEL_ROOT=$SERVER_BASE/models
-RUN_ROOT=$SERVER_BASE/runs
-EXPORT_ROOT=$SERVER_BASE/exports
-PLATFORM_LOG_ROOT=$SERVER_BASE/platform_logs
+ENV_ROOT="$SERVER_BASE/envs"
+CACHE_ROOT="$SERVER_BASE/cache"
+DATA_ROOT="$SERVER_BASE/data"
+MODEL_ROOT="$SERVER_BASE/models"
+RUN_ROOT="$SERVER_BASE/runs"
+EXPORT_ROOT="$SERVER_BASE/exports"
+PLATFORM_LOG_ROOT="$SERVER_BASE/platform_logs"
 ```
 
 除非运行手册明确记录覆盖值，其他脚本不得自行硬编码 `/nfs4/ICLR`、本地 `/Users/...` 或旧的 `ICLR/work` 路径。
@@ -80,8 +117,9 @@ SOPPO/
 ### 3.2 克隆唯一仓库
 
 ```bash
-cd <SERVER_BASE>
-git clone <SOPPO_REMOTE> SOPPO
+export SERVER_BASE=/home-ssd/Users/nsgm_jiangwh/youchang
+cd "$SERVER_BASE"
+git clone --branch master https://github.com/RA-RP/SOPPO.git SOPPO
 ```
 
 不得把克隆目标写成 `ICLR` 或 `ICLR/SOPPO`。
@@ -91,29 +129,58 @@ git clone <SOPPO_REMOTE> SOPPO
 在服务器允许安装依赖的节点执行：
 
 ```bash
-cd <SERVER_BASE>/SOPPO/code/scripts/cluster
-RUN_CONTEXT=cluster bash 00_server_setup.sh
+export SERVER_BASE=/home-ssd/Users/nsgm_jiangwh/youchang
+cd "$SERVER_BASE/SOPPO/code/scripts/cluster"
+export RUN_CONTEXT=cluster
+bash 00_server_setup.sh
 ```
 
-该脚本应创建 Git 外的 `envs/`、`cache/`、`data/`、`models/`、`runs/`、`exports/` 和 `platform_logs/`，并拒绝错误的 Git 布局。
+该脚本应创建 Git 外的 `envs/`、`cache/`、`data/`、`models/`、`runs/`、`exports/` 和 `platform_logs/`，并拒绝错误的 Git 布局。它还会在最后创建 `$SERVER_BASE/activate_env.sh`。
+
+完成后立即确认：
+
+```bash
+ls -l "$SERVER_BASE/activate_env.sh"
+```
 
 ## 4. 分阶段命令接口
 
-每个阶段完成后都应暂停，回传允许的聚合状态，并等待下一阶段确认。
+### 4.1 每次重新登录服务器后：只初始化一次会话
+
+下面这段可以直接复制。它不会启动实验，只会激活已经创建的环境、进入脚本目录并设置服务器安全标志：
 
 ```bash
-source <SERVER_BASE>/activate_env.sh
-cd <SERVER_BASE>/SOPPO/code/scripts/cluster
+export SERVER_BASE=/home-ssd/Users/nsgm_jiangwh/youchang
+source "$SERVER_BASE/activate_env.sh"
+cd "$SERVER_BASE/SOPPO/code/scripts/cluster"
 export RUN_CONTEXT=cluster
 
+echo "SERVER_BASE=$SERVER_BASE"
+echo "工作目录=$(pwd)"
+echo "RUN_CONTEXT=$RUN_CONTEXT"
+```
+
+预期最后三项分别显示正确的绝对根目录、以 `/SOPPO/code/scripts/cluster` 结尾的工作目录，以及 `RUN_CONTEXT=cluster`。
+
+### 4.2 一次只执行一个阶段
+
+不要一次性粘贴 `01`—`08` 的全部命令。每个阶段成功后都应暂停，回传允许的聚合状态并等待下一阶段确认，再执行下一行。
+
+| 阶段 | 作用 | 本阶段命令 |
+|---|---|---|
+| 01 | 服务器测试 | `bash 01_server_tests.sh` |
+| 02 | 数据准备 | `bash 02_prepare_data.sh` |
+| 03 | 预实验与数值稳定性检查 | `bash 03_preexperiment.sh` |
+| 04 | λ 搜索 | `bash 04_lambda_search.sh` |
+| 05 | MVP 主实验 | `bash 05_run_main.sh` |
+| 06 | `C_ε` 观测 | `bash 06_c_epsilon.sh` |
+| 07 | 测试集评价 | `bash 07_evaluate.sh` |
+| 08 | 聚合结果与生成报告 | `bash 08_aggregate.sh` |
+
+例如，首次获准执行时只运行：
+
+```bash
 bash 01_server_tests.sh
-bash 02_prepare_data.sh
-bash 03_preexperiment.sh
-bash 04_lambda_search.sh
-bash 05_run_main.sh
-bash 06_c_epsilon.sh
-bash 07_evaluate.sh
-bash 08_aggregate.sh
 ```
 
 这些入口当前仍含待服务器验证或占位实现；目录修正不等于数值、训练或评价逻辑已经通过验证。
@@ -140,10 +207,11 @@ bash 08_aggregate.sh
 服务器执行前至少核验：
 
 ```bash
-test -d <SERVER_BASE>/SOPPO/.git
-test ! -e <SERVER_BASE>/ICLR/.git
-test ! -e <SERVER_BASE>/SOPPO/code/observe/LLM-output-density/.git
-bash -n <SERVER_BASE>/SOPPO/code/scripts/cluster/*.sh
+export SERVER_BASE=/home-ssd/Users/nsgm_jiangwh/youchang
+test -d "$SERVER_BASE/SOPPO/.git"
+test ! -e "$SERVER_BASE/ICLR/.git"
+test ! -e "$SERVER_BASE/SOPPO/code/observe/LLM-output-density/.git"
+bash -n "$SERVER_BASE"/SOPPO/code/scripts/cluster/*.sh
 ```
 
 上述检查只验证目录与 shell 语法；项目测试、环境检查、数据处理和模型操作仍必须作为已授权服务器任务执行。
