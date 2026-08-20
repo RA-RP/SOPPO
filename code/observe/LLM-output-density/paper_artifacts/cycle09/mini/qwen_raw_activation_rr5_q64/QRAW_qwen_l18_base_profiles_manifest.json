@@ -1,0 +1,86 @@
+{
+  "rows": [
+    {
+      "arm": "base",
+      "artifact": "/root/autodl-tmp/cycle09_qraw_rr5_q64/base_profiles/formal/E_general.pt",
+      "checkpoint": 0,
+      "corpus": "/root/autodl-tmp/cycle09_block3/qwen_domain_probes/corpora/E_general.jsonl",
+      "created_utc": "2026-07-29T07:13:50.045760+00:00",
+      "forward_execution": {
+        "batch_count": 8,
+        "early_stop": true,
+        "early_stop_layer": 18,
+        "max_batch_tokens": 8192,
+        "requested_batch_size": 4
+      },
+      "layer": 18,
+      "model": "qwen",
+      "n_samples": 32,
+      "probe_name": "E_general",
+      "sample_ids_sha256": "2ee93ef1545850b9edf51aed337f9839bd27aebded1c669badd5f5b7ae7056a2",
+      "sha256": "426f19c612ab29e95a2c0f0398169076d549f7ede14d4baa79df5e1b155726f8"
+    },
+    {
+      "arm": "base",
+      "artifact": "/root/autodl-tmp/cycle09_qraw_rr5_q64/base_profiles/formal/E_if.pt",
+      "checkpoint": 0,
+      "corpus": "/root/autodl-tmp/cycle09_block3/qwen_domain_probes/corpora/E_if.jsonl",
+      "created_utc": "2026-07-29T07:13:51.639317+00:00",
+      "forward_execution": {
+        "batch_count": 8,
+        "early_stop": true,
+        "early_stop_layer": 18,
+        "max_batch_tokens": 8192,
+        "requested_batch_size": 4
+      },
+      "layer": 18,
+      "model": "qwen",
+      "n_samples": 32,
+      "probe_name": "E_if",
+      "sample_ids_sha256": "7b347295ad889164e1b4e2316b0e57d8570bd1b2e3b1c8a0ba8e7ce9c291f3ba",
+      "sha256": "63d9f02f7270d5f5863ddeac0dc6a33c94ea4d94917ace731a5244a1cc08a409"
+    },
+    {
+      "arm": "base",
+      "artifact": "/root/autodl-tmp/cycle09_qraw_rr5_q64/base_profiles/formal/E_math.pt",
+      "checkpoint": 0,
+      "corpus": "/root/autodl-tmp/cycle09_block3/qwen_domain_probes/corpora/E_math.jsonl",
+      "created_utc": "2026-07-29T07:13:53.110751+00:00",
+      "forward_execution": {
+        "batch_count": 8,
+        "early_stop": true,
+        "early_stop_layer": 18,
+        "max_batch_tokens": 8192,
+        "requested_batch_size": 4
+      },
+      "layer": 18,
+      "model": "qwen",
+      "n_samples": 32,
+      "probe_name": "E_math",
+      "sample_ids_sha256": "34485adc4125f2e238517fdb8e9a9892275b8af547ce9576b5f10d9150bb6eea",
+      "sha256": "beb42caff9cd80639832a9c6d8f6e7e8d28052b2e4682d216057f4388a612d25"
+    },
+    {
+      "arm": "base",
+      "artifact": "/root/autodl-tmp/cycle09_qraw_rr5_q64/base_profiles/formal/E_ood.pt",
+      "checkpoint": 0,
+      "corpus": "/root/autodl-tmp/cycle09_block3/qwen_domain_probes/corpora/E_ood.jsonl",
+      "created_utc": "2026-07-29T07:13:54.819905+00:00",
+      "forward_execution": {
+        "batch_count": 8,
+        "early_stop": true,
+        "early_stop_layer": 18,
+        "max_batch_tokens": 8192,
+        "requested_batch_size": 4
+      },
+      "layer": 18,
+      "model": "qwen",
+      "n_samples": 32,
+      "probe_name": "E_ood",
+      "sample_ids_sha256": "b0e989423dcfbc39c0a9bb613d791fdedbf0c673ac722df235a787d64ac57cfd",
+      "sha256": "883fd31e2e024d4501a761ba2222b81ff862b8ee0f86c548bad5243cf3b93fd5"
+    }
+  ],
+  "schema_version": "cycle09_qraw_rr5_q64_v1",
+  "status": "complete"
+}

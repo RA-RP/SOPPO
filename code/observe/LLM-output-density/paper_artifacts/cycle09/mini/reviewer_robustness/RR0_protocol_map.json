@@ -1,0 +1,138 @@
+{
+  "created_utc": "2026-07-27T11:52:06.579677+00:00",
+  "git_commit": "b9110d44daa13c7a848eb0b5b1a36faa4b5c68cb",
+  "handoff": "/root/LLM-output-density/mypaper/code/cycle09_reviewer_robustness_handoff.md",
+  "formal_grid": {
+    "models": {
+      "qwen": 18,
+      "llama": 14
+    },
+    "arms": [
+      "opd",
+      "sft",
+      "offkd",
+      "seqkd"
+    ],
+    "checkpoints": [
+      20,
+      40,
+      80
+    ],
+    "probes": [
+      "E_general",
+      "E_math",
+      "E_ood",
+      "E_if"
+    ],
+    "epsilons": [
+      0.01,
+      0.025,
+      0.05,
+      0.1
+    ]
+  },
+  "numeric_protocols": {
+    "qwen": {
+      "formal_source": "/root/autodl-tmp/cycle09_relative_functional_contraction/final/qwen_d4_merged_state_all_cells.csv",
+      "protocol": "D4.1_current_merged_state; BF16 forward, FP64 Gram/eigh/SVD, FP32 W S matmul per handoff"
+    },
+    "llama": {
+      "formal_source": "/root/autodl-tmp/cycle09_relative_functional_contraction/d10_llama_numeric_parity/formal/final/d10_5_integrated_state_equal7.csv",
+      "protocol": "D10_bf16_forward_fp64_eigh_svd; BF16 forward, FP32 hidden/Gram, FP64 eigh/SVD per handoff"
+    }
+  },
+  "task_status_counts": [
+    {
+      "task": "RR1A",
+      "status": "READY_RECOMPUTE_FROM_FORMAL_CHECKPOINT",
+      "n_cells": 96
+    },
+    {
+      "task": "RR1B",
+      "status": "READY_RECOMPUTE_FROM_FORMAL_CHECKPOINT",
+      "n_cells": 96
+    },
+    {
+      "task": "RR2",
+      "status": "BLOCKED_MISSING_ARTIFACT",
+      "n_cells": 36
+    },
+    {
+      "task": "RR2",
+      "status": "READY_REUSE",
+      "n_cells": 60
+    },
+    {
+      "task": "RR3",
+      "status": "READY_RECOMPUTE_FROM_FORMAL_CHECKPOINT",
+      "n_cells": 96
+    },
+    {
+      "task": "RR4",
+      "status": "READY_REUSE",
+      "n_cells": 96
+    },
+    {
+      "task": "RR5",
+      "status": "READY_REUSE",
+      "n_cells": 96
+    },
+    {
+      "task": "RR6",
+      "status": "BLOCKED_PROTOCOL_MISMATCH",
+      "n_cells": 48
+    },
+    {
+      "task": "RR6",
+      "status": "READY_REUSE",
+      "n_cells": 48
+    }
+  ],
+  "artifact_counts": [
+    {
+      "category": "centered_partial",
+      "exists": true,
+      "n": 1
+    },
+    {
+      "category": "d11_features",
+      "exists": true,
+      "n": 1
+    },
+    {
+      "category": "direction_spectrum",
+      "exists": true,
+      "n": 167
+    },
+    {
+      "category": "formal_output",
+      "exists": true,
+      "n": 2
+    },
+    {
+      "category": "formal_state",
+      "exists": true,
+      "n": 3
+    },
+    {
+      "category": "raw_activation",
+      "exists": true,
+      "n": 9
+    },
+    {
+      "category": "rollout_text",
+      "exists": true,
+      "n": 4
+    },
+    {
+      "category": "sample_inventory",
+      "exists": true,
+      "n": 1
+    },
+    {
+      "category": "top32",
+      "exists": true,
+      "n": 4
+    }
+  ]
+}

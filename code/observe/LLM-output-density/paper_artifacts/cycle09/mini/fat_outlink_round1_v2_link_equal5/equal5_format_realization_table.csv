@@ -1,0 +1,9 @@
+model,arm,n,spearman_F_minus_A_vs_format_gap,spearman_delta_nll_f_vs_extract_failure,spearman_c_equal5_vs_format_gap,pooled_forbidden_note
+llama,offkd,6,-0.028571428571428574,-0.2571428571428572,-0.08571428571428573,model_separate_only_signed_direction_not_pooled
+llama,opd,6,-0.5428571428571429,0.3142857142857143,-0.7714285714285715,model_separate_only_signed_direction_not_pooled
+llama,seqkd,6,0.8285714285714287,0.2571428571428572,0.6571428571428573,model_separate_only_signed_direction_not_pooled
+llama,sft,6,-0.08571428571428573,0.11595420713048968,0.6571428571428573,model_separate_only_signed_direction_not_pooled
+qwen,offkd,9,0.7166666666666667,0.5499999999999999,0.8666666666666667,model_separate_only_signed_direction_not_pooled
+qwen,opd,9,-0.21666666666666667,0.38333333333333336,0.45,model_separate_only_signed_direction_not_pooled
+qwen,seqkd,9,0.7166666666666667,0.7166666666666667,0.8666666666666667,model_separate_only_signed_direction_not_pooled
+qwen,sft,9,0.6666666666666667,0.510464719340991,0.8833333333333333,model_separate_only_signed_direction_not_pooled

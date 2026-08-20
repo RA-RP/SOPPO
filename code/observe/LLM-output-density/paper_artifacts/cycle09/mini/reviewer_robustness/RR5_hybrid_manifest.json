@@ -1,0 +1,105 @@
+{
+  "created_utc": "2026-07-27T12:25:02.592056+00:00",
+  "git_commit": "b9110d44daa13c7a848eb0b5b1a36faa4b5c68cb",
+  "command": "experiments/opd_sft_h1/scripts/cycle09_reviewer_robustness.py --correction-pass",
+  "status": "COMPLETE_RR5_LLAMA_ONLY_EXACT_COMMON_GRID",
+  "formal_protocol_id": "RR5_llama_only_exact_key_common_grid_checkpoint_grouped_oof",
+  "join_policy": "strict exact-key join only; no imputation; no nearest checkpoint; no probe replacement",
+  "standardization": "feature mean/std fit on train checkpoint folds only",
+  "models": [
+    "llama"
+  ],
+  "qwen_status": "BLOCKED_RAW_ACTIVATION_EXACT_GRID_MISSING_FOR_OPD_SFT_SEQKD",
+  "feature_blocks": {
+    "A": [
+      "normalized_entropy_effective_rank",
+      "participation_ratio",
+      "top1_explained_share",
+      "top8_explained_share",
+      "top32_explained_share",
+      "raw_anisotropy",
+      "centered_anisotropy",
+      "linear_cka_vs_step0"
+    ],
+    "C": [
+      "c_epsilon"
+    ],
+    "Pk": [
+      "p_k4",
+      "p_k8",
+      "p_k16",
+      "p_k32"
+    ],
+    "A+C": [
+      "normalized_entropy_effective_rank",
+      "participation_ratio",
+      "top1_explained_share",
+      "top8_explained_share",
+      "top32_explained_share",
+      "raw_anisotropy",
+      "centered_anisotropy",
+      "linear_cka_vs_step0",
+      "c_epsilon"
+    ],
+    "Pk+A": [
+      "p_k4",
+      "p_k8",
+      "p_k16",
+      "p_k32",
+      "normalized_entropy_effective_rank",
+      "participation_ratio",
+      "top1_explained_share",
+      "top8_explained_share",
+      "top32_explained_share",
+      "raw_anisotropy",
+      "centered_anisotropy",
+      "linear_cka_vs_step0"
+    ],
+    "Pk+C": [
+      "p_k4",
+      "p_k8",
+      "p_k16",
+      "p_k32",
+      "c_epsilon"
+    ],
+    "Pk+A+C": [
+      "p_k4",
+      "p_k8",
+      "p_k16",
+      "p_k32",
+      "normalized_entropy_effective_rank",
+      "participation_ratio",
+      "top1_explained_share",
+      "top8_explained_share",
+      "top32_explained_share",
+      "raw_anisotropy",
+      "centered_anisotropy",
+      "linear_cka_vs_step0",
+      "c_epsilon"
+    ]
+  },
+  "targets": {
+    "cumulative_kl_base_to_current": "regression",
+    "absolute_delta_nll_cumulative": "regression",
+    "delta_nll_cumulative": "regression",
+    "is_opd": "classification"
+  },
+  "row_counts": {
+    "coverage": 8,
+    "llama_common_grid": 64,
+    "model_metrics": 28,
+    "fold_rows": 112,
+    "predictions": 1792
+  },
+  "blocked_cells": 84,
+  "input_paths_and_sha256": {
+    "/root/autodl-tmp/cycle09_relative_functional_contraction/d11_pk_tpnt/formal/final/d11_same_cell_feature_matrix.csv": "55ddfbb12391db842f91c604999b1fb5dc33f884b6c81538e0e9f0bb561481ea"
+  },
+  "output_sha256": {
+    "RR5_llama_common_grid.csv": "41535f33912d718c403dddc2f65b348eb9630ca3d08e2c8befaeac9570b9ba8e",
+    "RR5_hybrid_coverage.csv": "b4f1c339aa0ca7d3f1b4d7973dfbca3e815c8a926c2e5e0403fe4249cfd6580e",
+    "RR5_hybrid_grouped_models.csv": "b435de33fa29b4752777cf90050203d203e0d51762de5135d9ee0089ff9f4d3f",
+    "RR5_hybrid_fold_metrics.csv": "31ef2f768d5dfcd700b1615a8499e2de448fdb31e1a2e2d3a497154ac55bbb75",
+    "RR5_hybrid_predictions.parquet": "ad64707cffb9c05e8ee7d22cd8e3d2448a061c5a80c3c9ffdcc5cf186c68dd1b"
+  }
+}

@@ -1,0 +1,3 @@
+task,status,checkpoint_states,probe_manifests,state_cells,base_reference_cells,c5_coverage,pk5_coverage,output_coverage,duplicate_exact_keys,raw_rows,common_rows,finite_raw_features,metrics_rows,fold_rows,prediction_rows
+S0_preflight,PREFLIGHT_COMPLETE,16.0,4.0,64.0,4.0,64.0,64.0,64.0,0.0,,,,,,
+formal_finalize,COMPLETE_QRAW_RR5_Q64_EXACT_COMMON_GRID,,,,,,,,,64.0,64.0,512.0,28.0,112.0,1792.0

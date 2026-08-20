@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "required": [
+    "run_id",
+    "trajectory_group_id",
+    "method",
+    "role_label",
+    "parent_run_id",
+    "start_checkpoint",
+    "seed",
+    "model",
+    "data",
+    "training",
+    "artifacts",
+    "status"
+  ],
+  "properties": {
+    "run_id": {"type": "string"},
+    "trajectory_group_id": {"type": ["string", "null"]},
+    "method": {"type": "string"},
+    "role_label": {"type": "string"},
+    "parent_run_id": {"type": ["string", "null"]},
+    "start_checkpoint": {"type": ["string", "null"]},
+    "seed": {"type": ["integer", "null"]},
+    "model": {"type": ["object", "string", "null"]},
+    "data": {"type": ["object", "string", "null"]},
+    "training": {"type": ["object", "string", "null"]},
+    "artifacts": {"type": ["object", "string", "null"]},
+    "status": {"type": "string"}
+  },
+  "additionalProperties": true
+}

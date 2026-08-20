@@ -1,0 +1,4 @@
+component,coverage,expected,duplicates,missing_keys
+C5,64,64,0,[]
+Pk5,64,64,0,[]
+output,64,64,0,[]

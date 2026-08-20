@@ -1,0 +1,38 @@
+{
+  "status": "frozen_before_c14_generation",
+  "frozen_at_utc": "2026-07-20T04:30:00+00:00",
+  "task": "C7 descriptive lead-lag repair inside C14",
+  "geometry": {
+    "source": "R4_m1_tail_ec.csv",
+    "track": "per_checkpoint",
+    "probe": "E_ood",
+    "layer": 18,
+    "epsilon": 0.05,
+    "aggregation": "equal mean over the fixed seven modules",
+    "steps": [0, 5, 10, 20, 40, 80, 160, 320, 480, 624],
+    "events": {
+      "first_positive_checkpoint": "earliest nonzero checkpoint with mean r_epsilon_delta > 0; undefined if none",
+      "positive_peak": "checkpoint with maximum mean r_epsilon_delta, reported only when that maximum is positive",
+      "signed_minimum": "checkpoint with minimum signed mean r_epsilon_delta"
+    }
+  },
+  "behavior": {
+    "source": "three_arm_full_trajectory.csv",
+    "metrics": [
+      "math500_acc",
+      "math500_trunc_rate",
+      "mmlu_pro_exact_match",
+      "ifeval_prompt_strict",
+      "ifeval_instruction_strict",
+      "gpqa_diamond_acc",
+      "truthfulqa_mc1_acc"
+    ],
+    "events": ["minimum", "maximum"]
+  },
+  "lag": {
+    "primary_reporting": "checkpoint-index difference on the frozen irregular grid",
+    "sensitivity": "numeric optimizer-step difference",
+    "direction": "behavior step minus geometry step"
+  },
+  "inference": "All outputs are descriptive time ordering only. They do not identify a causal or mediation effect."
+}

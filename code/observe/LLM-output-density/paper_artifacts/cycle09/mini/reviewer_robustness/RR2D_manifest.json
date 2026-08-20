@@ -1,0 +1,55 @@
+{
+  "created_utc": "2026-07-27T12:25:01.621818+00:00",
+  "git_commit": "b9110d44daa13c7a848eb0b5b1a36faa4b5c68cb",
+  "command": "experiments/opd_sft_h1/scripts/cycle09_reviewer_robustness.py --correction-pass",
+  "status": "COMPLETE_RR2D_LLAMA_DISPLACEMENT_AUXILIARY_WITH_EQUAL7_ORDERING_LINKS",
+  "formal_protocol_id": "RR2D_activation_conditioned_update_displacement_auxiliary",
+  "not_formal_rr2s": true,
+  "numeric_protocol": "Uses complete Llama Stage4 main.direction.pt displacement singular values and displacement_rank. This is not r_epsilon(W_t S_t) state-spectrum robustness.",
+  "models": [
+    "llama"
+  ],
+  "arms": [
+    "opd",
+    "sft",
+    "offkd",
+    "seqkd"
+  ],
+  "checkpoints": [
+    20,
+    40,
+    80
+  ],
+  "probes": [
+    "E_general",
+    "E_math",
+    "E_ood",
+    "E_if"
+  ],
+  "epsilons": [
+    0.01,
+    0.025,
+    0.05,
+    0.1
+  ],
+  "row_counts": {
+    "auxiliary_rows": 1344,
+    "blocked_rows": 12,
+    "equal7": 192,
+    "ordering": 96,
+    "output_links": 16
+  },
+  "blocked_cells": 12,
+  "input_paths_and_sha256": {
+    "RR0_grid_coverage.csv": "7a24623326c35934da4ccee0f7e37472aeb0fae7a7e9c629bfb0a95ce3999337"
+  },
+  "output_sha256": {
+    "RR2D_displacement_spectrum_auxiliary.csv": "59a37378aeb98c3270b6eb8fadbd0427e234efa1c735d18ddd700af83850e8e7",
+    "RR2D_blocked_cells.csv": "c9d8834748573c50e85c6a774967cec76f8517d7335821eb5867b5b4d8f619c1",
+    "RR2D_displacement_equal7.csv": "8b59dcf1b53b9907d3f2ec3c92cc1e96dc0334cc259880cdccdc3b7299e69824",
+    "RR2D_displacement_ordering.csv": "20270e9e10ddbc1dc71bea179ec0107a13699da26c2f467c4df27ac9c3df5252",
+    "RR2D_displacement_output_links.csv": "b5991367752e9c0a9da4a1daa0e309ff919f5b8137f86f3590ea6490cbf400ec"
+  },
+  "created_utc_updated": "2026-07-27T13:33:46.337523+00:00",
+  "auxiliary_disclaimer": "auxiliary displacement-spectrum result; not state-rank robustness; not a replacement for RR2S"
+}

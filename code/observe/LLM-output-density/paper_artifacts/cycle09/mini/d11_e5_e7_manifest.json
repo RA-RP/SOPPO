@@ -1,0 +1,50 @@
+{
+  "created_utc": "2026-07-27T02:45:03.009882+00:00",
+  "handoff": "/root/autodl-tmp/cycle09_relative_functional_contraction/d11_pk_tpnt/formal/final/d11_e5_e7_optional_handoff.md",
+  "outputs": [
+    {
+      "bytes": 1352893,
+      "exists": true,
+      "path": "/root/autodl-tmp/cycle09_relative_functional_contraction/d11_pk_tpnt/formal/final/d11_e5_layer_robustness.csv",
+      "sha256": "e76159e769dd402cf8be959bdac09003d2f34584bea9cc4c6f12293b6042e5a6"
+    },
+    {
+      "bytes": 85278,
+      "exists": true,
+      "path": "/root/autodl-tmp/cycle09_relative_functional_contraction/d11_pk_tpnt/formal/final/d11_e5_layer_robustness_summary.csv",
+      "sha256": "eb19434dda44506c42dd48d18f09cd121591541ce919a1c1ea93ae7d36a3eb50"
+    },
+    {
+      "bytes": 832761,
+      "exists": true,
+      "path": "/root/autodl-tmp/cycle09_relative_functional_contraction/d11_pk_tpnt/formal/final/d11_e6_alpha_sensitivity.csv",
+      "sha256": "d64dca8109a3d76d9fb34206cbe151cbd811902ec5b78fb21ecb78599030eec5"
+    },
+    {
+      "bytes": 17600,
+      "exists": true,
+      "path": "/root/autodl-tmp/cycle09_relative_functional_contraction/d11_pk_tpnt/formal/final/d11_e6_alpha_sensitivity_summary.csv",
+      "sha256": "810194b4af86b1f5e7c9c82a14dfc839a5cf02dab053806769d1abada50a900c"
+    },
+    {
+      "bytes": 149459,
+      "exists": true,
+      "path": "/root/autodl-tmp/cycle09_relative_functional_contraction/d11_pk_tpnt/formal/final/d11_e7_spectrum_matched_null.csv",
+      "sha256": "e58f37cfbedcf124bbd9e243e5dc63c23a3aa54a1bb3a512c825c59815abcece"
+    },
+    {
+      "bytes": 14230,
+      "exists": true,
+      "path": "/root/autodl-tmp/cycle09_relative_functional_contraction/d11_pk_tpnt/formal/final/d11_e7_spectrum_matched_null_summary.csv",
+      "sha256": "130f8723f1455443ac120c8b664b42557d858e3fdd021ebab9ef1130d8bafb58"
+    },
+    {
+      "bytes": 2614,
+      "exists": true,
+      "path": "/root/autodl-tmp/cycle09_relative_functional_contraction/d11_pk_tpnt/formal/final/d11_e5_e7_optional_handoff.md",
+      "sha256": "02d5e2342ed2062e041b31cc04422d5443696d7b032332713552f39f716b9ca8"
+    }
+  ],
+  "schema_version": "cycle09_d11_e5_e7_manifest_v1",
+  "status": "COMPLETE_D11_OPTIONAL_E5_E7"
+}

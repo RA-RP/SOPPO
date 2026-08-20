@@ -1,0 +1,62 @@
+# ==============================
+# LLM-output-density requirements
+# 新环境 trl151-py312:
+#   Python 3.12.3
+#   trl==1.5.1, transformers==4.57.6, peft==0.19.1
+#   torch==2.10.0+cu128, vllm==0.18.0, lm_eval==0.4.12
+# ==============================
+
+# Core training / eval
+transformers==4.57.6
+trl==1.5.1
+peft==0.19.1
+lm_eval==0.4.12
+vllm==0.18.0
+llamafactory==0.9.3
+antlr4-python3-runtime==4.9.3
+
+# Data & preprocessing
+datasets==5.0.0
+modelscope==1.37.1
+sentencepiece==0.2.1
+sentencepiece>=0.2.0
+tiktoken>=0.6.0
+
+# Deep learning basics
+torch==2.10.0
+torchaudio==2.10.0
+torchvision==0.25.0
+accelerate
+bitsandbytes==0.47.0
+
+# Math / stats
+numpy>=1.26.3
+pandas
+pyarrow
+scipy
+scikit-learn
+seaborn
+matplotlib
+tensorboard==2.20.0
+
+# Eval utilities
+evaluate
+tqdm==4.68.1
+
+# Infrastructure
+protobuf>=6.33.6
+PyYAML>=6.0
+importlib-metadata
+huggingface_hub==0.36.2
+
+# ------------------------------------------------------------------------------
+# verl (Cycle 08 OPD on-policy distillation) is NOT installed into this env.
+# verl 0.8.x pins torch 2.9.x + vllm 0.8.5–0.12.0, which CONFLICTS with this
+# env's torch 2.10.0 / vllm 0.18.0. Installing verl here (even --no-deps) breaks
+# the cycle07 eval stack. verl therefore lives in a SEPARATE named conda env.
+#
+#   conda activate verl                      # -> /root/autodl-tmp/envs/verl (py3.11)
+#   see: requirements-verl.txt  +  /root/autodl-tmp/setup_verl_env.sh
+#
+# verl source checkout: /root/autodl-tmp/verl (volcengine/verl, OPD recipe).
+# ------------------------------------------------------------------------------

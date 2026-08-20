@@ -1,0 +1,13 @@
+{
+  "created_utc": "2026-07-27T11:52:06.609941+00:00",
+  "git_commit": "b9110d44daa13c7a848eb0b5b1a36faa4b5c68cb",
+  "command": "/root/LLM-output-density/experiments/opd_sft_h1/scripts/cycle09_reviewer_robustness.py --rr0",
+  "status": "COMPLETE_RR0_INVENTORY",
+  "outputs": {
+    "artifact_inventory": "/root/LLM-output-density/mypaper/local_experiment_results/cycle_09_aaai_competitiveness_completion/run_01/mini/reviewer_robustness/RR0_artifact_inventory.csv",
+    "grid_coverage": "/root/LLM-output-density/mypaper/local_experiment_results/cycle_09_aaai_competitiveness_completion/run_01/mini/reviewer_robustness/RR0_grid_coverage.csv",
+    "protocol_map": "/root/LLM-output-density/mypaper/local_experiment_results/cycle_09_aaai_competitiveness_completion/run_01/mini/reviewer_robustness/RR0_protocol_map.json",
+    "blockers": "/root/LLM-output-density/mypaper/local_experiment_results/cycle_09_aaai_competitiveness_completion/run_01/mini/reviewer_robustness/RR0_blockers.md",
+    "task_estimates": "/root/LLM-output-density/mypaper/local_experiment_results/cycle_09_aaai_competitiveness_completion/run_01/mini/reviewer_robustness/RR0_task_estimates.csv"
+  }
+}

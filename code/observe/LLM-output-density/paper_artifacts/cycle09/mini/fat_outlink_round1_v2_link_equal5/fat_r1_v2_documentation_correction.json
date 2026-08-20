@@ -1,0 +1,17 @@
+{
+  "artifact": "/root/LLM-output-density/mypaper/local_experiment_results/cycle_09_aaai_competitiveness_completion/run_01/mini/fat_outlink_round1_v2/fat_r1_v2_mask_audit.csv",
+  "created_utc": "2026-07-28T15:42:01.717368+00:00",
+  "fat_r1_v1_status": "blocked because character-defined boxed spans crossed token boundaries",
+  "fat_r1_v2_status": "formal result using token-clean combined boxed spans",
+  "logical_record_count": 1000,
+  "naming_alias": {
+    "P": "true prompt in FAT-R1-v2",
+    "R": "legacy fixed reference-token stream formerly called P in older artifacts"
+  },
+  "physical_line_count": 1046,
+  "reason": "CSV quoted token text contains embedded newlines; physical wc-style line count is not logical CSV row count.",
+  "stored_logits_description": {
+    "MATH": "full-vocabulary KL on B/T; scalar NLL also available on P/C/B/T",
+    "MMLU": "full-vocabulary KL on F/A/T; scalar NLL also available on P/F/A/T"
+  }
+}

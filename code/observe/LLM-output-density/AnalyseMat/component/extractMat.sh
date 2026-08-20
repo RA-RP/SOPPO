@@ -1,0 +1,1 @@
+python ./safetensor2npy.py

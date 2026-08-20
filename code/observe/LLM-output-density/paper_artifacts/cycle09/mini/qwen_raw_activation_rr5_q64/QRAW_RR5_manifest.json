@@ -1,0 +1,136 @@
+{
+  "acceptance": {
+    "cross_model_feature_block_renaming": "none",
+    "cross_model_llama_equal5_source": "equal5_non_qk/EQUAL5_nested_metrics.csv",
+    "eight_raw_features_finite": "512/512",
+    "fold_rows": 112,
+    "grouped_metrics": 28,
+    "imputation": "none",
+    "nearest_matching": "none",
+    "oof_predictions": 1792,
+    "outer_folds": 4,
+    "preflight_state_cells": "64/64",
+    "probe_substitution": "none",
+    "raw_activation_state_rows": "64/64",
+    "test_rows_per_fold": 16
+  },
+  "created_utc": "2026-07-29T07:33:23.354796+00:00",
+  "cross_model_protocol": {
+    "feature_block_renaming": "none",
+    "legacy_rr5_source_used": false,
+    "llama_source": "/root/LLM-output-density/mypaper/local_experiment_results/cycle_09_aaai_competitiveness_completion/run_01/mini/equal5_non_qk/EQUAL5_nested_metrics.csv",
+    "qwen_source": "/root/LLM-output-density/mypaper/local_experiment_results/cycle_09_aaai_competitiveness_completion/run_01/mini/qwen_raw_activation_rr5_q64/QRAW_RR5_qwen_nested_metrics.csv"
+  },
+  "git_commit": "b9110d44daa13c7a848eb0b5b1a36faa4b5c68cb",
+  "numeric_protocol": {
+    "accumulation_dtype": "FP32 residual mean/second/sample means",
+    "covariance_eig_dtype": "torch FP32 eigvalsh, eigenvalues exported as FP64 numpy for ratios",
+    "early_stop": true,
+    "layer": 18,
+    "model_forward_dtype": "existing Qwen formal inference dtype via campaign.load_model",
+    "new_functional_svd": "none",
+    "rollout": "none",
+    "sample_rule": "first_32_from_formal_probe_order",
+    "training": "none"
+  },
+  "outputs": {
+    "QRAW_RR5_checkpoint_inventory.csv": {
+      "path": "/root/LLM-output-density/mypaper/local_experiment_results/cycle_09_aaai_competitiveness_completion/run_01/mini/qwen_raw_activation_rr5_q64/QRAW_RR5_checkpoint_inventory.csv",
+      "rows": 16,
+      "sha256": "d5398444a6433e241fb9b8272ec244c068c5d833eabf072d2db884a0f416d429"
+    },
+    "QRAW_RR5_cross_model_side_by_side.csv": {
+      "path": "/root/LLM-output-density/mypaper/local_experiment_results/cycle_09_aaai_competitiveness_completion/run_01/mini/qwen_raw_activation_rr5_q64/QRAW_RR5_cross_model_side_by_side.csv",
+      "rows": 56,
+      "sha256": "01d228e54efdd65fe5355a4ca9c606050b9aa2479c73ca2b072c0fb5349d3af7"
+    },
+    "QRAW_RR5_cross_model_wins.csv": {
+      "path": "/root/LLM-output-density/mypaper/local_experiment_results/cycle_09_aaai_competitiveness_completion/run_01/mini/qwen_raw_activation_rr5_q64/QRAW_RR5_cross_model_wins.csv",
+      "rows": 32,
+      "sha256": "b6bb2df87fbd2d21f4e3f0c5f6f9cefcc2947b557eb0ac5203211092edd97d3f"
+    },
+    "QRAW_RR5_formal_forward_status.csv": {
+      "path": "/root/LLM-output-density/mypaper/local_experiment_results/cycle_09_aaai_competitiveness_completion/run_01/mini/qwen_raw_activation_rr5_q64/QRAW_RR5_formal_forward_status.csv",
+      "rows": 64,
+      "sha256": "74cda8cf7b59e6dbcc33e23e21988897b6e2c258ecdd2f73bc58f6dea716d597"
+    },
+    "QRAW_RR5_formal_raw_representation_suite.csv": {
+      "path": "/root/LLM-output-density/mypaper/local_experiment_results/cycle_09_aaai_competitiveness_completion/run_01/mini/qwen_raw_activation_rr5_q64/QRAW_RR5_formal_raw_representation_suite.csv",
+      "rows": 64,
+      "sha256": "d78c22f2cbfa837a5ab76e9112353cc4b793851e9595f718037a7d220e28ea93"
+    },
+    "QRAW_RR5_join_audit.csv": {
+      "path": "/root/LLM-output-density/mypaper/local_experiment_results/cycle_09_aaai_competitiveness_completion/run_01/mini/qwen_raw_activation_rr5_q64/QRAW_RR5_join_audit.csv",
+      "rows": 3,
+      "sha256": "c0c7d16342be3ad20b42f252304b8cd2bf3259cc4bb81e94f9ae68e2a292beb5"
+    },
+    "QRAW_RR5_preflight_common_grid_preview.csv": {
+      "path": "/root/LLM-output-density/mypaper/local_experiment_results/cycle_09_aaai_competitiveness_completion/run_01/mini/qwen_raw_activation_rr5_q64/QRAW_RR5_preflight_common_grid_preview.csv",
+      "rows": 64,
+      "sha256": "533798eb0985c3e0c0fd9ae8882e0619efe749afbaaa0c73d5138c9416e0813c"
+    },
+    "QRAW_RR5_probe_inventory.csv": {
+      "path": "/root/LLM-output-density/mypaper/local_experiment_results/cycle_09_aaai_competitiveness_completion/run_01/mini/qwen_raw_activation_rr5_q64/QRAW_RR5_probe_inventory.csv",
+      "rows": 4,
+      "sha256": "fbc725cbabbe2e00a0210bb81041fc389d649b206872a1dd3f1d3abb25f61bad"
+    },
+    "QRAW_RR5_probe_manifest.json": {
+      "path": "/root/LLM-output-density/mypaper/local_experiment_results/cycle_09_aaai_competitiveness_completion/run_01/mini/qwen_raw_activation_rr5_q64/QRAW_RR5_probe_manifest.json",
+      "rows": null,
+      "sha256": "fb6032da9b1bdb9c5b23e185235814589139e39ad3de44ddedd3417adbd0a8c4"
+    },
+    "QRAW_RR5_qwen_common_grid.csv": {
+      "path": "/root/LLM-output-density/mypaper/local_experiment_results/cycle_09_aaai_competitiveness_completion/run_01/mini/qwen_raw_activation_rr5_q64/QRAW_RR5_qwen_common_grid.csv",
+      "rows": 64,
+      "sha256": "b963c96d3764280598770d653cad081e34345d36ddfef8c7d199644ee85699d4"
+    },
+    "QRAW_RR5_qwen_nested_folds.csv": {
+      "path": "/root/LLM-output-density/mypaper/local_experiment_results/cycle_09_aaai_competitiveness_completion/run_01/mini/qwen_raw_activation_rr5_q64/QRAW_RR5_qwen_nested_folds.csv",
+      "rows": 112,
+      "sha256": "6a54a7cfb93b9b0153092304758f899365b6c06b43111d12c5b0a8de8d0296b7"
+    },
+    "QRAW_RR5_qwen_nested_metrics.csv": {
+      "path": "/root/LLM-output-density/mypaper/local_experiment_results/cycle_09_aaai_competitiveness_completion/run_01/mini/qwen_raw_activation_rr5_q64/QRAW_RR5_qwen_nested_metrics.csv",
+      "rows": 28,
+      "sha256": "a5602166c03556f923508f3174aafd1a8583a245f5bf156353d10faa8dadc41b"
+    },
+    "QRAW_RR5_qwen_oof_predictions.parquet": {
+      "path": "/root/LLM-output-density/mypaper/local_experiment_results/cycle_09_aaai_competitiveness_completion/run_01/mini/qwen_raw_activation_rr5_q64/QRAW_RR5_qwen_oof_predictions.parquet",
+      "rows": 1792,
+      "sha256": "b805b0695cc643f2b89bc2905ac606fd95387272e815420f700ea400b0217e93"
+    },
+    "QRAW_RR5_qwen_raw_representation_suite.csv": {
+      "path": "/root/LLM-output-density/mypaper/local_experiment_results/cycle_09_aaai_competitiveness_completion/run_01/mini/qwen_raw_activation_rr5_q64/QRAW_RR5_qwen_raw_representation_suite.csv",
+      "rows": 64,
+      "sha256": "7ee56ce8140d5a322621c3f18b14701527c610fbda3934c2e2a4e39b9f462541"
+    },
+    "QRAW_RR5_smoke_forward_status.csv": {
+      "path": "/root/LLM-output-density/mypaper/local_experiment_results/cycle_09_aaai_competitiveness_completion/run_01/mini/qwen_raw_activation_rr5_q64/QRAW_RR5_smoke_forward_status.csv",
+      "rows": 1,
+      "sha256": "44017013a03e4d944ac93cd47fea8f1cb32c8c8b7bb5761dd4a3f5f4aff3c6db"
+    },
+    "QRAW_RR5_smoke_raw_representation_suite.csv": {
+      "path": "/root/LLM-output-density/mypaper/local_experiment_results/cycle_09_aaai_competitiveness_completion/run_01/mini/qwen_raw_activation_rr5_q64/QRAW_RR5_smoke_raw_representation_suite.csv",
+      "rows": 1,
+      "sha256": "b0dacb364aab648c9dd29dc45ce73a026f60fa4ff7dbb6a32c14389fc5199154"
+    },
+    "QRAW_RR5_task_status.csv": {
+      "path": "/root/LLM-output-density/mypaper/local_experiment_results/cycle_09_aaai_competitiveness_completion/run_01/mini/qwen_raw_activation_rr5_q64/QRAW_RR5_task_status.csv",
+      "rows": 2,
+      "sha256": "1713de941e72f8e04f0005b26e9ad768a56edb01be64398d74311ddc55950d70"
+    },
+    "QRAW_RR5_theory_handoff.md": {
+      "path": "/root/LLM-output-density/mypaper/local_experiment_results/cycle_09_aaai_competitiveness_completion/run_01/mini/qwen_raw_activation_rr5_q64/QRAW_RR5_theory_handoff.md",
+      "rows": null,
+      "sha256": "630154eb760eb7faee7241733877a63f27c8040c6a82bc269233bc5d739de423"
+    },
+    "QRAW_qwen_l18_base_profiles_manifest.json": {
+      "path": "/root/LLM-output-density/mypaper/local_experiment_results/cycle_09_aaai_competitiveness_completion/run_01/mini/qwen_raw_activation_rr5_q64/QRAW_qwen_l18_base_profiles_manifest.json",
+      "rows": null,
+      "sha256": "06a9642e133838d387918b9bd51daea17529b61483ba19fdd88117e4ebcef57b"
+    }
+  },
+  "schema_version": "cycle09_qraw_rr5_q64_v1",
+  "status": "COMPLETE_QRAW_RR5_Q64_EQUAL5_CROSS_MODEL_CORRECTED",
+  "task": "QRAW-RR5-Q64"
+}

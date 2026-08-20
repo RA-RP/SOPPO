@@ -1,0 +1,61 @@
+{
+  "created_utc": "2026-07-27T13:00:38.776445+00:00",
+  "git_commit": "b9110d44daa13c7a848eb0b5b1a36faa4b5c68cb",
+  "command": "experiments/opd_sft_h1/scripts/cycle09_reviewer_robustness_correction2.py",
+  "status": "COMPLETE_RR5_CHECKPOINT_CONTROL_AND_NESTED_REGULARIZATION",
+  "formal_protocol_id": "RR5_llama_exact_common_grid_checkpoint_control_nested_regularization",
+  "join_policy": "strict exact-key Llama-only common grid; no imputation; no nearest checkpoint; no probe replacement",
+  "outer_folds": "leave-one-checkpoint-group-out; same outer folds for all feature blocks",
+  "standardization": "feature mean/std fit on outer train checkpoints only; inner selection uses train checkpoints only",
+  "fixed_regularization_parity": {
+    "ridge_alpha": 1e-06,
+    "logistic_l2": 0.0001,
+    "fold_performance_output": "RR5_hybrid_fold_performance.csv"
+  },
+  "nested_regularization_grid": {
+    "ridge_alpha": [
+      0,
+      0.0001,
+      0.001,
+      0.01,
+      0.1,
+      1,
+      10,
+      100
+    ],
+    "logistic_l2": [
+      0.0001,
+      0.001,
+      0.01,
+      0.1,
+      1,
+      10
+    ]
+  },
+  "interpretation_guard": [
+    "Do not claim hybrid always outperforms c_epsilon.",
+    "c_epsilon alone is strongest for unsigned drift in the current Llama common grid.",
+    "c_epsilon added to p_k improves over p_k alone for unsigned drift.",
+    "p_k is stronger for OPD classification; all features add only small classification increment."
+  ],
+  "row_counts": {
+    "fold_performance": 112,
+    "checkpoint_demeaned_cells": 64,
+    "checkpoint_demeaned_correlations": 24,
+    "nested_metrics": 28,
+    "nested_folds": 112,
+    "nested_predictions": 1792
+  },
+  "input_paths_and_sha256": {
+    "RR5_llama_common_grid.csv": "41535f33912d718c403dddc2f65b348eb9630ca3d08e2c8befaeac9570b9ba8e",
+    "RR5_hybrid_grouped_models.csv": "b435de33fa29b4752777cf90050203d203e0d51762de5135d9ee0089ff9f4d3f"
+  },
+  "output_sha256": {
+    "RR5_hybrid_fold_performance.csv": "2c39e90d801c037326cf0d515aa8f22916285108654f78e1766a58d93aa3deb8",
+    "RR5_checkpoint_demeaned_correlations.csv": "c316561aeb7693ee420283bb6a6a6c2fd86e213055f0d8e56a5a18d0bcfe7020",
+    "RR5_checkpoint_demeaned_cells.csv": "e191e1c5a0ef32e47bd6ebf45121a291c68da7f5f1c1fdc141b0fbdcf6624602",
+    "RR5_nested_regularization_metrics.csv": "127ae919ebbfdafb4a1bc5fcb1ce55bf58be93b1eed16c89a17c77ef741f2753",
+    "RR5_nested_regularization_folds.csv": "eba9ea21751c55abab6e93fc8bd377b191c4ba88230e8445a1f7223d4d374d8d",
+    "RR5_nested_regularization_predictions.parquet": "2b7271862dc5e4a31842ac92a37d5944770738aa1c95f3500fe23a58cc6c3884"
+  }
+}

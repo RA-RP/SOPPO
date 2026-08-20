@@ -1,0 +1,263 @@
+{
+  "coverage": [
+    {
+      "domain": "math",
+      "domain_match_status": "domain_matched_not_item_matched",
+      "excluded_modules": "self_attn.q_proj,self_attn.k_proj",
+      "expected_c5_rows": 24,
+      "expected_pk5_rows": 24,
+      "included_modules": "self_attn.v_proj,self_attn.o_proj,mlp.gate_proj,mlp.up_proj,mlp.down_proj",
+      "missing_pk5_cells": 0,
+      "missing_pk5_reason": "",
+      "model": "llama",
+      "module_count": 5,
+      "observed_c5_rows": 24,
+      "observed_pk5_rows": 24
+    },
+    {
+      "domain": "mmlu",
+      "domain_match_status": "domain_matched_not_item_matched",
+      "excluded_modules": "self_attn.q_proj,self_attn.k_proj",
+      "expected_c5_rows": 24,
+      "expected_pk5_rows": 24,
+      "included_modules": "self_attn.v_proj,self_attn.o_proj,mlp.gate_proj,mlp.up_proj,mlp.down_proj",
+      "missing_pk5_cells": 0,
+      "missing_pk5_reason": "",
+      "model": "llama",
+      "module_count": 5,
+      "observed_c5_rows": 24,
+      "observed_pk5_rows": 24
+    },
+    {
+      "domain": "math",
+      "domain_match_status": "domain_matched_not_item_matched",
+      "excluded_modules": "self_attn.q_proj,self_attn.k_proj",
+      "expected_c5_rows": 36,
+      "expected_pk5_rows": 32,
+      "included_modules": "self_attn.v_proj,self_attn.o_proj,mlp.gate_proj,mlp.up_proj,mlp.down_proj",
+      "missing_pk5_cells": 4,
+      "missing_pk5_reason": "QWEN_PK_STEP10_MISSING_MATCHED_EXCLUSION",
+      "model": "qwen",
+      "module_count": 5,
+      "observed_c5_rows": 36,
+      "observed_pk5_rows": 32
+    },
+    {
+      "domain": "mmlu",
+      "domain_match_status": "domain_matched_not_item_matched",
+      "excluded_modules": "self_attn.q_proj,self_attn.k_proj",
+      "expected_c5_rows": 36,
+      "expected_pk5_rows": 32,
+      "included_modules": "self_attn.v_proj,self_attn.o_proj,mlp.gate_proj,mlp.up_proj,mlp.down_proj",
+      "missing_pk5_cells": 4,
+      "missing_pk5_reason": "QWEN_PK_STEP10_MISSING_MATCHED_EXCLUSION",
+      "model": "qwen",
+      "module_count": 5,
+      "observed_c5_rows": 36,
+      "observed_pk5_rows": 32
+    },
+    {
+      "domain": "ALL",
+      "domain_match_status": "domain_matched_not_item_matched",
+      "excluded_modules": "self_attn.q_proj,self_attn.k_proj",
+      "expected_c5_rows": 120,
+      "expected_pk5_rows": 112,
+      "included_modules": "self_attn.v_proj,self_attn.o_proj,mlp.gate_proj,mlp.up_proj,mlp.down_proj",
+      "missing_pk5_cells": 8,
+      "missing_pk5_reason": "QWEN_PK_STEP10_MISSING_MATCHED_EXCLUSION",
+      "model": "ALL",
+      "module_count": 5,
+      "observed_c5_rows": 120,
+      "observed_pk5_rows": 112
+    }
+  ],
+  "created_utc": "2026-07-28T15:42:04.358859+00:00",
+  "git_rev": "b9110d44daa13c7a848eb0b5b1a36faa4b5c68cb",
+  "inputs": [
+    {
+      "path": "/root/LLM-output-density/mypaper/local_experiment_results/cycle_09_aaai_competitiveness_completion/run_01/mini/equal5_non_qk/EQUAL5_functional_trajectories.csv",
+      "sha256": "6ff5e97002b16f0cb8ba593668507eacd1043727c1be72357aa9ec53a55a4cbe"
+    },
+    {
+      "path": "/root/LLM-output-density/mypaper/local_experiment_results/cycle_09_aaai_competitiveness_completion/run_01/mini/fat_outlink_round1_v2/fat_r1_v2_mmlu_cells.csv",
+      "sha256": "ff4d18f7658ea8175a6270f00a72b76ea4923e2c7dcba37f12b1e30a91e66580"
+    },
+    {
+      "path": "/root/LLM-output-density/mypaper/local_experiment_results/cycle_09_aaai_competitiveness_completion/run_01/mini/fat_outlink_round1_v2/fat_r1_v2_math_cells.csv",
+      "sha256": "0234fb2857fce06301c8e265ffd51a0766de443115c3888ab1631ef8a63e7b40"
+    },
+    {
+      "path": "/root/LLM-output-density/mypaper/local_experiment_results/cycle_09_aaai_competitiveness_completion/run_01/mini/T_PK_qwen3_4b_fixedk.csv",
+      "sha256": "14f0397e6b73b5ba0e60e11cff9693a4386c8a19c5d959fa1b8188ac43ef54d3"
+    },
+    {
+      "path": "/root/LLM-output-density/mypaper/local_experiment_results/cycle_09_aaai_competitiveness_completion/run_01/mini/d11_llama_merged_pk.csv",
+      "sha256": "0c3aea57656a45eed28a32f0f4d041b273d7b4de7087dfe510ecfadbc60c4b6d"
+    },
+    {
+      "path": "/root/LLM-output-density/mypaper/local_experiment_results/cycle_09_aaai_competitiveness_completion/run_01/mini/S1_mmlupro_flexible.csv",
+      "sha256": "b20b59bc994baa8c03466f90335f1d18d809f426470afa1326554f6c361e8efc"
+    },
+    {
+      "path": "/root/LLM-output-density/mypaper/local_experiment_results/cycle_09_aaai_competitiveness_completion/run_01/mini/S1_mmlupro_extract_audit.csv",
+      "sha256": "2ecc13004cae8bd9de3862e0d21bb12a608d76ada6e4278d5282ea051ef6c421"
+    },
+    {
+      "path": "/root/LLM-output-density/mypaper/local_experiment_results/cycle_09_aaai_competitiveness_completion/run_01/mini/llama_early_320_behavior.csv",
+      "sha256": "5e4252d5acc17982efbf67ace9101d2cfa024e9485f8aba28dd9596dee6d13ff"
+    }
+  ],
+  "outputs": [
+    {
+      "path": "/root/LLM-output-density/mypaper/local_experiment_results/cycle_09_aaai_competitiveness_completion/run_01/mini/fat_outlink_round1_v2_link_equal5/equal5_task_status.csv",
+      "rows": 11,
+      "sha256": "bb908a33fab8043d4c4fa71fae911db9f0120e479bbaab8e69375d79f7b12e0b"
+    },
+    {
+      "path": "/root/LLM-output-density/mypaper/local_experiment_results/cycle_09_aaai_competitiveness_completion/run_01/mini/fat_outlink_round1_v2_link_equal5/equal5_feature_matrix.csv",
+      "rows": 120,
+      "sha256": "38404dec2f61ce157be84650e9b7ad005b92059798970b8c2a622d1c260b776e"
+    },
+    {
+      "path": "/root/LLM-output-density/mypaper/local_experiment_results/cycle_09_aaai_competitiveness_completion/run_01/mini/fat_outlink_round1_v2_link_equal5/equal5_coverage_audit.csv",
+      "rows": 5,
+      "sha256": "283ce4831256b487547020209dd4dc7587ee5e5fec074eb47a4f39161a7a4421"
+    },
+    {
+      "path": "/root/LLM-output-density/mypaper/local_experiment_results/cycle_09_aaai_competitiveness_completion/run_01/mini/fat_outlink_round1_v2_link_equal5/equal5_standalone_correlations.csv",
+      "rows": 960,
+      "sha256": "9570e3ae947aa7991593895b1c16ffdbd00ef1b4e93989824f123aff43385d8a"
+    },
+    {
+      "path": "/root/LLM-output-density/mypaper/local_experiment_results/cycle_09_aaai_competitiveness_completion/run_01/mini/fat_outlink_round1_v2_link_equal5/equal5_checkpoint_demeaned_correlations.csv",
+      "rows": 240,
+      "sha256": "8cc64411bb838a6efeb2759c159dd0d875bbd4eb63417224b7a2772d1c74006b"
+    },
+    {
+      "path": "/root/LLM-output-density/mypaper/local_experiment_results/cycle_09_aaai_competitiveness_completion/run_01/mini/fat_outlink_round1_v2_link_equal5/equal5_progress_residual_diagnostic.csv",
+      "rows": 960,
+      "sha256": "76386e652f7bf3228795955891d65002829ae7c3e0a4ecb258abd32451db99d7"
+    },
+    {
+      "path": "/root/LLM-output-density/mypaper/local_experiment_results/cycle_09_aaai_competitiveness_completion/run_01/mini/fat_outlink_round1_v2_link_equal5/equal5_epsilon_sensitivity.csv",
+      "rows": 768,
+      "sha256": "904f2ecf1378d45fc2a871ae9a51117714adf268281c741a7c15cf1d618e5d65"
+    },
+    {
+      "path": "/root/LLM-output-density/mypaper/local_experiment_results/cycle_09_aaai_competitiveness_completion/run_01/mini/fat_outlink_round1_v2_link_equal5/equal5_standalone_grouped_models.csv",
+      "rows": 336,
+      "sha256": "ba99433b7c43d01cc09e3a6a5de132638f3d6755b892ccab772fa8a1a632bb2a"
+    },
+    {
+      "path": "/root/LLM-output-density/mypaper/local_experiment_results/cycle_09_aaai_competitiveness_completion/run_01/mini/fat_outlink_round1_v2_link_equal5/equal5_incremental_grouped_models.csv",
+      "rows": 192,
+      "sha256": "8a14923df803621de50a0a3ec28e6492c95d2f08393d48ff880939892d1f08bd"
+    },
+    {
+      "path": "/root/LLM-output-density/mypaper/local_experiment_results/cycle_09_aaai_competitiveness_completion/run_01/mini/fat_outlink_round1_v2_link_equal5/equal5_grouped_predictions.parquet",
+      "rows": 14880,
+      "sha256": "0e8599b097faa6ad473c234213c52062755757d436f4191b6a93db11e94594e8"
+    },
+    {
+      "path": "/root/LLM-output-density/mypaper/local_experiment_results/cycle_09_aaai_competitiveness_completion/run_01/mini/fat_outlink_round1_v2_link_equal5/equal5_foldwise_results.csv",
+      "rows": 3864,
+      "sha256": "9191e4fadf02b393ec10e0e60c8aeb78ad68c0694bd7025df923a9aab1c6e61e"
+    },
+    {
+      "path": "/root/LLM-output-density/mypaper/local_experiment_results/cycle_09_aaai_competitiveness_completion/run_01/mini/fat_outlink_round1_v2_link_equal5/equal5_related_work_metrics.csv",
+      "rows": 61,
+      "sha256": "acad85d8c0ad1bcccaadc691ba64af9818d486e2c97ff999d5624c5c772b7a58"
+    },
+    {
+      "path": "/root/LLM-output-density/mypaper/local_experiment_results/cycle_09_aaai_competitiveness_completion/run_01/mini/fat_outlink_round1_v2_link_equal5/equal5_vs_equal7_paired.csv",
+      "rows": 1306,
+      "sha256": "1b35759771374dade0bead03edc2fe7bde4cdefaee5f15273814461f985f9309"
+    },
+    {
+      "path": "/root/LLM-output-density/mypaper/local_experiment_results/cycle_09_aaai_competitiveness_completion/run_01/mini/fat_outlink_round1_v2_link_equal5/equal5_behavior_join.csv",
+      "rows": 60,
+      "sha256": "313a88a0aa4c7a2eb48d0b1758064233df84fc888019d1337d1a386c711e4cb6"
+    },
+    {
+      "path": "/root/LLM-output-density/mypaper/local_experiment_results/cycle_09_aaai_competitiveness_completion/run_01/mini/fat_outlink_round1_v2_link_equal5/equal5_format_realization_table.csv",
+      "rows": 8,
+      "sha256": "4e64178c3c1390671b6f9ac5b1354a81233ab8f12cecfce76506adf4809911e6"
+    },
+    {
+      "path": "/root/LLM-output-density/mypaper/local_experiment_results/cycle_09_aaai_competitiveness_completion/run_01/mini/fat_outlink_round1_v2_link_equal5/fat_r1_v2_documentation_correction.json",
+      "rows": 1,
+      "sha256": "8f437bd84fa5e4038edbb2c6a45fa52f3f98556ab62f88af1c55eaf5aece7fa6"
+    },
+    {
+      "path": "/root/LLM-output-density/mypaper/local_experiment_results/cycle_09_aaai_competitiveness_completion/run_01/mini/fat_outlink_round1_v2_link_equal5/fat_r1_v2_documentation_correction.md",
+      "rows": 1,
+      "sha256": "938c2321daa6e1f896a15c0ed5861441f1c87bfcd3a78043fd812b2d301c1c2e"
+    },
+    {
+      "path": "/root/LLM-output-density/mypaper/local_experiment_results/cycle_09_aaai_competitiveness_completion/run_01/mini/fat_outlink_round1_v2_link_equal5/figures/figure1_equal5_trajectory_llama.png",
+      "rows": 1,
+      "sha256": "3e5193deb1592d898dfee39ddd28b44700e99558d76a05818feacc49f26cd6a9"
+    },
+    {
+      "path": "/root/LLM-output-density/mypaper/local_experiment_results/cycle_09_aaai_competitiveness_completion/run_01/mini/fat_outlink_round1_v2_link_equal5/figures/figure1_equal5_trajectory_qwen.png",
+      "rows": 1,
+      "sha256": "39c55753fb61bfa2574ac292c92f67d0d6097b43fd24bc188b9d2dd380d1f472"
+    },
+    {
+      "path": "/root/LLM-output-density/mypaper/local_experiment_results/cycle_09_aaai_competitiveness_completion/run_01/mini/fat_outlink_round1_v2_link_equal5/figures/figure2_equal5_grouped_models.png",
+      "rows": 1,
+      "sha256": "3e3266ccbdd53ace42ed3e59d2648a3ebd1cf1ccb58e7cbd70660854fefc8b11"
+    },
+    {
+      "path": "/root/LLM-output-density/mypaper/local_experiment_results/cycle_09_aaai_competitiveness_completion/run_01/mini/fat_outlink_round1_v2_link_equal5/figures/figure2b_equal5_incremental_models.png",
+      "rows": 1,
+      "sha256": "62920737b85c96d17d60063e60b47797d004a505cb5db0cdf166d0a5af3ab776"
+    },
+    {
+      "path": "/root/LLM-output-density/mypaper/local_experiment_results/cycle_09_aaai_competitiveness_completion/run_01/mini/fat_outlink_round1_v2_link_equal5/figures/figure3_format_gap.png",
+      "rows": 1,
+      "sha256": "75b243916cdea3e1d795618d7b98263323cb10b79041499ab39afde34e7eef72"
+    },
+    {
+      "path": "/root/LLM-output-density/mypaper/local_experiment_results/cycle_09_aaai_competitiveness_completion/run_01/mini/fat_outlink_round1_v2_link_equal5/figures/figure4_equal5_vs_equal7.png",
+      "rows": 1,
+      "sha256": "7357d050865f7974479a3334c15af870c1fbc616707458c22e044290cd2c026e"
+    },
+    {
+      "path": "/root/LLM-output-density/mypaper/local_experiment_results/cycle_09_aaai_competitiveness_completion/run_01/mini/fat_outlink_round1_v2_link_equal5/fat_r1_v2_equal5_handoff.md",
+      "rows": 1,
+      "sha256": "b3fcd8655a86f3b24d1c64a6999fb5a701b8f44ed33ff82c4e434e0ecff95410"
+    }
+  ],
+  "protocol": {
+    "c_aggregation": "per_module_base_current_contraction_then_equal_mean",
+    "domain_match_status": "domain_matched_not_item_matched",
+    "epsilon_sensitivity": [
+      0.01,
+      0.025,
+      0.05,
+      0.1
+    ],
+    "excluded_modules": [
+      "self_attn.q_proj",
+      "self_attn.k_proj"
+    ],
+    "included_modules": [
+      "self_attn.v_proj",
+      "self_attn.o_proj",
+      "mlp.gate_proj",
+      "mlp.up_proj",
+      "mlp.down_proj"
+    ],
+    "main_epsilon": 0.05,
+    "mmlu_aggregation": "sample_macro",
+    "module_count": 5,
+    "no_training_forward_rollout_eval_or_new_svd": true,
+    "pk_aggregation": "equal_mean_of_per_module_scores",
+    "progress_residual_diagnostic_only": true,
+    "qwen_step10_pk_status": "OPTIONAL_DEFERRED_not_imputed",
+    "step0_excluded_from_correlations_and_cv": true
+  },
+  "schema": "cycle09_fat_r1_v2_equal5_correction",
+  "status": "COMPLETE_EQUAL5_WITH_QWEN_PK_STEP10_EXCLUDED"
+}

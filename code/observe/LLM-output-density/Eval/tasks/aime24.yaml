@@ -1,0 +1,31 @@
+tag:
+  - math_word_problems
+task: aime24
+dataset_path: json
+dataset_kwargs:
+  data_files:
+    train: /root/LLM-output-density/Eval/tasks/data/aime24/train.jsonl
+output_type: generate_until
+training_split: train
+fewshot_split: train
+test_split: train
+doc_to_text: "Question: {{Problem}}\nAnswer:"
+doc_to_target: "{{Answer}}"
+process_results: !function lm_eval.tasks.aime.utils.process_results
+metric_list:
+  - metric: exact_match
+    aggregation: mean
+    higher_is_better: true
+generation_kwargs:
+  until:
+    - "Question:"
+    - "</s>"
+    - "<|im_end|>"
+    - "<|eot_id|>"
+  do_sample: false
+  temperature: 0.0
+  max_gen_toks: 2048
+repeats: 1
+num_fewshot: 0
+metadata:
+  version: 0.0

@@ -1,0 +1,18 @@
+{
+  "created_utc": "2026-07-27T13:32:55.019870+00:00",
+  "git_commit": "b9110d44daa13c7a848eb0b5b1a36faa4b5c68cb",
+  "command": "experiments/opd_sft_h1/scripts/cycle09_reviewer_robustness_correction2.py",
+  "status": "COMPLETE_TASK_SPECIFIC_AVAILABILITY_PREFLIGHT_NO_FORWARD",
+  "availability_rules": {
+    "RR1A_RR1B": "existing aggregate Gram/mean is insufficient; per-sample second-moment contribution needed; new forward only with Theory GO",
+    "RR2S_llama": "complete D10 formal state spectra/aggregate Gram/checkpoint weights are sufficient; no forward",
+    "RR3_llama": "D10 formal Gram plus input_sample_means sufficient after weighting audit; no forward",
+    "qwen": "kept task-specific blocked/inventory, not globally marked as 96 new-forward cells"
+  },
+  "row_counts": {
+    "availability_rows": 288
+  },
+  "output_sha256": {
+    "RR1_RR2S_RR3_task_specific_availability.csv": "aba3d07019b394eec699c14f73b6a53cdc849b145d733614d8e5e39a7f963e63"
+  }
+}

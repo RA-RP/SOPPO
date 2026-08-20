@@ -1,0 +1,9 @@
+{
+  "created_utc": "2026-07-29T07:13:46.568936+00:00",
+  "probe_inventory": "/root/LLM-output-density/mypaper/local_experiment_results/cycle_09_aaai_competitiveness_completion/run_01/mini/qwen_raw_activation_rr5_q64/QRAW_RR5_probe_inventory.csv",
+  "sample_rule": "first_32_from_formal_probe_order",
+  "schema_version": "cycle09_qraw_rr5_q64_v1",
+  "source_probe_manifest": "/root/autodl-tmp/cycle09_block3/qwen_domain_probes/corpora/probe_manifest.json",
+  "status": "complete",
+  "used_rows_per_probe": 32
+}

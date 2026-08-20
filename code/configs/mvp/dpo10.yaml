@@ -1,0 +1,18 @@
+# DPO-10%: Limited labeled baseline
+# Only uses labeled training data (900 samples)
+
+# Inherit base config
+_base_: base.yaml
+
+# Method configuration
+method:
+  name: "dpo10"
+  use_unlabeled: false
+  lambda_pe: 0.0
+  lambda_scheduler: null
+
+# Data: only labeled
+data:
+  use_labeled_only: true
+  labeled_train_samples: 900
+  labeled_val_samples: 100

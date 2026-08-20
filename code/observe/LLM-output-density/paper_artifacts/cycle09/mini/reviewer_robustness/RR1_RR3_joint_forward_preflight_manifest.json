@@ -1,0 +1,56 @@
+{
+  "created_utc": "2026-07-27T12:25:47.674210+00:00",
+  "git_commit": "b9110d44daa13c7a848eb0b5b1a36faa4b5c68cb",
+  "command": "experiments/opd_sft_h1/scripts/cycle09_reviewer_robustness.py --correction-pass",
+  "status": "PREFLIGHT_ONLY_NO_FORWARD_STARTED",
+  "formal_protocol_id": "RR1A_RR1B_RR3_shared_formal_forward_cache",
+  "grid_counts": {
+    "checkpoint_model_arm_probe_profiles": 96,
+    "models": 2,
+    "arms": 4,
+    "checkpoints": 3,
+    "probes": 4,
+    "ready_reuse_existing_pt_profile": 0,
+    "ready_recompute": 96
+  },
+  "shared_cache_schema": {
+    "identity": [
+      "model",
+      "arm",
+      "checkpoint",
+      "probe_name",
+      "layer",
+      "module",
+      "sample_id"
+    ],
+    "arrays": [
+      "window_token_mean_hidden_or_factor_fp32",
+      "uncentered_second_moment_contribution_fp32",
+      "centered_covariance_inputs_fp32"
+    ],
+    "metadata": [
+      "prompt_source",
+      "sample_count",
+      "window_v2_manifest",
+      "generation_seed",
+      "window_seed",
+      "checkpoint_sha256",
+      "profile_sha256"
+    ]
+  },
+  "estimated_cost": {
+    "gpu_wall_time": "2-6h shared extraction on 1x96G; avoid separate forwards for RR1A/RR1B/RR3",
+    "bootstrap_cpu_time": "RR1A 1024 draws plus RR1B subsets and RR3 covariance postprocess: ~1-4h CPU",
+    "vram": "96G preferred; 32G may require smaller batches and more wall time",
+    "ram": "64-128GB CPU RAM recommended",
+    "scratch": "tens of GB transient per-sample cache; compact final tables <2GB"
+  },
+  "recoverable_command": "python experiments/opd_sft_h1/scripts/cycle09_reviewer_robustness.py --rr1-rr3-forward-cache --formal-grid qwen,llama --arms opd,sft,offkd,seqkd --steps 20,40,80 --probes E_general,E_math,E_ood,E_if --atomic-cache",
+  "atomic_completion_condition": "Every profile has a complete manifest and temp files are atomically renamed only after all module/sample arrays and SHA256 hashes are written.",
+  "input_paths_and_sha256": {
+    "RR0_grid_coverage.csv": "7a24623326c35934da4ccee0f7e37472aeb0fae7a7e9c629bfb0a95ce3999337"
+  },
+  "output_sha256": {
+    "RR1_RR3_joint_forward_preflight.csv": "757f907768131d6967da0a4c9421e153fc57190d34c929af1cabda140ce3971c"
+  }
+}

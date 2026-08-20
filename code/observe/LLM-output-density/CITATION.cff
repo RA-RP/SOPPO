@@ -1,0 +1,10 @@
+cff-version: 1.2.0
+message: "Please cite the associated paper. Replace anonymous metadata before public release."
+title: "Beyond Weight Geometry: Tracking On-Policy Distillation with Domain-Conditioned Functional Spectra"
+type: software
+authors:
+  - family-names: "Authors"
+    given-names: "Anonymous"
+version: 0.1.0
+date-released: 2026-08-16
+

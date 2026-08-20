@@ -1,0 +1,2 @@
+model,arm,checkpoint,probe_name,layer,native_object,n_samples,normalized_entropy_effective_rank,participation_ratio,top1_explained_share,top8_explained_share,top32_explained_share,raw_anisotropy,centered_anisotropy,linear_cka_vs_step0
+qwen,opd,5,E_general,18,raw residual-stream sample means and centered covariance,2,1.06291333817918,1.0112576428892448,0.9944179960471634,0.9958635669652919,0.9975289898834272,0.980959415435791,-1.0,1.0

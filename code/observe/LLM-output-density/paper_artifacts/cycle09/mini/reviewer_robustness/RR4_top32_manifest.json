@@ -1,0 +1,30 @@
+{
+  "created_utc": "2026-07-27T12:25:46.982557+00:00",
+  "git_commit": "b9110d44daa13c7a848eb0b5b1a36faa4b5c68cb",
+  "command": "experiments/opd_sft_h1/scripts/cycle09_reviewer_robustness.py --correction-pass",
+  "status": "COMPLETE_RR4_PROVENANCE_SUPPLEMENTED",
+  "formal_protocol_id": "RR4_token_weighted_raw_top32_retained_mass_with_clamped_and_omitted_mass",
+  "numeric_protocol": "raw retained mass m32=sum(exp(raw teacher top32 logprobs)); raw values preserved; clamped_mass=clip(m32,0,1); omitted_mass=max(0,1-m32). Token-weighted summaries.",
+  "not_exact_full_vocab_kl": true,
+  "models": [
+    "qwen",
+    "llama"
+  ],
+  "row_counts": {
+    "summary": 3,
+    "by_sequence": 14999,
+    "coverage": 4
+  },
+  "blocked_cells": 1,
+  "input_paths_and_sha256": {
+    "/root/autodl-tmp/cycle09_block2/model2_llama/rollout/teacher_top32_logprob.npz": "SKIPPED_SIZE_3857934056",
+    "/root/autodl-tmp/cycle09_offkd/rollout/teacher_top32_logprob.npz": "SKIPPED_SIZE_8828655896",
+    "/root/autodl-tmp/cycle09_block3/qwen_alpha05/frozen_external/top32_logprob.npy": "SKIPPED_SIZE_4414287616",
+    "/root/autodl-tmp/cycle09_stage3_followup/H5_frozen_self/frozen_store/top32_logprob.npy": "SKIPPED_SIZE_5285519872"
+  },
+  "output_sha256": {
+    "RR4_top32_retained_mass_summary.csv": "80bf3680f5c1abcf9736f56442e709b3428c3c57ab4c3c4c6ee2b022c338fc43",
+    "RR4_top32_retained_mass_by_sequence.csv": "3f005d5c00c97c098e2208dcc46db4438f5a18979eec17f2fad0f9076b3a1b27",
+    "RR4_top32_coverage.csv": "01dff59d8a72ee945c4c0e6480e7429783ab707b3660fd7ceced597971fd7a5c"
+  }
+}

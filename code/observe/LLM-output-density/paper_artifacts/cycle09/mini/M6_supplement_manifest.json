@@ -1,0 +1,8 @@
+{
+  "behavior_rows": 20,
+  "created_utc": "2026-07-25T14:02:33Z",
+  "data_manifest": "/root/autodl-tmp/cycle09_dual_m6/qwen_m6/m6_data_manifest.json",
+  "geometry_rows": 1610,
+  "queue": "/root/autodl-tmp/cycle09_dual_m6/qwen_m6/queue.json",
+  "status": "complete"
+}

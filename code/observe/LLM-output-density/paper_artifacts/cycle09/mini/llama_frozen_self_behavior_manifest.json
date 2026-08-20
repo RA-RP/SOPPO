@@ -1,0 +1,71 @@
+{
+  "arms": [
+    "frozen_self"
+  ],
+  "cell_manifests": [
+    {
+      "bytes": 1354,
+      "path": "/root/autodl-tmp/cycle09_stage3_followup/H5_frozen_self/behavior/formal/base/step_000/cell_manifest.json",
+      "sha256": "aa989e9b792069760be0c0c8e7e130f3d58c43982723274907575d223e7f45e9"
+    },
+    {
+      "bytes": 1396,
+      "path": "/root/autodl-tmp/cycle09_stage3_followup/H5_frozen_self/behavior/formal/frozen_self/step_005/cell_manifest.json",
+      "sha256": "cdc09276936de3d273f16c9d4b5f7394f67931f9dc1840f7c5ed5a342f32b98f"
+    },
+    {
+      "bytes": 1397,
+      "path": "/root/autodl-tmp/cycle09_stage3_followup/H5_frozen_self/behavior/formal/frozen_self/step_020/cell_manifest.json",
+      "sha256": "74e6ebd61118ccb92730227a3582ec8f5d810aa6352464129b2fa5db2b8f1f56"
+    },
+    {
+      "bytes": 1399,
+      "path": "/root/autodl-tmp/cycle09_stage3_followup/H5_frozen_self/behavior/formal/frozen_self/step_040/cell_manifest.json",
+      "sha256": "faec1f4e2fb810de621d21ceb4dd64630a0730ccfe277dd11ebbb4a18e802b26"
+    },
+    {
+      "bytes": 1399,
+      "path": "/root/autodl-tmp/cycle09_stage3_followup/H5_frozen_self/behavior/formal/frozen_self/step_080/cell_manifest.json",
+      "sha256": "3481156c79e5ae31b5b3304ba4e02a7e08fdefcb0e4b2463e336feb3b16246d1"
+    },
+    {
+      "bytes": 1400,
+      "path": "/root/autodl-tmp/cycle09_stage3_followup/H5_frozen_self/behavior/formal/frozen_self/step_160/cell_manifest.json",
+      "sha256": "c1a2b498073874824caae16ea97249fd9f5320a49220903d501b0969bafd60eb"
+    },
+    {
+      "bytes": 1400,
+      "path": "/root/autodl-tmp/cycle09_stage3_followup/H5_frozen_self/behavior/formal/frozen_self/step_320/cell_manifest.json",
+      "sha256": "7996e7850ffcb9497fd5216f1a8b258008a660679b0506c568c3c36d6287cb26"
+    }
+  ],
+  "created_utc": "2026-07-24T17:46:25.349245+00:00",
+  "measured_checkpoints": [
+    0,
+    5,
+    20,
+    40,
+    80,
+    160,
+    320
+  ],
+  "nonzero_arm_cells": 6,
+  "outputs": [
+    {
+      "bytes": 29983,
+      "path": "/root/autodl-tmp/cycle09_stage3_followup/H5_frozen_self/behavior/llama_frozen_self_behavior.csv",
+      "sha256": "0258e565a859bd4a26066faac4f5b94349dcf56d5cdef4303b478f82a3232307"
+    },
+    {
+      "bytes": 6432,
+      "path": "/root/autodl-tmp/cycle09_stage3_followup/H5_frozen_self/behavior/llama_frozen_self_ifeval_categories.csv",
+      "sha256": "6e08402fdf3916fd0e17c0b03143f287b07d0237e517cb17e3b2355696a0b7dc"
+    }
+  ],
+  "schema_version": 1,
+  "scope": "frozen_self",
+  "shared_base_cells": 1,
+  "status": "complete",
+  "task": "Cycle09 block3 L2 Llama four-arm behavior",
+  "task_cells": 21
+}

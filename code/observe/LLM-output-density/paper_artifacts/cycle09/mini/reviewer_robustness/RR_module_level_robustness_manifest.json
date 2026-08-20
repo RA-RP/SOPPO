@@ -1,0 +1,36 @@
+{
+  "created_utc": "2026-07-27T17:05:03.986336+00:00",
+  "git_commit": "b9110d44daa13c7a848eb0b5b1a36faa4b5c68cb",
+  "command": "experiments/opd_sft_h1/scripts/cycle09_reviewer_robustness_module_summary.py",
+  "status": "COMPLETE_TIE_AWARE_MODULE_LEVEL_ROBUSTNESS_SUMMARY_REUSE_ONLY",
+  "formal_protocol_id": "reviewer_robustness_module_level_opd_strict_tied_offline_summary",
+  "numeric_protocol": "Reuse-only postprocess over formal RR2S Llama state-spectrum module table and formal RR3 Llama centered module table; no forward, no training.",
+  "tie_policy": {
+    "comparison": "np.isclose",
+    "rtol": 1e-09,
+    "atol": 1e-12,
+    "opd_among_best": "OPD is one of the maximizing arms.",
+    "opd_strict_deepest": "OPD is the unique maximizing arm.",
+    "opd_tied_deepest": "OPD maximizes but at least one offline arm ties it.",
+    "offline_strictly_deeper": "At least one offline arm exceeds OPD."
+  },
+  "metric_direction": "max_is_deepest for contraction metrics; RR2D remains auxiliary and is not included in this formal module-level robustness count.",
+  "status_notes": {
+    "RR5_nested": "formal result",
+    "RR5_fixed_regularization": "parity track only",
+    "old_RR2": "superseded",
+    "RR2D": "auxiliary only"
+  },
+  "row_counts": {
+    "summary": 7,
+    "cells": 1680
+  },
+  "input_paths_and_sha256": {
+    "RR2S_llama_state_spectrum_module.csv": "38b26845bc4b48fbc72985b16510fe918420e9f84cfbd11639181729d3fbd8f2",
+    "RR3_llama_centered_module.csv": "3171d9e1ad1a5c68c7f3ca4f8a34d5c0520853ba69b15ffa98f20ad951912ff0"
+  },
+  "output_sha256": {
+    "RR_module_level_robustness_summary.csv": "e9f29277f944b4263246877ee6752acdf2ef4dae954a78d802a76ea13320ef2e",
+    "RR_module_level_robustness_cells.csv": "1638f3283b86245f9425e2fe73755eaf681902db1527c3cb3805d1dd08b5dda5"
+  }
+}

@@ -1,0 +1,24 @@
+{
+  "created_utc": "2026-07-27T02:44:54.090626+00:00",
+  "device": "cuda:0",
+  "e5_rows": 1512,
+  "e6_rows": 504,
+  "e7_max_rank": 0,
+  "e7_rows": 504,
+  "e7_seed_rows": 5040,
+  "e7_seeds": 10,
+  "family": "llama",
+  "landmark_steps": [
+    20,
+    160,
+    320
+  ],
+  "layers": [
+    7,
+    14,
+    21
+  ],
+  "schema_version": "cycle09_d11_e5_e7_family_v1",
+  "seconds": 217.197,
+  "status": "COMPLETE"
+}

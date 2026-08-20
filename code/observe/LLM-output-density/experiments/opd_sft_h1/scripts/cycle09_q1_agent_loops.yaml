@@ -1,0 +1,3 @@
+- name: q1_frozen_external
+  _target_: cycle09_q1_mixture_runtime.FrozenExternalAgentLoop
+  frozen_root: /root/autodl-tmp/cycle09_block3/qwen_alpha05/frozen_external

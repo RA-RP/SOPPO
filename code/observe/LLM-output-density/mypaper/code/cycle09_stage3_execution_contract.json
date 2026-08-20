@@ -1,0 +1,77 @@
+{
+  "status": "frozen_before_stage3_results",
+  "frozen_at_utc": "2026-07-20T04:00:00+00:00",
+  "scope": "Cycle 09 Stage 3 GPU completion block",
+  "claim_boundary": "Produce raw readings and uncertainty tables only. C6 remains unidentified with four arm-level independent units; C13 requires a separate training design.",
+  "shared": {
+    "arms": ["opd", "sft", "offkd", "seqkd"],
+    "steps": [0, 5, 10, 20, 40, 80, 160, 320, 480, 624],
+    "layers": [9, 18, 27],
+    "modules": ["self_attn.q_proj", "self_attn.k_proj", "self_attn.v_proj", "self_attn.o_proj", "mlp.gate_proj", "mlp.up_proj", "mlp.down_proj"],
+    "window_protocol": "R4 window-v2: generation/text region only; window-token mean -> sample-window mean -> equal sample weight",
+    "bootstrap": "resample samples, never windows; paired indices within a fixed corpus across checkpoints"
+  },
+  "C2": {
+    "primary_probe": "E_ood fixed 128-row corpus",
+    "layer": 18,
+    "steps": [0, 5, 10, 20, 40, 80],
+    "draws": 256,
+    "metric": "centered residual covariance normalized effective rank",
+    "transient_test": "per draw max over steps 5/10/20/40/80 of current-minus-base; report percentile CI and P(max>0)",
+    "protocol_audit": "R5_raw_er_fixed_ckpt.csv and R5_raw_er_fixed.csv remain separate; no direct numerical merge across generated-text and fixed-probe protocols"
+  },
+  "C3": {
+    "arm": "opd",
+    "probes": ["legacy_S_math", "E_ood", "E_general", "E_math_hard", "S_bos"],
+    "layers": [18],
+    "layer_sensitivity_source": "C14 per-checkpoint point-estimate table at L9/L18/L27",
+    "track": "per_checkpoint",
+    "steps": [0, 40, 160],
+    "draws": 256,
+    "contrasts": {
+      "overcompression_depth": "r_epsilon(step0)-r_epsilon(step40)",
+      "rebound": "r_epsilon(step160)-r_epsilon(step40)",
+      "net_step160": "r_epsilon(step160)-r_epsilon(step0)"
+    },
+    "S_bos_aggregation": "equal mean over generation seeds 3,17,31; sample bootstrap within each seed"
+  },
+  "C5": {
+    "probe": "E_if",
+    "source": "all 541 prompts in Eval/tasks/data/ifeval/train.jsonl",
+    "text_region": "prompt text itself, represented as a fixed E probe; no generated response",
+    "metrics": ["full singular spectrum", "effective rank", "r_epsilon@0.05", "r_epsilon@0.01", "tail energy"],
+    "tracks": ["per_checkpoint", "frozen_base"],
+    "factor_retention": "disabled because the 541-row all-linear factor bundle would require multiple GiB per checkpoint"
+  },
+  "C8": {
+    "corpora": ["X_OPD_reconstructed", "X_SFT_dataset", "X_teacher"],
+    "n_samples_per_corpus": 500,
+    "score_scope": "response tokens only conditioned on complete prompt",
+    "aggregation": "token-weighted NLL then exp",
+    "max_total_tokens": 10240,
+    "warning": "X_OPD is a deterministic step-0 reconstruction because the original online OPD training responses were not archived"
+  },
+  "C11": {
+    "task": "same frozen 1400-question MMLU-Pro subset as S1-8",
+    "prompt": "S1-8 doc_to_text followed by target delimiter single space",
+    "answer_position": "next token immediately after the terminal 'Answer: ' context",
+    "primary_entropy": "full-vocabulary Shannon entropy in nats from float32 log_softmax",
+    "secondary": ["effective vocabulary exp(entropy)", "gold option first-token probability", "probability mass on all available option first tokens", "entropy renormalized over unique option first tokens"],
+    "option_count_audit": "the frozen 1400-row S1-8 input contains 3-10 available options per question (not uniformly ten); use every valid option present in that row and record the distribution",
+    "candidate_first_token_convention": "from the explicitly tokenized terminal-space context state, encode each bare available option with add_special_tokens=false and use its first token ID; duplicate IDs are uniqued for mass and restricted entropy",
+    "checkpoint_grid": "base plus all nonzero checkpoints of all four arms",
+    "no_substitute": "sequence-level option LL and empirical response frequency are not token entropy"
+  },
+  "C14": {
+    "track": "per_checkpoint",
+    "primary_probe": "E_ood",
+    "primary_layer": 18,
+    "sensitivity_layers": [9, 18, 27],
+    "event_outputs": ["first positive checkpoint", "positive peak", "signed minimum", "behavior extrema"],
+    "inference": "descriptive only; no causal or independent-probe claim"
+  },
+  "C15": {
+    "cap_hit": "finish == length OR response token length >= generation cap",
+    "claim_rule": "unpaired N=500 formal and N=60 pilot runs support aggregate description only; cap robustness requires a future paired rerun"
+  }
+}

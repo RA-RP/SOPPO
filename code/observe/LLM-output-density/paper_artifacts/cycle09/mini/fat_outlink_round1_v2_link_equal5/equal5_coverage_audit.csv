@@ -1,0 +1,6 @@
+model,domain,expected_c5_rows,observed_c5_rows,expected_pk5_rows,observed_pk5_rows,missing_pk5_cells,missing_pk5_reason,module_count,included_modules,excluded_modules,domain_match_status
+llama,math,24,24,24,24,0,,5,"self_attn.v_proj,self_attn.o_proj,mlp.gate_proj,mlp.up_proj,mlp.down_proj","self_attn.q_proj,self_attn.k_proj",domain_matched_not_item_matched
+llama,mmlu,24,24,24,24,0,,5,"self_attn.v_proj,self_attn.o_proj,mlp.gate_proj,mlp.up_proj,mlp.down_proj","self_attn.q_proj,self_attn.k_proj",domain_matched_not_item_matched
+qwen,math,36,36,32,32,4,QWEN_PK_STEP10_MISSING_MATCHED_EXCLUSION,5,"self_attn.v_proj,self_attn.o_proj,mlp.gate_proj,mlp.up_proj,mlp.down_proj","self_attn.q_proj,self_attn.k_proj",domain_matched_not_item_matched
+qwen,mmlu,36,36,32,32,4,QWEN_PK_STEP10_MISSING_MATCHED_EXCLUSION,5,"self_attn.v_proj,self_attn.o_proj,mlp.gate_proj,mlp.up_proj,mlp.down_proj","self_attn.q_proj,self_attn.k_proj",domain_matched_not_item_matched
+ALL,ALL,120,120,112,112,8,QWEN_PK_STEP10_MISSING_MATCHED_EXCLUSION,5,"self_attn.v_proj,self_attn.o_proj,mlp.gate_proj,mlp.up_proj,mlp.down_proj","self_attn.q_proj,self_attn.k_proj",domain_matched_not_item_matched

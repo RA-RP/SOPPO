@@ -1,0 +1,24 @@
+{
+  "created_utc": "2026-07-27T02:43:53.251845+00:00",
+  "device": "cuda:1",
+  "e5_rows": 1512,
+  "e6_rows": 504,
+  "e7_max_rank": 0,
+  "e7_rows": 504,
+  "e7_seed_rows": 5040,
+  "e7_seeds": 10,
+  "family": "qwen",
+  "landmark_steps": [
+    20,
+    160,
+    320
+  ],
+  "layers": [
+    9,
+    18,
+    27
+  ],
+  "schema_version": "cycle09_d11_e5_e7_family_v1",
+  "seconds": 156.356,
+  "status": "COMPLETE"
+}

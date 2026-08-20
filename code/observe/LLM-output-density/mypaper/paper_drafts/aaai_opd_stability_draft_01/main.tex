@@ -1,0 +1,378 @@
+\documentclass[letterpaper]{article}
+\usepackage{aaai26}
+\usepackage{times}
+\usepackage{helvet}
+\usepackage{courier}
+\usepackage[hyphens]{url}
+\usepackage{graphicx}
+\urlstyle{rm}
+\def\UrlFont{\rm}
+\usepackage{natbib}
+\usepackage{caption}
+\usepackage{booktabs}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{algorithm}
+\usepackage{algorithmic}
+
+\frenchspacing
+\setlength{\pdfpagewidth}{8.5in}
+\setlength{\pdfpageheight}{11in}
+
+\pdfinfo{
+/TemplateVersion (2026.1)
+}
+
+\setcounter{secnumdepth}{0}
+
+\title{Matched-Gain Diagnostics for On-Policy Distillation: A Minimal Study of Reasoning Stability and Activation-Conditioned Spectra}
+
+\author{
+Anonymous Submission
+}
+\affiliations{
+Paper ID: Anonymous
+}
+
+\begin{document}
+
+\maketitle
+
+\begin{abstract}
+On-policy distillation (OPD) is increasingly used to transfer reasoning behavior from a larger teacher model to a smaller student by supervising the student on states sampled from its own policy.
+Yet the empirical question that often matters in practice is not only whether OPD improves an in-domain benchmark, but whether it avoids the out-of-distribution degradation and representation drift that can appear under continued supervised fine-tuning (SFT).
+We present a minimal diagnostic protocol for this question.
+The protocol compares OPD-like training against continued SFT under matched in-domain gain, and pairs task metrics with activation-conditioned spectral diagnostics computed on frozen prompt and training-target probes.
+In a preliminary TRL-based experiment using a Qwen3-1.7B student and Qwen3-4B teacher, an OPD-like run and the nearest SFT control match within 0.010 GSM8K gain.
+Under this matched condition, the OPD-like model has lower OOD-lite penalty (0.0100 vs. 0.0182), lower worst OOD-lite drop (0.0100 vs. 0.0150), and substantially lower layer-14 spectral drift averaged across seven target modules (0.0179 vs. 0.0488).
+The OPD-like model also has lower drift than the matched SFT control in all seven measured modules.
+These results do not establish that OPD improves GSM8K accuracy: evaluation was limited to 200 examples, only one OPD setting was run, and geometry was measured at one layer.
+Instead, the contribution is a cautious, reproducible diagnostic framing: under matched task performance, OPD-like training can show a cleaner stability profile than continued SFT, motivating a stricter follow-up with higher-sample evaluation, multiple OPD settings, and multi-layer geometry.
+\end{abstract}
+
+\section{Introduction}
+
+Knowledge distillation is a standard way to compress a capable teacher model into a smaller student, but autoregressive distillation creates an immediate mismatch: the student is trained on one set of states and evaluated on states induced by its own generation.
+On-policy distillation addresses this mismatch by letting the student generate trajectories and using teacher feedback on the states the student actually visits \citep{agarwal2024gkd}.
+Recent OPD work frames this as a mechanism for reducing exposure bias and for progressively aligning student-visited high-probability tokens with teacher-supported tokens \citep{li2026rethinkingopd,song2026surveyopd}.
+
+This paper studies a narrower diagnostic problem.
+Suppose a small reasoning model has already received a cold-start distillation phase.
+From that same starting point, should one continue with OPD-like training or with ordinary SFT on additional supervised reasoning traces?
+A raw accuracy comparison is insufficient.
+SFT can move the model toward a narrow trace distribution and may degrade reasoning behavior outside the training style, even when it appears to improve or preserve a nearby benchmark \citep{lobo2025finetuningcot}.
+Conversely, OPD can be expensive and unstable when teacher-student overlap is weak \citep{li2026rethinkingopd}.
+The useful question is therefore conditional: \emph{under comparable in-domain performance, which training path preserves out-of-distribution behavior and model geometry more cleanly?}
+
+We propose a minimal matched-gain diagnostic for this question.
+First, train several continued-SFT controls and at least one OPD-like run from the same starting checkpoint.
+Second, match OPD and SFT by gain on an in-domain reasoning benchmark.
+Third, evaluate the matched pair using both OOD-lite task metrics and activation-conditioned spectral diagnostics.
+The matched-gain step prevents a common confound: a method with lower OOD degradation may simply have learned less.
+The spectral step asks whether the task-level pattern is accompanied by a measurable difference in how the trained model changes under probe distributions.
+
+Our preliminary experiment uses Qwen3-1.7B as student, Qwen3-4B as teacher, a NuminaMath-derived prompt pool, TRL-based OPD-like training, and continued SFT controls.
+The main matched pair is OPD-like training on 800 rollout prompts and SFT on 256 supervised examples.
+Their GSM8K gains differ by 0.010, within the pre-registered valid-match threshold of 0.02.
+Under this match, OPD-like training has lower OOD-lite penalty and lower worst OOD-lite drop.
+It also has markedly lower activation-conditioned spectral drift from the starting checkpoint at layer 14, both on average and in every measured attention and MLP projection module.
+
+The result should be read carefully.
+This is not a full OPD replication, not a claim of broad OOD generalization, and not evidence that OPD improves GSM8K accuracy.
+The preliminary run used an evaluation limit of 200 examples, only one OPD hyperparameter setting, and geometry from a single layer.
+The value of the study is that it closes a minimal engineering loop and identifies a sharper next experiment: test whether the same stability signal survives lower evaluation noise, additional OPD settings or seeds, a less saturated starting point, and broader geometry.
+
+The contributions are:
+\begin{itemize}
+    \item A matched-gain diagnostic protocol for comparing OPD-like training and continued SFT under comparable in-domain reasoning performance.
+    \item An activation-conditioned spectral analysis that links OOD-lite degradation to drift from the starting checkpoint.
+    \item A preliminary TRL-based result showing that OPD-like training can preserve a cleaner stability profile than continued SFT under a valid GSM8K match.
+    \item A concrete follow-up gate for moving from a stability claim to a possible improvement-plus-stability claim.
+\end{itemize}
+
+\section{Related Work}
+
+\paragraph{On-policy distillation.}
+Generalized Knowledge Distillation trains the student on self-generated output sequences and uses teacher feedback on those sequences, directly targeting the distribution mismatch between teacher-generated training outputs and student-generated inference outputs \citep{agarwal2024gkd}.
+More recent OPD surveys and mechanism studies organize this family around student-sampled trajectories, feedback granularity, and stability conditions \citep{song2026surveyopd,li2026rethinkingopd}.
+The most relevant mechanism claim is that successful OPD aligns high-probability teacher-supported tokens at student-visited states, while poor teacher-student overlap can cause failure.
+This motivates the cold-start plus OPD-like setup used here: the student should be close enough to the teacher-supported region that on-policy feedback is meaningful.
+
+\paragraph{Fine-tuning and reasoning degradation.}
+SFT is efficient and simple, but its effect on reasoning can be mixed.
+Recent work on fine-tuning and chain-of-thought reasoning reports that task-specific fine-tuning can reduce reasoning performance and affect faithfulness, especially for smaller models \citep{lobo2025finetuningcot}.
+This does not imply that SFT is always harmful.
+It does imply that a continued-SFT baseline should be evaluated for degradation, not treated as a neutral amount of additional training.
+Our diagnostic uses several SFT data sizes precisely because the amount of supervised trace fitting can change both in-domain and OOD behavior.
+
+\paragraph{Spectral views of adaptation.}
+Spectral analysis has become a useful lens for understanding how fine-tuning changes models.
+For example, \citet{shuttleworth2025lora} show that LoRA and full fine-tuning can produce different singular-vector structures, and connect those structures to forgetting.
+Our analysis is different: it does not inspect raw weight matrices alone.
+Instead, it computes singular spectra after conditioning linear weights by activation statistics collected from probe text.
+This makes the diagnostic sensitive to the distribution under which a module is being used.
+The broader motivation is the same: if two adaptation procedures obtain similar task performance but move the model through different spectral paths, those paths may explain differences in retention and generalization.
+
+\paragraph{Representation-level OPD.}
+OPRD proposes to move on-policy distillation from output-space token distributions into hidden-state alignment \citep{yang2026oprd}.
+Our experiment does not implement representation-level supervision.
+However, the result points in a compatible direction: if OPD-like output training is associated with lower activation-conditioned drift, then representation-level diagnostics and future representation-level objectives are natural extensions.
+
+\section{Problem Setup}
+
+Let $\theta_0$ denote a cold-start student checkpoint obtained by distilling from a teacher on a small prompt set.
+From $\theta_0$, we compare two training families.
+The first is OPD-like training, where the current student samples completions and receives token-level teacher supervision on those sampled trajectories.
+The second is continued SFT, where the student is trained on fixed supervised reasoning traces.
+
+Let $m(\theta)$ be an in-domain reasoning metric, here GSM8K accuracy, and let
+\begin{equation}
+g(\theta) = m(\theta) - m(\theta_0)
+\end{equation}
+be the gain over the common starting checkpoint.
+For each OPD-like model $\theta_o$, we select the nearest SFT model $\theta_s$ by absolute gain gap:
+\begin{equation}
+\Delta_g(\theta_o,\theta_s)=|g(\theta_o)-g(\theta_s)|.
+\end{equation}
+A pair is treated as a valid match when $\Delta_g \leq 0.02$.
+
+The central stability question is then:
+\begin{quote}
+Among models with comparable in-domain reasoning gain, does OPD-like training produce lower OOD-lite degradation and lower activation-conditioned spectral drift than continued SFT?
+\end{quote}
+
+This framing deliberately separates two claims.
+The first is a stability claim: OPD preserves behavior and geometry better than a matched SFT control.
+The second is a stronger improvement claim: OPD improves the in-domain benchmark while preserving stability.
+The present experiment can only support the first claim.
+
+\section{Method}
+
+\subsection{Training Arms}
+
+The experiment uses a single prompt pool split into training, held-out, and probe subsets.
+A Qwen3-1.7B student is first cold-started from a Qwen3-4B teacher using 512 prompts.
+From this $\theta_0$, we train one OPD-like arm and four continued-SFT controls.
+The OPD-like arm uses $\lambda=1.0$ and consumes 800 rollout prompts.
+The SFT controls use 256, 512, 1024, and 2048 supervised examples.
+All arms use the same LoRA target modules and start from the same $\theta_0$.
+
+\subsection{Task Metrics}
+
+The in-domain matching metric is GSM8K.
+Because the preliminary run used an evaluation limit of 200 examples, differences smaller than roughly 0.02 should not be interpreted as reliable improvements.
+OOD-lite performance is summarized by an average OOD score, a penalty $p2$, and a worst-drop metric.
+The exact task mix follows the local Cycle 03 protocol; in this earliest paper draft, the important point is not the absolute OOD score but the matched comparison between OPD-like and SFT models.
+
+\subsection{Activation-Conditioned Spectral Diagnostics}
+
+For each selected layer and target linear module, we collect activation statistics on probe text and form a whitened or activation-conditioned weight matrix.
+Let $W$ be the module weight matrix and $L_{\mathcal{D}}$ be the Cholesky factor derived from the activation Gram matrix on probe distribution $\mathcal{D}$.
+We analyze the singular spectrum of
+\begin{equation}
+A^{\mathcal{D}} = W L_{\mathcal{D}}.
+\end{equation}
+This spectrum captures how strongly the module acts along directions that are active under the probe distribution.
+
+Given singular values $\sigma=(\sigma_1,\ldots,\sigma_n)$, the effective rank is
+\begin{equation}
+\operatorname{erank}(\sigma)=\exp\left(-\sum_i p_i \log p_i\right), \quad
+p_i=\frac{\sigma_i}{\sum_j \sigma_j}.
+\end{equation}
+The drift from the starting checkpoint is the root mean squared log-spectrum distance:
+\begin{equation}
+\operatorname{drift}(\sigma,\sigma^0)
+=\sqrt{\frac{1}{L}\sum_{i=1}^L
+\left(\log(\sigma_i+\epsilon)-\log(\sigma_i^0+\epsilon)\right)^2}.
+\end{equation}
+We also track the spectral gap and the signed log-spectrum level gap between a frozen reference probe $X$ and each model's training-target probe $S$.
+
+\begin{algorithm}[t]
+\caption{Matched-Gain Stability Diagnostic}
+\begin{algorithmic}[1]
+\STATE Train common cold-start checkpoint $\theta_0$.
+\STATE Train OPD-like arms $\{\theta_o\}$ from $\theta_0$.
+\STATE Train SFT controls $\{\theta_s\}$ from $\theta_0$.
+\STATE Evaluate GSM8K and compute $g(\theta)=m(\theta)-m(\theta_0)$.
+\FOR{each OPD-like arm $\theta_o$}
+    \STATE Select $\theta_s^\star = \arg\min_{\theta_s}|g(\theta_o)-g(\theta_s)|$.
+    \STATE Mark valid match if $|g(\theta_o)-g(\theta_s^\star)|\leq 0.02$.
+    \STATE Compare OOD-lite degradation under the valid match.
+    \STATE Compare activation-conditioned spectral drift under the valid match.
+\ENDFOR
+\end{algorithmic}
+\end{algorithm}
+
+\section{Preliminary Experiment}
+
+\subsection{Configuration}
+
+Table~\ref{tab:config} summarizes the current minimal run.
+The design is intentionally small: it verifies whether the end-to-end OPD-like training, evaluation, matching, and geometry pipeline can close before larger experiments are run.
+
+\begin{table}[t]
+\centering
+\small
+\begin{tabular}{ll}
+\toprule
+Item & Value \\
+\midrule
+Student & Qwen3-1.7B \\
+Teacher & Qwen3-4B \\
+Cold start & 512 prompts, OPD-like distillation \\
+OPD-like arm & $\lambda=1.0$, 800 rollout prompts \\
+SFT controls & 256, 512, 1024, 2048 examples \\
+Main eval & GSM8K, limit 200 \\
+Geometry & Layer 14, 7 target modules \\
+Probe length & 512 tokens \\
+LoRA & rank 16, alpha 32, dropout 0.05 \\
+\bottomrule
+\end{tabular}
+\caption{Minimal Cycle 03 configuration.}
+\label{tab:config}
+\end{table}
+
+\subsection{Task Trajectory}
+
+Table~\ref{tab:trajectory} reports the task trajectory.
+The most important observation is that larger SFT controls degrade GSM8K under this setup, while the OPD-like arm approximately preserves the starting checkpoint's GSM8K score.
+Because the evaluation limit is only 200, the OPD-like score should be interpreted as maintenance, not improvement.
+
+\begin{table}[t]
+\centering
+\small
+\begin{tabular}{lrrrr}
+\toprule
+Model & Size & GSM8K & Gain & OOD $p2$ \\
+\midrule
+SFT-1024 & 1024 & 0.295 & -0.140 & 0.0261 \\
+SFT-2048 & 2048 & 0.310 & -0.125 & 0.0279 \\
+SFT-512 & 512 & 0.380 & -0.055 & 0.0124 \\
+OPD-$\lambda1$ & 800 & 0.430 & -0.005 & 0.0100 \\
+$\theta_0$ & 512 & 0.435 & 0.000 & 0.0000 \\
+SFT-256 & 256 & 0.440 & 0.005 & 0.0182 \\
+\bottomrule
+\end{tabular}
+\caption{Evaluation trajectory. Size denotes consumed rollout prompts for OPD-like training and supervised examples for SFT.}
+\label{tab:trajectory}
+\end{table}
+
+\subsection{Matched-Gain Comparison}
+
+The nearest SFT match for OPD-$\lambda1$ is SFT-256.
+The GSM8K gain gap is
+\[
+|-0.005 - 0.005| = 0.010,
+\]
+which satisfies the valid-match threshold.
+Table~\ref{tab:matched} shows the matched OOD-lite comparison.
+Under matched GSM8K gain, the OPD-like model has lower OOD-lite penalty and lower worst OOD-lite drop.
+
+\begin{table}[t]
+\centering
+\small
+\begin{tabular}{lrrr}
+\toprule
+Metric & OPD & SFT-256 & OPD--SFT \\
+\midrule
+GSM8K gain & -0.005 & 0.005 & -0.010 \\
+OOD-lite penalty $p2$ & 0.0100 & 0.0182 & -0.0082 \\
+Worst OOD-lite drop & 0.0100 & 0.0150 & -0.0050 \\
+\bottomrule
+\end{tabular}
+\caption{Matched-gain comparison. Negative OPD--SFT values are favorable for degradation metrics.}
+\label{tab:matched}
+\end{table}
+
+\subsection{Spectral Stability}
+
+Table~\ref{tab:geometry_summary} summarizes layer-14 geometry.
+The OPD-like model has a spectral drift of 0.0179, compared with 0.0488 for SFT-256.
+The SFT controls show increasing drift as the amount of supervised training data increases.
+The OPD-like model also keeps the $X$--$S$ spectrum level gap closer to zero than the SFT controls, suggesting that the reference generation distribution and training-target distribution remain more aligned under the OPD-like update.
+
+\begin{table}[t]
+\centering
+\small
+\begin{tabular}{lrrr}
+\toprule
+Model & Eff. rank & Drift & $X$--$S$ gap \\
+\midrule
+$\theta_0$ & 897.29 & 0.0000 & -0.0231 \\
+OPD-$\lambda1$ & 892.66 & 0.0179 & -0.0185 \\
+SFT-256 & 925.28 & 0.0488 & -0.0467 \\
+SFT-512 & 927.27 & 0.0527 & -0.0467 \\
+SFT-1024 & 930.36 & 0.0598 & -0.0479 \\
+SFT-2048 & 930.84 & 0.0643 & -0.0492 \\
+\bottomrule
+\end{tabular}
+\caption{Layer-14 activation-conditioned spectral summary averaged across seven target modules.}
+\label{tab:geometry_summary}
+\end{table}
+
+The module-level result is stronger than the average alone.
+As shown in Table~\ref{tab:module_drift}, OPD-like training has lower drift than SFT-256 in every measured layer-14 module.
+The largest absolute differences appear in the attention output projection and MLP gate/up projections.
+This pattern is consistent with the hypothesis that continued SFT pushes the model toward a narrower answer-style manifold, while OPD-like training performs a milder distribution-aligned update.
+
+\begin{table}[t]
+\centering
+\small
+\begin{tabular}{lrrr}
+\toprule
+Module & OPD & SFT-256 & Diff. \\
+\midrule
+attn.q & 0.0165 & 0.0391 & -0.0226 \\
+attn.k & 0.0137 & 0.0355 & -0.0218 \\
+attn.v & 0.0137 & 0.0357 & -0.0220 \\
+attn.o & 0.0328 & 0.0792 & -0.0464 \\
+mlp.gate & 0.0162 & 0.0597 & -0.0435 \\
+mlp.up & 0.0158 & 0.0597 & -0.0439 \\
+mlp.down & 0.0167 & 0.0324 & -0.0157 \\
+\bottomrule
+\end{tabular}
+\caption{Layer-14 module drift from $\theta_0$. Negative differences mean lower OPD drift.}
+\label{tab:module_drift}
+\end{table}
+
+\section{Discussion}
+
+The preliminary result supports a conservative version of the K1 hypothesis:
+under matched in-domain reasoning gain, OPD-like training can produce lower OOD-lite degradation and lower activation-conditioned spectral drift than continued SFT.
+The matched-gain requirement is important.
+Without it, lower drift could be dismissed as a sign that OPD trained less.
+Here, OPD-$\lambda1$ and SFT-256 are close in GSM8K gain, but their OOD-lite and spectral profiles differ.
+
+The result also clarifies what is not yet known.
+First, OPD-like training did not improve GSM8K over $\theta_0$ in a reliable way.
+Second, the starting checkpoint may be saturated: if $\theta_0$ already reaches the local GSM8K ceiling under this limited evaluation, an improvement claim is difficult to detect.
+Third, the geometry evidence is only layer-14 evidence.
+The module-level consistency is encouraging, but a mechanism claim needs multi-layer evidence and ideally singular-vector or principal-angle artifacts.
+
+These constraints motivate the next experiment rather than weakening the usefulness of the current one.
+A stricter follow-up should use a less saturated $\theta_0$, increase the GSM8K evaluation sample count or remove the limit, include at least one additional OPD setting or seed, and measure geometry across early, middle, and late layers.
+If the stability pattern persists, the work can support a stronger claim that OPD-like state matching controls destructive drift relative to continued SFT.
+If the same setup also produces a reliable GSM8K gain, the claim can move from stability to improvement plus stability.
+
+\section{Limitations}
+
+This earliest draft has several limitations that must be resolved before a submission-quality AAAI paper.
+The experiment has only one OPD-like run.
+The GSM8K evaluation limit of 200 makes small differences unreliable.
+The OOD-lite suite is useful as a local degradation probe but does not establish broad OOD generalization.
+The spectral analysis is limited to layer 14 and does not yet include stored singular-vector sketches or principal-angle analysis.
+The implementation is TRL OPD-like rather than a full reproduction of a standard OPD system such as a verl implementation.
+Finally, the current evidence supports stability under matched performance, not a general performance improvement claim.
+
+\section{Conclusion}
+
+We presented a minimal matched-gain diagnostic for comparing OPD-like training with continued SFT.
+In a preliminary Qwen3-1.7B/Qwen3-4B experiment, OPD-like training matched the nearest SFT control on GSM8K gain while showing lower OOD-lite degradation and substantially lower activation-conditioned spectral drift.
+The result is best viewed as a feasibility and stability signal, not as a final OPD performance claim.
+The next research gate is clear: test the same matched-gain stability pattern under lower evaluation noise, multiple OPD settings, a less saturated starting checkpoint, and multi-layer geometry.
+
+\bibliography{references}
+\bibliographystyle{aaai26}
+
+\end{document}
+

@@ -1,0 +1,7 @@
+{
+  "created_utc": "2026-07-27T12:25:47.746279+00:00",
+  "git_commit": "b9110d44daa13c7a848eb0b5b1a36faa4b5c68cb",
+  "command": "experiments/opd_sft_h1/scripts/cycle09_reviewer_robustness.py --correction-pass",
+  "status": "CORRECTION_PASS_COMPLETE_WITH_NEW_FORWARD_BLOCKERS",
+  "handoff": "/root/LLM-output-density/mypaper/local_experiment_results/cycle_09_aaai_competitiveness_completion/run_01/mini/reviewer_robustness/reviewer_robustness_theory_handoff.md"
+}

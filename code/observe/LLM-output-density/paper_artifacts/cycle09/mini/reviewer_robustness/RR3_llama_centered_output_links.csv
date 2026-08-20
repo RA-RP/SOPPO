@@ -1,0 +1,5 @@
+model,metric,target,epsilon,n_cells,spearman,pearson
+llama,centered_absolute_contraction,cumulative_kl_base_to_current,0.05,48,0.7269470072257617,0.7601078576887557
+llama,centered_absolute_contraction,absolute_delta_nll_cumulative,0.05,48,0.7153831750719836,0.7882246779218355
+llama,uncentered_absolute_contraction,cumulative_kl_base_to_current,0.05,48,0.735450614517587,0.7482883613055866
+llama,uncentered_absolute_contraction,absolute_delta_nll_cumulative,0.05,48,0.736753546144399,0.794417782113849

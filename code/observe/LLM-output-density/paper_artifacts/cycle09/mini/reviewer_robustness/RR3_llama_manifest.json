@@ -1,0 +1,25 @@
+{
+  "created_utc": "2026-07-27T13:32:54.574662+00:00",
+  "git_commit": "b9110d44daa13c7a848eb0b5b1a36faa4b5c68cb",
+  "command": "experiments/opd_sft_h1/scripts/cycle09_reviewer_robustness_correction2.py",
+  "status": "COMPLETE_RR3_LLAMA_CENTERED_REUSE_NO_FORWARD",
+  "formal_protocol_id": "RR3_llama_D10_formal_profile_centered_gram_plus_bf16_weight_reuse",
+  "numeric_protocol": "Saved formal FP32 aggregate Gram and sample means; centered covariance in FP64; checkpoint weights BF16 merged deployment loaded from safetensors and cast FP32 for W@S; SVD input and singular-energy accumulation FP64. No model forward.",
+  "coverage": "4 arms x 3 checkpoints x 4 probes plus 4 base profiles; headline L14; 7 modules; eps=.01/.025/.05/.10",
+  "row_counts": {
+    "module": 1456,
+    "equal7": 192,
+    "vs_uncentered": 192,
+    "ordering": 96,
+    "output_links": 4,
+    "weighting_audit_rows": 364
+  },
+  "output_sha256": {
+    "RR3_llama_centered_module.csv": "3171d9e1ad1a5c68c7f3ca4f8a34d5c0520853ba69b15ffa98f20ad951912ff0",
+    "RR3_llama_centered_equal7.csv": "9dfb7046724d892bd23ceb5285b4deba097f45ffe3f8e9fe2c62ed092bab09cf",
+    "RR3_llama_centered_vs_uncentered.csv": "851f8d0526396def89cceb01c9ecce3a87172baee38c7d203ed41d6e078ea06d",
+    "RR3_llama_centered_ordering.csv": "9bcabb44d33da2693aa3213efb11a84e2ef7614ea743111db2a600ec304da937",
+    "RR3_llama_centered_output_links.csv": "8eb43993e56eebeeebf64dd6013ddf15388624982572b94f6afa05dc5bae0e1c",
+    "RR3_llama_weighting_audit.json": "82d782d3d4cab907f7783eb1292c099fbadce0f61623e98840685d50c83324db"
+  }
+}

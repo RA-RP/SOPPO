@@ -1,0 +1,13 @@
+model,arm,checkpoint,probe_name,layer,status,reason
+qwen,opd,20,E_general,18,BLOCKED_TOP128_NOT_FULL_DIRECTION_SPECTRUM,Qwen direction spectrum is stored as top-128 only; continuous/tail metrics are not valid.
+qwen,opd,20,E_math,18,BLOCKED_TOP128_NOT_FULL_DIRECTION_SPECTRUM,Qwen direction spectrum is stored as top-128 only; continuous/tail metrics are not valid.
+qwen,opd,20,E_ood,18,BLOCKED_TOP128_NOT_FULL_DIRECTION_SPECTRUM,Qwen direction spectrum is stored as top-128 only; continuous/tail metrics are not valid.
+qwen,opd,20,E_if,18,BLOCKED_TOP128_NOT_FULL_DIRECTION_SPECTRUM,Qwen direction spectrum is stored as top-128 only; continuous/tail metrics are not valid.
+qwen,opd,40,E_general,18,BLOCKED_TOP128_NOT_FULL_DIRECTION_SPECTRUM,Qwen direction spectrum is stored as top-128 only; continuous/tail metrics are not valid.
+qwen,opd,40,E_math,18,BLOCKED_TOP128_NOT_FULL_DIRECTION_SPECTRUM,Qwen direction spectrum is stored as top-128 only; continuous/tail metrics are not valid.
+qwen,opd,40,E_ood,18,BLOCKED_TOP128_NOT_FULL_DIRECTION_SPECTRUM,Qwen direction spectrum is stored as top-128 only; continuous/tail metrics are not valid.
+qwen,opd,40,E_if,18,BLOCKED_TOP128_NOT_FULL_DIRECTION_SPECTRUM,Qwen direction spectrum is stored as top-128 only; continuous/tail metrics are not valid.
+qwen,opd,80,E_general,18,BLOCKED_TOP128_NOT_FULL_DIRECTION_SPECTRUM,Qwen direction spectrum is stored as top-128 only; continuous/tail metrics are not valid.
+qwen,opd,80,E_math,18,BLOCKED_TOP128_NOT_FULL_DIRECTION_SPECTRUM,Qwen direction spectrum is stored as top-128 only; continuous/tail metrics are not valid.
+qwen,opd,80,E_ood,18,BLOCKED_TOP128_NOT_FULL_DIRECTION_SPECTRUM,Qwen direction spectrum is stored as top-128 only; continuous/tail metrics are not valid.
+qwen,opd,80,E_if,18,BLOCKED_TOP128_NOT_FULL_DIRECTION_SPECTRUM,Qwen direction spectrum is stored as top-128 only; continuous/tail metrics are not valid.

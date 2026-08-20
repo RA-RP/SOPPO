@@ -1,0 +1,13 @@
+# Dependencies for cycle-20260818-01 MVP
+# Server installation only - DO NOT install locally
+
+torch==2.4.0
+transformers==4.40.0
+datasets==2.18.0
+accelerate==0.28.0
+numpy>=1.24.0
+scipy>=1.10.0
+tqdm>=4.65.0
+wandb>=0.15.0  # optional
+pyyaml>=6.0
+jsonlines>=3.1.0

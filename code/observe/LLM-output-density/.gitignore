@@ -1,0 +1,75 @@
+# Secrets and local configuration
+.env
+.env.*
+!.env.example
+*.key
+*.pem
+
+# Python caches and environments
+__pycache__/
+**/__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+venv/
+
+# Notebook and editor state
+.ipynb_checkpoints/
+.vscode/
+.idea/
+
+# Logs and runtime output
+*.log
+*.tmp
+logs/
+outputs/
+**/outputs/
+experiments/**/runs/
+eval_cache/
+eval_out/
+
+# Models, checkpoints, and raw numeric caches
+model/
+models/
+checkpoints/
+*.safetensors
+*.ckpt
+*.gguf
+*.pt
+*.npy
+*.npz
+*.pkl
+
+# Raw experiment stores. The curated subset belongs in paper_artifacts/.
+local_experiment_results/
+mypaper/local_experiment_results/
+autodl-tmp/
+
+# Copyrighted literature copies
+mypaper/*.pdf
+mypaper/literature_library/**/*.pdf
+
+# LaTeX build products; committed vector figures remain allowed.
+*.aux
+*.bbl
+*.blg
+*.fdb_latexmk
+*.fls
+*.out
+*.synctex.gz
+*.toc
+*.xdv
+paper/en/*.pdf
+paper/zh/*.pdf
+paper/checklist/*.pdf
+
+# Submission bundles and generated archives
+supplement_submission/
+submission_packages*/
+*.zip
+
+# Operating-system files
+.DS_Store
+Thumbs.db

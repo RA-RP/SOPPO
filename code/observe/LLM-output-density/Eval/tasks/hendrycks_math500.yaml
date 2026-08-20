@@ -1,0 +1,25 @@
+tag:
+  - math_word_problems
+task: hendrycks_math500
+dataset_path: json
+dataset_kwargs:
+  data_files:
+    test: /root/LLM-output-density/Eval/tasks/data/hendrycks_math500/test.jsonl
+process_docs: !function lm_eval.tasks.hendrycks_math.utils.process_docs
+output_type: generate_until
+training_split: null
+test_split: test
+doc_to_text: "Problem: {{problem}}\nAnswer:"
+process_results: !function lm_eval.tasks.hendrycks_math.utils.process_results
+doc_to_target: "{{answer}}"
+generation_kwargs:
+  until:
+    - "Problem:"
+  do_sample: false
+  temperature: 0
+metric_list:
+  - metric: exact_match
+    aggregation: mean
+    higher_is_better: true
+metadata:
+  version: 1.0

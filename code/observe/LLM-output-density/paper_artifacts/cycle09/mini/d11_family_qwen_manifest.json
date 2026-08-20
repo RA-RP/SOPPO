@@ -1,0 +1,38 @@
+{
+  "arms": [
+    "opd",
+    "sft",
+    "offkd",
+    "seqkd"
+  ],
+  "created_utc": "2026-07-27T02:32:14.708197+00:00",
+  "device": "cuda:1",
+  "family": "qwen",
+  "layer": 18,
+  "modules": [
+    "self_attn.q_proj",
+    "self_attn.k_proj",
+    "self_attn.v_proj",
+    "self_attn.o_proj",
+    "mlp.gate_proj",
+    "mlp.up_proj",
+    "mlp.down_proj"
+  ],
+  "null_rank": 32,
+  "null_seeds": 3,
+  "pk_rows": 0,
+  "schema_version": "cycle09_d11_family_v1",
+  "seconds": 65.4,
+  "status": "COMPLETE",
+  "steps": [
+    5,
+    20,
+    40,
+    80,
+    160,
+    320
+  ],
+  "tag": "formal",
+  "tpnt_angle_rows": 672,
+  "tpnt_mask_rows": 1008
+}

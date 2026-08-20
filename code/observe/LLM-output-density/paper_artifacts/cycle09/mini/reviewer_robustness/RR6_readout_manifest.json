@@ -1,0 +1,43 @@
+{
+  "created_utc": "2026-07-27T12:25:02.675885+00:00",
+  "git_commit": "b9110d44daa13c7a848eb0b5b1a36faa4b5c68cb",
+  "command": "experiments/opd_sft_h1/scripts/cycle09_reviewer_robustness.py --correction-pass",
+  "status": "COMPLETE_RR6_MATCHED_BEHAVIORAL_READOUT_DIAGNOSTICS",
+  "formal_protocol_id": "RR6_matched_math500_behavioral_readout_not_training_mediator",
+  "models": [
+    "llama"
+  ],
+  "arms": [
+    "opd",
+    "frozen_self"
+  ],
+  "checkpoints": [
+    20,
+    40,
+    80,
+    160
+  ],
+  "dataset": "math500",
+  "draws_and_seeds": {
+    "paired_item_bootstrap_draws": 2000,
+    "seed": 42
+  },
+  "token_count_protocol": "response_whitespace_tokens from regex \\S+; no tokenizer token ids found or regenerated",
+  "non_mediator_note": "These are matched MATH500 eval behavior readouts, not training rollout support; length/EOS/truncation/repetition/boxed effects change direction across checkpoints and do not identify a single stable mediator.",
+  "row_counts": {
+    "stats": 8,
+    "paired_effects": 28,
+    "bootstrap_ci": 28,
+    "paired_rows": 2000
+  },
+  "input_paths_and_sha256": {
+    "RR6_frozen_self_text_stats.csv": "61a0123d102cda61fb21b7771361622b928f766a16f737c122fa8c8ba7c3ab6e",
+    "RR6_frozen_self_paired_differences.csv": "b6f0bc725ed49fffd44de3bf3bb5116d4463ede262eca10948fe64ca826023ea"
+  },
+  "output_sha256": {
+    "RR6_matched_math500_readout_stats.csv": "23d551d12083ed1dd88c54d458b50036c4382f0d463c4df78607e39e119321ab",
+    "RR6_matched_math500_paired_effects.csv": "375f2c3aeb181852c3563bf6cfd2993ff50270236f728d296b31ab2f15cfc592",
+    "RR6_matched_math500_bootstrap_ci.csv": "f64092c6d52e3c6bc94dcaac087b3f4b39fdbc4a36893ef717b77b3d0aaf9707",
+    "RR6_matched_math500_coverage.csv": "9a014851dd9ce43c6062af13961a6d8a1cd6614a3dbd06d2aad5bca7c9767698"
+  }
+}

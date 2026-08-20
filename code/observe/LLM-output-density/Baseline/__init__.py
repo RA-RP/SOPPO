@@ -1,0 +1,2 @@
+"""Baseline data selection stage."""
+

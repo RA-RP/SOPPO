@@ -1,0 +1,34 @@
+# macOS metadata
+.DS_Store
+**/.DS_Store
+
+# Python-generated files and local environments
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+venv/
+
+# Local credentials and machine-specific configuration
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Research execution artifacts must remain on the server
+/data/
+/datasets/
+outputs/
+checkpoints/
+wandb/
+*.pt
+*.pth
+*.ckpt
+*.safetensors
+*.npy
+*.npz
+*.parquet
+*.jsonl

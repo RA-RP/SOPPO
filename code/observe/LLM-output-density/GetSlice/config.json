@@ -1,0 +1,144 @@
+{
+  // ============================================================
+  // 1) 全局参数
+  // ============================================================
+  // HuggingFace model id
+  "model": "/root/autodl-tmp/model/Qwen/Qwen3-1.7B",
+
+  // output root directory (base)
+  "save_path": "/root/autodl-tmp/exp0504/GetSliceOutput",
+
+  // tasks:
+  //   string -> run one task, for example "Grok4_fast"
+  //   array  -> run selected tasks, for example ["Grok4_fast", "Gemini3"]
+  //   null / "" / [] -> run all task folders under s_jsonl_path
+  "tasks": null,
+
+  // mode:
+  //   s_only_svd          -> only compute S, output SVDLLM-style sMat json
+  //   x_only_svd          -> only compute global X once under save_path/X
+  //   split_whitened_svd  -> compute every S task, then compute global X once under save_path/X
+  "mode": "s_only_svd",
+
+  // device: cuda / cpu
+  "DEV": "cuda",
+
+  // sequence length used by profiling
+  "model_seq_len": 1024,
+
+  // global seed
+  "seed": 3,
+
+  // target transformer layer for single-layer profiling/whitening:
+  //   null      -> run all layers as before
+  //   5         -> run only layer_5 (0-based)
+  //   "layer_5" -> equivalent to 5
+  "target_layer": 14,
+
+  // single-layer mode only: number of consecutive transformer layers kept on GPU
+  // during replay. 1 equals the original streaming behavior.
+  "layer_gpu_chunk_size": 14,
+
+  // single-layer S multi-task mode only: number of pending tasks processed together.
+  // Use a positive integer or "all"; the final group may be smaller.
+  "single_layer_task_group_size": 4,
+
+  // legacy Phi regularization. Ignored by SVD modes.
+  "epsilon": 0.001,
+
+  // minimum eigenvalue used only by the final eigh fallback.
+  "svd_singular_floor": 0.0,
+
+  // SVDLLM-style Cholesky fallback: G <- G + (-min_eig(G) + cholesky_jitter) I
+  "cholesky_jitter": 0.00001,
+
+  // where to keep rolling inps/outs during profiling: cuda is faster, cpu uses less VRAM
+  "activation_cache_device": "cuda",
+
+  // dtype used to store U/VT in sUV/xUV .pt files. S remains a CPU tensor.
+  "uv_dtype": "float32",
+
+  // remove default token caches and default SVD-sqrt profile .pt files after final json is saved
+  "cleanup_intermediate": true,
+
+  // skip a task/global X when all configured final outputs already exist and are non-empty
+  "skip_existing_outputs": true,
+
+
+  // ============================================================
+  // 2) 模型加载参数
+  // ============================================================
+  "model_dtype": "float16",
+  "trust_remote_code": true,
+  "hf_cache_dir": null,
+
+
+  // ============================================================
+  // 3) S 侧（仅使用现有 S 数据）
+  // ============================================================
+  // number of S samples
+  "s_nsamples": 32,
+
+  // existing S dataset root. Each task resolves to:
+  //   {s_jsonl_path}/{task}/{s_jsonl_file}
+  "s_jsonl_path": "/root/LLM-output-density/MyFunc/dataset/S",
+
+  // task jsonl filename under each task folder
+  "s_jsonl_file": "gsm8k.jsonl",
+
+  // token batch size when building S tensors from jsonl
+  "s_batch_size": 1,
+
+  // optional cache path for tokenized S data. null -> default under save_path/task
+  "s_data_cache_path": null,
+
+  // existing S profile (.pt). If set and exists, skip recompute of S profile
+  "profiling_mat_path_s": null,
+
+  // explicit save path for S profile (.pt). null -> default under save_path/task
+  "save_profile_s_path": null,
+
+
+  // ============================================================
+  // 4) X 侧（仅使用现有 X 数据）
+  // ============================================================
+  // number of X samples
+  "x_nsamples": 32,
+
+  // existing X dataset jsonl path
+  "x_jsonl_path": "/root/LLM-output-density/MyFunc/dataset/X/Qwen.jsonl",
+
+  // token batch size when building X tensors from jsonl
+  "x_batch_size": 1,
+
+  // optional cache path for tokenized X data. null -> default under save_path/task
+  "x_data_cache_path": null,
+
+  // existing X profile (.pt). If set and exists, skip recompute of X profile
+  "profiling_mat_path_x": null,
+
+  // explicit save path for X profile (.pt). null -> default under save_path/task
+  "save_profile_x_path": null,
+
+
+  // ============================================================
+  // 5) 输出参数
+  // ============================================================
+  // SVDLLM-style singular values json paths. These support {task}.
+  // For X, {task} is the global output folder name "X".
+  "save_s_json_path": "sMat_{task}.json",
+  "save_x_json_path": "xMat_{task}.json",
+
+  // optional pt copies of the singular-value dictionaries. null -> do not save pt copies.
+  "save_s_pt_path": null,
+  "save_x_pt_path": null,
+
+  // U/S/VT tensor outputs for W_scale = W @ profiling_mat. These support {task}.
+  // For X, {task} is the global output folder name "X".
+  "save_s_uv_path": "sUV_{task}.pt",
+  "save_x_uv_path": "xUV_{task}.pt",
+
+  // legacy Phi output paths. Ignored by SVD modes.
+  "save_metrics_pt_path": null,
+  "save_metrics_json_path": null
+}

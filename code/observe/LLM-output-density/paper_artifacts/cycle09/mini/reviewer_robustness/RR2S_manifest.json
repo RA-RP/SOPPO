@@ -1,0 +1,61 @@
+{
+  "created_utc": "2026-07-27T12:25:00.067176+00:00",
+  "git_commit": "b9110d44daa13c7a848eb0b5b1a36faa4b5c68cb",
+  "command": "experiments/opd_sft_h1/scripts/cycle09_reviewer_robustness.py --correction-pass",
+  "status": "READY_RECOMPUTE_FROM_FORMAL_CHECKPOINT",
+  "formal_protocol_id": "RR2S_state_spectrum_WtSdt_complete_singular_values_required",
+  "models": [
+    "qwen",
+    "llama"
+  ],
+  "arms": [
+    "opd",
+    "sft",
+    "offkd",
+    "seqkd"
+  ],
+  "checkpoints": [
+    20,
+    40,
+    80
+  ],
+  "probes": [
+    "E_general",
+    "E_math",
+    "E_ood",
+    "E_if"
+  ],
+  "layers": {
+    "qwen": 18,
+    "llama": 14
+  },
+  "epsilons": [
+    0.01,
+    0.025,
+    0.05,
+    0.1
+  ],
+  "numeric_protocol": "Formal RR2S requires complete singular values of A_state=W_t S_{D,t}; tail margin/stable rank/entropy effective rank must be computed from full state spectrum. Existing D10/D4 rank tables are not sufficient.",
+  "row_counts": {
+    "preflight_cells": 96,
+    "ready_full_state_spectrum_cells": 0,
+    "ready_recompute_cells": 96
+  },
+  "blocked_cells": 96,
+  "estimated_recompute": {
+    "gpu_wall_time": "2-6h on 1x96G for shared formal forward/state-spectrum cache; 1x32G likely slower and tighter",
+    "vram": "32G minimum uncertain for both Qwen/Llama full state SVD cache; 96G preferred",
+    "ram": "64-128GB CPU RAM preferred for full singular/stat aggregation",
+    "scratch": "tens of GB transient; compact CSV/manifest outputs <2GB if singular values are streamed/reduced",
+    "do_not_run_without": "explicit Theory GO"
+  },
+  "recoverable_command": "python experiments/opd_sft_h1/scripts/cycle09_reviewer_robustness.py --rr2s-forward-cache --formal-grid qwen,llama --arms opd,sft,offkd,seqkd --steps 20,40,80 --probes E_general,E_math,E_ood,E_if --save-state-spectrum",
+  "atomic_completion_condition": "For every model/arm/checkpoint/probe/layer/module, either complete state singular values or exact total/tail/stable-rank/entropy sufficient statistics exist with SHA256 provenance.",
+  "input_paths_and_sha256": {
+    "/root/autodl-tmp/cycle09_relative_functional_contraction/final/qwen_d4_merged_state_all_cells.csv": "63c753a6f3d266dd36dbecce8d941d6a1fbeb45e74408906c3a0122dc591bcdd",
+    "/root/autodl-tmp/cycle09_relative_functional_contraction/d10_llama_numeric_parity/formal/final/d10_5_integrated_state_equal7.csv": "c82a418f73aa7d5575b9195ec12e6e7f551e12439d58c70dc0b6d15d9806517e"
+  },
+  "output_sha256": {
+    "RR2S_state_spectrum_preflight.csv": "575638311af546376512b7528d5e2b58d3f7440bfcb3fdbb8e88de6b8e8ae4a1"
+  }
+}

@@ -1,0 +1,37 @@
+{
+  "created_utc": "2026-07-27T11:57:09.754691+00:00",
+  "git_commit": "b9110d44daa13c7a848eb0b5b1a36faa4b5c68cb",
+  "command": "/root/LLM-output-density/experiments/opd_sft_h1/scripts/cycle09_reviewer_robustness.py --run-ready-reuse",
+  "status": "COMPLETE_RR6_MATH500_MATCHED_TEXT_STATS",
+  "formal_protocol_id": "RR6_lamma_opd_vs_frozen_self_math500_row_matched",
+  "models": [
+    "llama"
+  ],
+  "arms": [
+    "opd",
+    "frozen_self"
+  ],
+  "checkpoints": [
+    20,
+    40,
+    80,
+    160
+  ],
+  "probes": [],
+  "layers": {},
+  "epsilons": [],
+  "draws_and_seeds": {},
+  "row_counts": {
+    "text_stats": 8,
+    "paired_differences": 2000,
+    "coverage": 4
+  },
+  "blocked_cells": 0,
+  "input_paths_and_sha256": {},
+  "output_sha256": {
+    "RR6_frozen_self_text_stats.csv": "61a0123d102cda61fb21b7771361622b928f766a16f737c122fa8c8ba7c3ab6e",
+    "RR6_frozen_self_paired_differences.csv": "b6f0bc725ed49fffd44de3bf3bb5116d4463ede262eca10948fe64ca826023ea",
+    "RR6_frozen_self_coverage.csv": "9a014851dd9ce43c6062af13961a6d8a1cd6614a3dbd06d2aad5bca7c9767698"
+  },
+  "notes": "Uses matched math500 behavior samples only; broader rollout/text pools are not treated as paired."
+}

@@ -1,0 +1,3 @@
+- name: frozen_self_external
+  _target_: cycle09_q1_mixture_runtime.FrozenExternalAgentLoop
+  frozen_root: /root/autodl-tmp/cycle09_stage3_followup/H5_frozen_self/frozen_store

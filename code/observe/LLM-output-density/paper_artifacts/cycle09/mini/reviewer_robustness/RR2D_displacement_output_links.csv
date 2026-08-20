@@ -1,0 +1,17 @@
+model,arm,epsilon,metric,target,within_arm_spearman,within_arm_pearson,n_cells,auxiliary_result
+llama,offkd,0.05,stable_rank,cumulative_kl_base_to_current,-0.3216783216783217,-0.2171224225517133,12,True
+llama,offkd,0.05,stable_rank,absolute_delta_nll_cumulative,-0.18881118881118883,-0.10340216260993468,12,True
+llama,offkd,0.05,entropy_effective_rank,cumulative_kl_base_to_current,-0.3356643356643357,-0.37410641106928266,12,True
+llama,offkd,0.05,entropy_effective_rank,absolute_delta_nll_cumulative,-0.1958041958041958,-0.2857564029950208,12,True
+llama,opd,0.05,stable_rank,cumulative_kl_base_to_current,-0.6013986013986015,-0.6061031615040043,12,True
+llama,opd,0.05,stable_rank,absolute_delta_nll_cumulative,-0.4825174825174825,-0.5250142536095375,12,True
+llama,opd,0.05,entropy_effective_rank,cumulative_kl_base_to_current,-0.6573426573426573,-0.6140661590195171,12,True
+llama,opd,0.05,entropy_effective_rank,absolute_delta_nll_cumulative,-0.5454545454545455,-0.5350068614959894,12,True
+llama,seqkd,0.05,stable_rank,cumulative_kl_base_to_current,-0.3846153846153847,-0.39886711967814636,12,True
+llama,seqkd,0.05,stable_rank,absolute_delta_nll_cumulative,-0.2377622377622378,-0.2952437262565836,12,True
+llama,seqkd,0.05,entropy_effective_rank,cumulative_kl_base_to_current,-0.5104895104895105,-0.4775952646859517,12,True
+llama,seqkd,0.05,entropy_effective_rank,absolute_delta_nll_cumulative,-0.37762237762237766,-0.3938848121815248,12,True
+llama,sft,0.05,stable_rank,cumulative_kl_base_to_current,0.055944055944055944,0.1621346175347917,12,True
+llama,sft,0.05,stable_rank,absolute_delta_nll_cumulative,0.2867132867132868,0.2554735666234949,12,True
+llama,sft,0.05,entropy_effective_rank,cumulative_kl_base_to_current,-0.3636363636363637,-0.4613636635962504,12,True
+llama,sft,0.05,entropy_effective_rank,absolute_delta_nll_cumulative,-0.11188811188811189,-0.37268194064488963,12,True

@@ -1,0 +1,8 @@
+task,tier,ready_reuse_cells,ready_recompute_cells,blocked_cells,estimated_wall_time,estimated_scratch
+RR1A,blocked/recompute,0,96,0,0 now; 2-6h if new forward+1024 draws approved,0 now; scratch depends on factors
+RR1B,blocked/recompute,0,96,0,0 now; 1-4h if new forward+200 subsets approved,0 now; scratch depends on factors
+RR2,reuse,60,0,36,10-40 min CPU if all spectrum rows parse cleanly,<2 GB compact outputs
+RR3,requires GO,0,96,0,2-6h GPU new forward after GO,tens of GB transient factors/profiles
+RR4,reuse/partial,96,0,0,10-60 min CPU depending on top32 array size,<5 GB compact/by-sequence outputs
+RR5,reuse,96,0,0,10-45 min CPU after exact join,<1 GB
+RR6,reuse/optional,48,0,48,10-40 min CPU if matched text found,<1 GB

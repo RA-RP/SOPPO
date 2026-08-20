@@ -1,0 +1,130 @@
+{
+  "arms": [
+    "frozen_self"
+  ],
+  "created_utc": "2026-07-24T17:46:30.001438+00:00",
+  "delta_w_policy": "adapter BA fp32 only for any update-space analysis; merge-subtract forbidden",
+  "epsilons": [
+    0.01,
+    0.025,
+    0.05,
+    0.1
+  ],
+  "forward_execution": {
+    "batch_size": 8,
+    "early_stop": true,
+    "max_batch_tokens": 16384
+  },
+  "headline_steps": [
+    0,
+    5,
+    20,
+    40,
+    80,
+    160,
+    320
+  ],
+  "instantiated_native_baseline": "raw representation suite only",
+  "layers": {
+    "headline": 14,
+    "robustness": [
+      7,
+      21
+    ]
+  },
+  "modules": [
+    "self_attn.q_proj",
+    "self_attn.k_proj",
+    "self_attn.v_proj",
+    "self_attn.o_proj",
+    "mlp.gate_proj",
+    "mlp.up_proj",
+    "mlp.down_proj"
+  ],
+  "native_object_catalog": {
+    "ours": [
+      "per-checkpoint-whitened W_t S_D,t r_epsilon",
+      "tail-energy curve"
+    ],
+    "output_probability": [
+      "logit entropy",
+      "ECE",
+      "PPL",
+      "KL",
+      "task score"
+    ],
+    "raw_representation": [
+      "entropy ER",
+      "PR",
+      "top-k share",
+      "raw/centered anisotropy",
+      "CKA",
+      "domain separability"
+    ],
+    "singular_vector": [
+      "principal angle",
+      "U/V rotation",
+      "intruder dimensions"
+    ],
+    "weight_update": [
+      "update norm/rank/stable-rank",
+      "spectral concentration/sparsity",
+      "near-zero mass",
+      "principal/off-principal overlap",
+      "subspace locking"
+    ]
+  },
+  "outputs": [
+    {
+      "bytes": 216325,
+      "path": "/root/autodl-tmp/cycle09_stage3_followup/H5_frozen_self/geometry/llama_frozen_self_r_epsilon.csv",
+      "sha256": "9b5a5db093b77c5629745a8383d4a0aaca4613c9bc0fa9a2e5c1db612f9f3aab"
+    },
+    {
+      "bytes": 37577893,
+      "path": "/root/autodl-tmp/cycle09_stage3_followup/H5_frozen_self/geometry/llama_frozen_self_tail_energy.csv",
+      "sha256": "c559c90e9f8d7eb031ad1f307f09e066079bb6840cbee607638e60c11926dc32"
+    },
+    {
+      "bytes": 21665,
+      "path": "/root/autodl-tmp/cycle09_stage3_followup/H5_frozen_self/geometry/llama_frozen_self_raw_representation_suite.csv",
+      "sha256": "46a6b994d483a57157cb271111dc9548109cbaa862f7235ae1d49389746f566b"
+    },
+    {
+      "bytes": 9130,
+      "path": "/root/autodl-tmp/cycle09_stage3_followup/H5_frozen_self/geometry/llama_frozen_self_full_spectra_inventory.csv",
+      "sha256": "d0800e4ea20c86484b48c0ad7470f4fc124e378b30ff1d610af8ae19e95e8d49"
+    }
+  ],
+  "probe_manifest": {
+    "bytes": 2667,
+    "path": "/root/autodl-tmp/cycle09_block3/llama_geometry/corpora/probe_manifest.json",
+    "sha256": "003370a976a7244963c8bb5492e4e25a49dc3edce01dd43cdd5ace6268380c52"
+  },
+  "probes": [
+    "S_math",
+    "E_math",
+    "E_math_hard_v2",
+    "E_ood",
+    "E_if",
+    "E_general"
+  ],
+  "robustness_steps": [
+    0,
+    5,
+    20,
+    40,
+    160
+  ],
+  "row_counts": {
+    "r_epsilon": 2856,
+    "raw_representation": 90,
+    "spectra_inventory": 42,
+    "tail_energy": 714
+  },
+  "schema_version": 1,
+  "scope": "frozen_self",
+  "status": "complete",
+  "task": "Cycle09 block3 L3 Llama whitened functional rank + native-space baseline",
+  "track": "per_checkpoint_only"
+}

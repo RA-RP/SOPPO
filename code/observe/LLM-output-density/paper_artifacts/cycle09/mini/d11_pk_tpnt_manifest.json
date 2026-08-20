@@ -1,0 +1,69 @@
+{
+  "created_utc": "2026-07-27T02:33:00.914240+00:00",
+  "full_handoff": "/root/autodl-tmp/cycle09_relative_functional_contraction/d11_pk_tpnt/formal/final/d11_pk_tpnt_full_handoff.md",
+  "optional_e5_e7": {
+    "handoff": "/root/autodl-tmp/cycle09_relative_functional_contraction/d11_pk_tpnt/formal/final/d11_e5_e7_optional_handoff.md",
+    "manifest": "/root/autodl-tmp/cycle09_relative_functional_contraction/d11_pk_tpnt/formal/final/d11_e5_e7_manifest.json",
+    "status": "COMPLETE_D11_OPTIONAL_E5_E7"
+  },
+  "outputs": [
+    {
+      "bytes": 52490,
+      "exists": true,
+      "path": "/root/autodl-tmp/cycle09_relative_functional_contraction/d11_pk_tpnt/formal/final/d11_pk_tpnt_task_status.csv",
+      "sha256": "676e22780982a303d600669e46ed2678dfee4eaa165c35ac32071b84632fc440"
+    },
+    {
+      "bytes": 273530,
+      "exists": true,
+      "path": "/root/autodl-tmp/cycle09_relative_functional_contraction/d11_pk_tpnt/formal/final/d11_llama_merged_pk.csv",
+      "sha256": "0c3aea57656a45eed28a32f0f4d041b273d7b4de7087dfe510ecfadbc60c4b6d"
+    },
+    {
+      "bytes": 101397,
+      "exists": true,
+      "path": "/root/autodl-tmp/cycle09_relative_functional_contraction/d11_pk_tpnt/formal/final/d11_llama_pk_numeric_audit.csv",
+      "sha256": "fdf966fb03305def9493295bafb213ef61e006e0196189024a102a07550f8fc0"
+    },
+    {
+      "bytes": 920036,
+      "exists": true,
+      "path": "/root/autodl-tmp/cycle09_relative_functional_contraction/d11_pk_tpnt/formal/final/d11_tpnt_principal_mask.csv",
+      "sha256": "2f01150f49f82ce2ee0851319864b6b6860e278261481ffd184d707030b97a0b"
+    },
+    {
+      "bytes": 3028586,
+      "exists": true,
+      "path": "/root/autodl-tmp/cycle09_relative_functional_contraction/d11_pk_tpnt/formal/final/d11_tpnt_angles_pabs_nss.csv",
+      "sha256": "ec9b40ffec91d28b8c91948a4c44be03438d6fa1cfd1d11be91f51eb492d3439"
+    },
+    {
+      "bytes": 129766,
+      "exists": true,
+      "path": "/root/autodl-tmp/cycle09_relative_functional_contraction/d11_pk_tpnt/formal/final/d11_same_cell_feature_matrix.csv",
+      "sha256": "55ddfbb12391db842f91c604999b1fb5dc33f884b6c81538e0e9f0bb561481ea"
+    },
+    {
+      "bytes": 18681,
+      "exists": true,
+      "path": "/root/autodl-tmp/cycle09_relative_functional_contraction/d11_pk_tpnt/formal/final/d11_same_cell_incremental_comparison.csv",
+      "sha256": "0cc6ab530a317b7ecc96cf130bb99d5f258f8717cd20d6f2afbef00ff92981e9"
+    },
+    {
+      "bytes": 6525,
+      "exists": true,
+      "path": "/root/autodl-tmp/cycle09_relative_functional_contraction/d11_pk_tpnt/formal/final/d11_modelwise_and_crossmodel_summary.md",
+      "sha256": "c9ba36d75dce786c5025abee87836a5dbd719f7641e5b9be611486c329d973e1"
+    },
+    {
+      "bytes": 6885,
+      "exists": true,
+      "path": "/root/autodl-tmp/cycle09_relative_functional_contraction/d11_pk_tpnt/formal/final/d11_pk_tpnt_full_handoff.md",
+      "sha256": "3734dc243b5867bb86f7f5f41f6571c2a15b010b773d48e36215dc5c1671804c"
+    }
+  ],
+  "protocol": "D11_PK_TPNT",
+  "schema_version": "cycle09_d11_pk_tpnt_manifest_v1",
+  "status": "COMPLETE_D11_CORE_PLUS_OPTIONAL_E5_E7",
+  "tag": "formal"
+}

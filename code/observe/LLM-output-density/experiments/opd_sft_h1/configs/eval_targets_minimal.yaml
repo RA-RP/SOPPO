@@ -1,0 +1,18 @@
+id:
+  - MATH500
+math_aux:
+  - GSM8K
+  - AIME24
+ood:
+  - MMLU
+  - MMLU-STEM
+  - MMLU-Humanities
+  - MMLU-Social Sciences
+  - MMLU-Other
+  - TruthfulQA-MC1
+  - TruthfulQA-MC2
+  - WinoGrande
+  - IFEval prompt strict
+  - IFEval instruction strict
+optional:
+  - HumanEval

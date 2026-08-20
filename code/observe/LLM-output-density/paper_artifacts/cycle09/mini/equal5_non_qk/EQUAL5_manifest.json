@@ -1,0 +1,377 @@
+{
+  "activation_cache_from_full_checkpoint": true,
+  "arms": [
+    "base",
+    "offkd",
+    "opd",
+    "seqkd",
+    "sft"
+  ],
+  "blocked_cells": [
+    {
+      "arm": "",
+      "artifact_probe_name": "",
+      "checkpoint": "",
+      "epsilon": "",
+      "inventory_type": "blocked_task_family",
+      "layer": "",
+      "model": "",
+      "module": "",
+      "probe_name": "",
+      "reason": "RR2 displacement spectrum is superseded and forbidden for state-rank robustness; keep auxiliary only.",
+      "row_count": "",
+      "sha256": "",
+      "source_key": "",
+      "source_path": "",
+      "status": "SUPERSEDED_SOURCE_FORBIDDEN",
+      "task": "RR2D_displacement_spectrum"
+    },
+    {
+      "arm": "",
+      "artifact_probe_name": "",
+      "checkpoint": "",
+      "epsilon": "",
+      "inventory_type": "blocked_task_family",
+      "layer": "",
+      "model": "",
+      "module": "",
+      "probe_name": "",
+      "reason": "No formal Qwen centered module spectrum source; no new forward permitted.",
+      "row_count": "",
+      "sha256": "",
+      "source_key": "",
+      "source_path": "",
+      "status": "BLOCKED_NO_MODULE_SOURCE",
+      "task": "Qwen_centered_state_spectrum_equal5"
+    },
+    {
+      "arm": "",
+      "artifact_probe_name": "",
+      "checkpoint": "",
+      "epsilon": "",
+      "inventory_type": "blocked_task_family",
+      "layer": "",
+      "model": "",
+      "module": "",
+      "probe_name": "",
+      "reason": "Qwen state-rank module rows exist, but full singular spectrum/stable-rank/entropy source is not present in the approved input list.",
+      "row_count": "",
+      "sha256": "",
+      "source_key": "",
+      "source_path": "",
+      "status": "BLOCKED_NO_MODULE_SOURCE",
+      "task": "Qwen_full_state_singular_spectrum_equal5"
+    },
+    {
+      "arm": "",
+      "artifact_probe_name": "",
+      "checkpoint": "",
+      "epsilon": "",
+      "inventory_type": "blocked_task_family",
+      "layer": "",
+      "model": "",
+      "module": "",
+      "probe_name": "",
+      "reason": "No Qwen formal per-module p_k table found; cannot infer equal5 from equal7 feature matrix.",
+      "row_count": "",
+      "sha256": "",
+      "source_key": "",
+      "source_path": "",
+      "status": "BLOCKED_NO_MODULE_SOURCE",
+      "task": "Qwen_p_k_equal5"
+    }
+  ],
+  "checkpoints": [
+    0,
+    5,
+    10,
+    20,
+    40,
+    80,
+    160,
+    320,
+    480,
+    624
+  ],
+  "command": "experiments/opd_sft_h1/scripts/cycle09_equal5_non_qk.py",
+  "created_utc": "2026-07-28T06:18:15.495260+00:00",
+  "dtype_merge_protocols": {
+    "llama_pk": "formal BF16 merged-minus-base track; adapter-BA not used",
+    "qwen_pk": "blocked/no per-module source found",
+    "state_rank": "existing formal module CSV only"
+  },
+  "epsilons": [
+    0.01,
+    0.025,
+    0.05,
+    0.1
+  ],
+  "git_commit": "b9110d44daa13c7a848eb0b5b1a36faa4b5c68cb",
+  "gpu_used": false,
+  "input_paths_and_sha256": {
+    "d11_e5_layer_robustness": {
+      "exists": true,
+      "path": "/root/autodl-tmp/cycle09_relative_functional_contraction/d11_pk_tpnt/formal/final/d11_e5_layer_robustness.csv",
+      "sha256": "e76159e769dd402cf8be959bdac09003d2f34584bea9cc4c6f12293b6042e5a6"
+    },
+    "d11_e6_alpha_sensitivity": {
+      "exists": true,
+      "path": "/root/autodl-tmp/cycle09_relative_functional_contraction/d11_pk_tpnt/formal/final/d11_e6_alpha_sensitivity.csv",
+      "sha256": "d64dca8109a3d76d9fb34206cbe151cbd811902ec5b78fb21ecb78599030eec5"
+    },
+    "d11_e7_null_seed_rows_llama": {
+      "exists": true,
+      "path": "/root/autodl-tmp/cycle09_relative_functional_contraction/d11_pk_tpnt/formal/final/d11_e7_spectrum_matched_null_seed_rows_llama.csv",
+      "sha256": "5856f387722169cfdc570ed09226bffe7b0d72f55022dfe84fc5c9e211f7d618"
+    },
+    "d11_e7_null_seed_rows_qwen": {
+      "exists": true,
+      "path": "/root/autodl-tmp/cycle09_relative_functional_contraction/d11_pk_tpnt/formal/final/d11_e7_spectrum_matched_null_seed_rows_qwen.csv",
+      "sha256": "f16718c6cb79da0472ac08057007a74f75754ea9fc5e17ef66a53652725b5d52"
+    },
+    "d11_e7_spectrum_matched_null": {
+      "exists": true,
+      "path": "/root/autodl-tmp/cycle09_relative_functional_contraction/d11_pk_tpnt/formal/final/d11_e7_spectrum_matched_null.csv",
+      "sha256": "e58f37cfbedcf124bbd9e243e5dc63c23a3aa54a1bb3a512c825c59815abcece"
+    },
+    "d11_llama_merged_pk": {
+      "exists": true,
+      "path": "/root/autodl-tmp/cycle09_relative_functional_contraction/d11_pk_tpnt/formal/final/d11_llama_merged_pk.csv",
+      "sha256": "0c3aea57656a45eed28a32f0f4d041b273d7b4de7087dfe510ecfadbc60c4b6d"
+    },
+    "d11_same_cell_feature_matrix": {
+      "exists": true,
+      "path": "/root/autodl-tmp/cycle09_relative_functional_contraction/d11_pk_tpnt/formal/final/d11_same_cell_feature_matrix.csv",
+      "sha256": "55ddfbb12391db842f91c604999b1fb5dc33f884b6c81538e0e9f0bb561481ea"
+    },
+    "d11_tpnt_angles_pabs_nss": {
+      "exists": true,
+      "path": "/root/autodl-tmp/cycle09_relative_functional_contraction/d11_pk_tpnt/formal/final/d11_tpnt_angles_pabs_nss.csv",
+      "sha256": "ec9b40ffec91d28b8c91948a4c44be03438d6fa1cfd1d11be91f51eb492d3439"
+    },
+    "d11_tpnt_principal_mask": {
+      "exists": true,
+      "path": "/root/autodl-tmp/cycle09_relative_functional_contraction/d11_pk_tpnt/formal/final/d11_tpnt_principal_mask.csv",
+      "sha256": "2f01150f49f82ce2ee0851319864b6b6860e278261481ffd184d707030b97a0b"
+    },
+    "d5_fairness_update_equal7": {
+      "exists": true,
+      "path": "/root/autodl-tmp/cycle09_relative_functional_contraction/final/d5_fairness_update_equal7.csv",
+      "sha256": "41c63d2bc182d5286d9691bcf526e748ca243d6233dd8316080b12cbc8fd75f6"
+    },
+    "d5_fairness_update_module": {
+      "exists": true,
+      "path": "/root/autodl-tmp/cycle09_relative_functional_contraction/final/d5_fairness_update_module.csv",
+      "sha256": "1bea4d566461d8bcc73615c3639495f175c4eb620c0bf4ab9f1b4a1e22b6c39b"
+    },
+    "llama_frozen_self_module": {
+      "exists": true,
+      "path": "/root/autodl-tmp/cycle09_stage3_followup/H5_frozen_self/geometry/llama_frozen_self_r_epsilon.csv",
+      "sha256": "9b5a5db093b77c5629745a8383d4a0aaca4613c9bc0fa9a2e5c1db612f9f3aab"
+    },
+    "llama_outputs": {
+      "exists": true,
+      "path": "/root/autodl-tmp/cycle09_relative_functional_contraction/d10_llama_numeric_parity/formal/final/d10_5_integrated_outputs.csv",
+      "sha256": "9f0d75b037fe443a3c0a18185320ac679d01c5d718f6c511246a71222a9c471e"
+    },
+    "llama_rr2s_spectrum_module": {
+      "exists": true,
+      "path": "/root/LLM-output-density/mypaper/local_experiment_results/cycle_09_aaai_competitiveness_completion/run_01/mini/reviewer_robustness/RR2S_llama_state_spectrum_module.csv",
+      "sha256": "38b26845bc4b48fbc72985b16510fe918420e9f84cfbd11639181729d3fbd8f2"
+    },
+    "llama_rr3_centered_module": {
+      "exists": true,
+      "path": "/root/LLM-output-density/mypaper/local_experiment_results/cycle_09_aaai_competitiveness_completion/run_01/mini/reviewer_robustness/RR3_llama_centered_module.csv",
+      "sha256": "3171d9e1ad1a5c68c7f3ca4f8a34d5c0520853ba69b15ffa98f20ad951912ff0"
+    },
+    "llama_state_module": {
+      "exists": true,
+      "path": "/root/LLM-output-density/mypaper/local_experiment_results/cycle_09_aaai_competitiveness_completion/run_01/mini/llama_matched_state_module_ranks.csv",
+      "sha256": "591d022e964d028c4a42117da404caf970490507a6b7f62eb0fa1e54d4957fa6"
+    },
+    "qwen_alpha05_module": {
+      "exists": true,
+      "path": "/root/LLM-output-density/mypaper/local_experiment_results/cycle_09_aaai_competitiveness_completion/run_01/mini/qwen_alpha05_r_epsilon.csv",
+      "sha256": "468953f387c948b8bb0394aec1ca1276de91db330e9584595c2b36bd4ffd9b7e"
+    },
+    "qwen_outputs": {
+      "exists": true,
+      "path": "/root/autodl-tmp/cycle09_relative_functional_contraction/final/qwen_d4_merged_state_outputs.csv",
+      "sha256": "08b524d395a566a1fff3108443dc592e60ab3e26001868d980e3c0af98c6154b"
+    },
+    "qwen_state_module": {
+      "exists": true,
+      "path": "/root/autodl-tmp/cycle09_relative_functional_contraction/final/qwen_d4_merged_state_module_audit.csv",
+      "sha256": "e9617a23ac8b92a4f23353db7c6d3f52d4d5ceca54bddb89cb94853d851294e8"
+    },
+    "rr5_checkpoint_demeaned_cells": {
+      "exists": true,
+      "path": "/root/LLM-output-density/mypaper/local_experiment_results/cycle_09_aaai_competitiveness_completion/run_01/mini/reviewer_robustness/RR5_checkpoint_demeaned_cells.csv",
+      "sha256": "e191e1c5a0ef32e47bd6ebf45121a291c68da7f5f1c1fdc141b0fbdcf6624602"
+    },
+    "rr5_checkpoint_demeaned_correlations": {
+      "exists": true,
+      "path": "/root/LLM-output-density/mypaper/local_experiment_results/cycle_09_aaai_competitiveness_completion/run_01/mini/reviewer_robustness/RR5_checkpoint_demeaned_correlations.csv",
+      "sha256": "c316561aeb7693ee420283bb6a6a6c2fd86e213055f0d8e56a5a18d0bcfe7020"
+    },
+    "rr5_common_grid": {
+      "exists": true,
+      "path": "/root/LLM-output-density/mypaper/local_experiment_results/cycle_09_aaai_competitiveness_completion/run_01/mini/reviewer_robustness/RR5_llama_common_grid.csv",
+      "sha256": "41535f33912d718c403dddc2f65b348eb9630ca3d08e2c8befaeac9570b9ba8e"
+    },
+    "rr5_nested_folds": {
+      "exists": true,
+      "path": "/root/LLM-output-density/mypaper/local_experiment_results/cycle_09_aaai_competitiveness_completion/run_01/mini/reviewer_robustness/RR5_nested_regularization_folds.csv",
+      "sha256": "eba9ea21751c55abab6e93fc8bd377b191c4ba88230e8445a1f7223d4d374d8d"
+    },
+    "rr5_nested_manifest": {
+      "exists": true,
+      "path": "/root/LLM-output-density/mypaper/local_experiment_results/cycle_09_aaai_competitiveness_completion/run_01/mini/reviewer_robustness/RR5_nested_regularization_manifest.json",
+      "sha256": "75788160fa346645c04915a2f2855188ddcf56acf21d888f00afa81989cb4ec3"
+    },
+    "rr5_nested_metrics": {
+      "exists": true,
+      "path": "/root/LLM-output-density/mypaper/local_experiment_results/cycle_09_aaai_competitiveness_completion/run_01/mini/reviewer_robustness/RR5_nested_regularization_metrics.csv",
+      "sha256": "127ae919ebbfdafb4a1bc5fcb1ce55bf58be93b1eed16c89a17c77ef741f2753"
+    }
+  },
+  "layers": [
+    14,
+    18
+  ],
+  "measurement_side_exclusion": true,
+  "model_checkpoint_unchanged": true,
+  "models": [
+    "llama",
+    "qwen"
+  ],
+  "module_set_exclude": [
+    "self_attn.q_proj",
+    "self_attn.k_proj"
+  ],
+  "module_set_include": [
+    "self_attn.v_proj",
+    "self_attn.o_proj",
+    "mlp.gate_proj",
+    "mlp.up_proj",
+    "mlp.down_proj"
+  ],
+  "nested_folds_and_regularization_grid": {
+    "logistic_l2": [
+      0.0001,
+      0.001,
+      0.01,
+      0.1,
+      1,
+      10
+    ],
+    "ridge_alpha": [
+      0,
+      0.0001,
+      0.001,
+      0.01,
+      0.1,
+      1,
+      10,
+      100
+    ]
+  },
+  "new_behavior_eval": false,
+  "new_forward": false,
+  "new_svd": false,
+  "new_training": false,
+  "output_sha256": {
+    "EQUAL5_checkpoint_demeaned_correlations.csv": "00e2ea71eaf815f6ed70bc68182c1138976e34ea74a8082a059e92b405e16db1",
+    "EQUAL5_coverage_inventory.csv": "c5b82982eb26c63b8c76349ea7c589225616a270bbafa45882a4a1d87f9e86a5",
+    "EQUAL5_d11_parity_metrics.csv": "84000f31a057a5ebdb266b8a0cb38a5d5a7b1b18ef47d57d4416fe09649306df",
+    "EQUAL5_dominance_cells.csv": "74b70505319e01d0795f18a2ef9505199ce42ade4831b3579d65516fe252abc4",
+    "EQUAL5_dominance_summary.csv": "4c0ffc5d45bf221b802596592a27e9272a504b8f22cc502fb95e3572813b4eb0",
+    "EQUAL5_equal7_paired_comparison.csv": "24af89fe5885494855e3489cd0bdb965dc3660696ecc19d9e64b157bceb8f4a5",
+    "EQUAL5_functional_cells.csv": "1a8e551d3eb0cb5703f3a8bac69ba419db05676a0896e84ac6dee3569949d1fe",
+    "EQUAL5_functional_trajectories.csv": "6ff5e97002b16f0cb8ba593668507eacd1043727c1be72357aa9ec53a55a4cbe",
+    "EQUAL5_manifest.json": "bb14be60d03a3b0eb49586af8fc20b34912990a3de03c60bf492f7ed8108f06d",
+    "EQUAL5_ncd.csv": "c6b8472d57c8daccf1edc03519c4c70cfdc6a6b5644c5575de4b18347d79a2f0",
+    "EQUAL5_nested_folds.csv": "fcafb34163c3bd43230d982862c6a0d0f579a9971e24d0e2bf556850cc8b2927",
+    "EQUAL5_nested_metrics.csv": "826a9043865ff9a16449af9ee20371a4c3d022d8c0b72e45151ef3a85f24917b",
+    "EQUAL5_nested_predictions.parquet": "fb3ff057f7d56eacf05e943b32e0b68aa0d8d491736d4e1c0ab98f679cc0dfbc",
+    "EQUAL5_output_link_correlations.csv": "1df72b4e169a1a30ac20988236f75607715d34bdb80f5e35ae7fd8299af73bd2",
+    "EQUAL5_spectrum_robustness.csv": "6edf384f7e9182159ae35e35b5a5328db28fae2dc6242f9fd672c150dbd01fc8",
+    "EQUAL5_support_controls.csv": "35a11b0eb02eb8c2e2dcd711ad042eb946661ed8698553e60fb15b4bc4eec721",
+    "EQUAL5_theory_handoff.md": "42dacbfec323c5670bc7cc3996c39660fda0d6d0fe3e6d396588c1307598be0f",
+    "EQUAL5_weight_baselines_aggregate.csv": "8f3d1874efab9d166c88dc7691884d01c4712d16f499da32b8ac8d599f5c8a24",
+    "EQUAL5_weight_baselines_module.csv": "d4b5f30356d11386a2e4d4c1316ea16a06889f45aceede969be3db1834311445"
+  },
+  "probes_canonical": [
+    "E_AIME24",
+    "E_general",
+    "E_ifeval",
+    "E_mathHeld",
+    "E_mmluPro",
+    "legacy_S_math"
+  ],
+  "row_counts": {
+    "EQUAL5_checkpoint_demeaned_correlations.csv": 24,
+    "EQUAL5_coverage_inventory.csv": 9156,
+    "EQUAL5_d11_parity_metrics.csv": 41,
+    "EQUAL5_dominance_cells.csv": 96,
+    "EQUAL5_dominance_summary.csv": 12,
+    "EQUAL5_equal7_paired_comparison.csv": 1306,
+    "EQUAL5_functional_cells.csv": 6520,
+    "EQUAL5_functional_trajectories.csv": 1304,
+    "EQUAL5_ncd.csv": 32,
+    "EQUAL5_nested_folds.csv": 112,
+    "EQUAL5_nested_metrics.csv": 28,
+    "EQUAL5_nested_predictions.parquet": 1792,
+    "EQUAL5_output_link_correlations.csv": 384,
+    "EQUAL5_spectrum_robustness.csv": 517,
+    "EQUAL5_support_controls.csv": 10,
+    "EQUAL5_weight_baselines_aggregate.csv": 2401,
+    "EQUAL5_weight_baselines_module.csv": 12000
+  },
+  "runtime_seconds": 25.518,
+  "sanity_checks": [
+    {
+      "check": "Llama uncentered equal5 all epsilon early cells",
+      "expected_temporary_theory_read": "48/48",
+      "observed": "48/48",
+      "pass": true
+    },
+    {
+      "check": "Qwen uncentered equal5 epsilon .05 early cells",
+      "expected_temporary_theory_read": "12/12",
+      "observed": "12/12",
+      "pass": true
+    },
+    {
+      "check": "Qwen uncentered equal5 all epsilon early cells",
+      "expected_temporary_theory_read": "47/48",
+      "observed": "47/48",
+      "pass": true
+    },
+    {
+      "check": "Pooled Llama+Qwen epsilon .05 early cells",
+      "expected_temporary_theory_read": "24/24",
+      "observed": "24/24",
+      "pass": true
+    },
+    {
+      "check": "Llama centered equal5 all epsilon early cells",
+      "expected_temporary_theory_read": "48/48",
+      "observed": "48/48",
+      "pass": true
+    }
+  ],
+  "source_protocols": {
+    "d11_weight_baselines": "D11 formal BF16 merged-minus-base/deployed-effective module rows",
+    "llama_rr2s_spectrum_module": "RR2S formal state spectrum reuse; no forward",
+    "llama_rr3_centered_module": "RR3 formal centered spectrum reuse; no forward",
+    "llama_state_module": "D10 BF16 formal numeric protocol module rows",
+    "qwen_state_module": "D4.1 current merged/deployed state rank module rows",
+    "rr5_nested": "RR5 leave-one-checkpoint nested regularization inherited protocol"
+  },
+  "task": "EQUAL5_NON_QK",
+  "tie_policy": {
+    "np_isclose_atol": 1e-12,
+    "np_isclose_rtol": 1e-09
+  }
+}

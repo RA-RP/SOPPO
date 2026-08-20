@@ -1,0 +1,65 @@
+{
+  "created_utc": "2026-07-27T11:56:32.885423+00:00",
+  "git_commit": "b9110d44daa13c7a848eb0b5b1a36faa4b5c68cb",
+  "command": "/root/LLM-output-density/experiments/opd_sft_h1/scripts/cycle09_reviewer_robustness.py --run-ready-reuse",
+  "status": "SUPERSEDED_WRONG_ESTIMAND_AND_EPSILON_IMPLEMENTATION",
+  "formal_protocol_id": "RR2_stage4_direction_reuse_after_RR0",
+  "models": [
+    "qwen",
+    "llama"
+  ],
+  "arms": [
+    "opd",
+    "sft",
+    "offkd",
+    "seqkd"
+  ],
+  "checkpoints": [
+    20,
+    40,
+    80
+  ],
+  "probes": [
+    "E_general",
+    "E_math",
+    "E_ood",
+    "E_if"
+  ],
+  "layers": {
+    "qwen": 18,
+    "llama": 14
+  },
+  "epsilons": [
+    0.01,
+    0.025,
+    0.05,
+    0.1
+  ],
+  "draws_and_seeds": {},
+  "row_counts": {
+    "module": 1680,
+    "equal7": 240,
+    "ordering": 48,
+    "output_links": 20
+  },
+  "blocked_cells": 36,
+  "input_paths_and_sha256": {
+    "RR0_grid_coverage": "7a24623326c35934da4ccee0f7e37472aeb0fae7a7e9c629bfb0a95ce3999337"
+  },
+  "output_sha256": {
+    "RR2_spectrum_stability_module.csv": "d80d785cbb3c5b2f28e772c793876cd49821d02c254e362652ac93afa76bc051",
+    "RR2_spectrum_stability_equal7.csv": "5d161515eea06da665044b749391f519be3e4d84a926a9a61cab4b7fea9008bb",
+    "RR2_continuous_ordering.csv": "1f7b6d88e9b636b5d18773a37d38aa2003ebf1c9959088706ae5910bc16f5c5e",
+    "RR2_continuous_output_links.csv": "29c7266f1cc76a6c6cbc608356ce4f74b336dcc72242dcae76364b13317a300d"
+  },
+  "notes": "Uses Stage4 direction singular values exactly where RR0 marked READY_REUSE; Qwen non-OPD cells remain blocked.",
+  "superseded_utc": "2026-07-27T12:24:59.307357+00:00",
+  "superseded_reason": "Read main.direction.pt displacement spectrum, preferred displacement_rank, and earlier code hard-coded epsilon=0.05 for tail margins. It is not formal RR2 state-spectrum robustness for W_t S_{D,t}.",
+  "superseded_outputs": [
+    "RR2_spectrum_stability_module.csv",
+    "RR2_spectrum_stability_equal7.csv",
+    "RR2_continuous_ordering.csv",
+    "RR2_continuous_output_links.csv",
+    "RR2_spectrum_manifest.json"
+  ]
+}

@@ -1,0 +1,63 @@
+# Base configuration for MVP experiments
+# Cycle: cycle-20260818-01
+# Experiment: v0.3 MVP
+
+# Model
+model:
+  name_or_path: "Qwen/Qwen3-4B"  # Will be overridden with server path
+  torch_dtype: "float16"
+  use_flash_attention: false
+  max_seq_len: 2048
+
+# Data
+data:
+  dataset_name: "openbmb/UltraFeedback"
+  total_samples: 10000
+  labeled_ratio: 0.1
+  test_ratio: 0.1
+  seed: 42
+
+# Training
+training:
+  # Hyperparameters (locked from stage 0 pre-experiment)
+  beta: 0.1  # To be determined in stage 0
+  lr: 1e-6  # To be determined in stage 0
+  epsilon: 1e-8  # To be determined in stage 0
+
+  # Training schedule
+  epochs: 2
+  batch_size_per_device: 8
+  gradient_accumulation_steps: 8
+  num_devices: 2
+  global_batch_size: 128  # = batch_size_per_device * grad_accum * num_devices
+
+  # Optimizer
+  optimizer: "adamw"
+  adam_beta1: 0.9
+  adam_beta2: 0.999
+  weight_decay: 0.01
+  max_grad_norm: 1.0
+
+  # Learning rate schedule
+  warmup_ratio: 0.1
+  lr_scheduler_type: "linear"
+
+  # Evaluation
+  eval_steps: 20
+  save_steps: 20
+  logging_steps: 1
+
+  # Random seed (MVP: single seed)
+  seed: 42
+
+# Method-specific settings (overridden in method configs)
+method:
+  name: "base"
+  use_unlabeled: false
+  lambda_pe: 0.0
+  lambda_scheduler: "fixed"
+
+# Output
+output:
+  save_total_limit: null  # Keep all checkpoints during C_ε observation
+  save_best_only: false  # Save all checkpoints for observation

@@ -1,0 +1,41 @@
+{
+  "pipeline": "cluster_kl",
+  "run_name": "offpolicy_topk_kl",
+  "repo_root": "/root/LLM-output-density",
+  "task_file": "dataset.jsonl",
+  "train_file": "train.jsonl",
+  "dataset_alias": "sft_train",
+  "output_root": "/root/autodl-tmp/exp0513/offPolicyData/runs",
+  "seed": 42,
+  "overwrite_outputs": false,
+
+  "kl_sample": {
+    "class_sample_size": null,
+    "center_fraction": 0.5
+  },
+
+  "getslice": {
+    "base_config": "/root/LLM-output-density/GetSlice/config.json",
+    "config_out": "getslice_config.json",
+    "output_dir": "GetSliceOutput",
+    "script": "/root/LLM-output-density/GetSlice/slice.py",
+    "x_jsonl_path": null
+  },
+
+  "kl": {
+    "csv_name": "cluster_kl.csv"
+  },
+
+  "ranking": {
+    "metric": "topk_KL",
+    "direction": "desc",
+    "topk_kl": {
+      "top_k": 50
+    }
+  },
+
+  "aggregation": {
+    "dataset_size": 0,
+    "bands": ["high", "mid", "low"]
+  }
+}

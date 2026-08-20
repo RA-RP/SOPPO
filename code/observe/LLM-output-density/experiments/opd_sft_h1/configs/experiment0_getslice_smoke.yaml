@@ -1,0 +1,7 @@
+experiment:
+  name: experiment0_getslice_smoke
+  output_root: /root/autodl-tmp/exp0609/experiment0_getslice_smoke
+
+geometry:
+  getslice_root: C:\Users\Administrator\Desktop\paper\已有实验数据\getslice
+  spectral_gap_k: 1

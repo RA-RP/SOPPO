@@ -1,0 +1,12 @@
+task,status,rows
+H10_equal5_feature_matrix,complete,120
+H10_standalone_correlations,complete,960
+H10_checkpoint_demeaned,complete,240
+H10_progress_residual_diagnostic,complete,960
+H10_epsilon_sensitivity,complete,768
+H11_grouped_heldout,complete,528
+H4_related_work_pk5_rebuild,complete,61
+canonical_behavior_join,complete,60
+figures,complete,6
+fat_r1_v2_documentation_correction,complete,2
+optional_qwen_step10_pk,OPTIONAL_DEFERRED,0

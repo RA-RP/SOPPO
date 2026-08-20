@@ -1,0 +1,113 @@
+\section{Results}
+
+\input{results_floats_en}
+
+\subsection{Functional Spectra Add Information Beyond Activation and Weight Coordinates}
+
+Figure~\ref{fig:main} places four observables on the same training settings and checkpoints.
+ER measures the spectral dimension of activation covariance; TPNT measures enrichment of
+update coordinates in a source-principal mask; PABS measures rotation of dominant weight
+subspaces; the functional spectrum measures output modes formed by the current weight on
+directions actually visited by a domain. Their vertical scales are incomparable, but
+their trajectory structure can be compared.
+
+Activation trajectories do not reproduce the functional separation. Across several
+external Llama domains, ER changes by less than $.003$ at OPD@160 and step-0 CKA remains
+approximately $.9997$--$1.0000$, while $r_{.05}$ at the same locations has fallen by
+roughly 14--26 directions. TPNT shows local enrichment above a spectrum-matched null at
+some checkpoints but no stable cross-model OPD-specific path. PABS remains close to one,
+with small NSS, indicating that these LoRA trajectories evolve largely within a nearly
+fixed dominant weight basis. Equal-5 functional contraction, in contrast, clearly
+separates the training settings in the last column of Figure~\ref{fig:main}. This
+difference comes from the joint action of $W_t$ and the domain input metric, not merely
+from adding more features. Native metrics, nulls, and layer results are in Supplementary
+Secs.~B.4 and C.3.
+
+We then leave out checkpoint groups on 64 strictly common states per model.
+Table~\ref{tab:identification} compares the complete activation suite $A$, functional
+contraction $C_5$, and source-principal block $P_{k,5}$. $C_5$ provides stronger OPD
+ranking in both models and exceeds raw activations on all three output targets under the
+same protocol. Strict $p_k$ retains a local Qwen absolute-NLL advantage, so functional
+state and update placement remain task-dependent complements rather than a universal
+dominance relation (Supplementary Sec.~D.3).
+
+\subsection{OPD Dominates Shared Early Functional Contraction}
+
+The last column of Figure~\ref{fig:main} shows deeper early OPD contraction in both
+models. To test whether domain averaging hides a reversal, define the margin over the
+nearest offline setting:
+\begin{equation}
+M_{m,D,t}
+=\min_{b\in\{\mathrm{SFT,offKD,seqKD}\}}\Delta r_{m,b,D,t}^{(5)}
+-\Delta r_{m,\mathrm{OPD},D,t}^{(5)}.
+\end{equation}
+$M>0$ means that OPD contracts more than every offline setting. At
+$\varepsilon=.05$, the minimum margin across four core domains and steps 20/40/80 is
+positive for both models; complete domain curves are in Supplementary Sec.~C.1. We also
+integrate below-base contraction in $\tau=\log(1+t)$ through $T=320$ to obtain negative
+contraction dose (NCD). Table~\ref{tab:ncd} keeps early ordering and full-trajectory dose
+separate; OPD has the largest NCD in both models.
+
+Four thresholds, continuous spectra, centered covariance, and layer audits preserve this
+conclusion. Module audits show that the OPD-deepest ordering is more stable in
+value/output and MLP projections, whereas q/k are heterogeneous; this is not an
+attribution of contraction energy to five modules. Complete equal-7, layer, and module
+results are in Supplementary Secs.~C.2--C.3.
+
+\subsection{Exposure and Refresh Organize Trajectories, Not Readout}
+
+Under the same forward-KL target, Qwen $\alpha=.5$ moves in an ordered direction from
+off-KD toward OPD without forming an exact one-dimensional interpolation
+(Figure~\ref{fig:controls}a). Llama frozenSelf0-KD instead removes only continual refresh
+of current-student rollouts. OPD's contraction advantage persists at all later checkpoints
+on five fixed external domains (Figures~\ref{fig:controls}b--c), making the
+current-support refresh bundle the more direct organizer. Because refresh jointly changes
+rollout length, EOS, repetition, and style, this control identifies the aggregate refresh
+bundle rather than a pure freshness effect.
+
+Off-KD and seqKD use identical teacher sequences, order, steps, and LoRA configuration,
+changing only the target. Table~\ref{tab:support-readout}A shows highly aligned paths
+across all four Qwen domains; Llama mode budgets remain close, although temporal
+co-movement is heterogeneous on General. Readout is not locked by these paths. Qwen
+seqKD has a much higher endpoint MATH500 cap-hit rate, with accuracy and formatting
+changes, while Llama does not reproduce a divergence of comparable size
+(Table~\ref{tab:support-readout}B). Matched sequence support can organize a similar
+functional-mode budget while target distribution changes its realization.
+
+\subsection{Relative Contraction Tracks Regional Unsigned Movement}
+
+Figure~\ref{fig:regional}a compares $c_{.05}^{(5)}$ with regional KL within each training
+setting. Formatting, answer, and termination on MMLU, and reasoning, boxed answer, and
+termination on MATH, mostly move with functional contraction. Math CoT is positive in
+all four settings of both models. To fix training stage, we subtract the contemporaneous
+four-setting mean within each model--domain--checkpoint. Math $\mathrm{KL}_C$ remains
+correlated at $.875/.573$ in Llama/Qwen, compared with $.902/.440$ for
+$\mathrm{KL}_B$; the regional contrast $\mathrm{KL}_B-\mathrm{KL}_C$ is
+$-.209/-.183$. Functional contraction therefore tracks how far each region moves but
+does not determine whether movement is allocated primarily to reasoning or final answer.
+
+Table~\ref{tab:regional-prediction} compares $C_5$ with the strong weight baseline
+$P_{k,5}$ on the originally frozen actual-KL regions. Functional contraction has higher
+held-out $R^2$ in most regions, with explicit exceptions for Llama Math boxed answer and
+Qwen Math termination. This matched comparison does not yet include the later Math $C$
+audit, so we do not fold the new region into the old win summary. Across signed and
+absolute targets the average gap narrows, and the unsigned relation also persists when
+the full fixed reference completion is merged into one region (Supplementary
+Secs.~D.1--D.3).
+
+\subsection{Signed Readout and Behavior Are Model-Dependent}
+
+KL measures movement magnitude; signed NLL asks whether reference tokens become easier
+or harder. MMLU-Pro $\Delta\mathrm{NLL}_{F-A}$ contrasts format and answer, while MATH
+$\Delta\mathrm{NLL}_{B-C}$ contrasts boxed answer and preceding reasoning. Their
+relationships to strict--flexible gaps or extraction failure change sign across models
+and settings (Figure~\ref{fig:regional}b). For example, $F-A$ is positively associated
+with the format gap in Qwen off-KD/seqKD but negatively associated in Qwen OPD and Llama
+OPD. Functional mode count, regional allocation, reference-token valence, and free
+generation are related but non-interchangeable levels.
+
+This boundary agrees with matched support. Functional spectra describe how sequence
+support organizes local mode budgets and how far output distributions move, but one rank
+cannot determine whether that movement improves or harms a task. Qwen adapter zeroing
+and answer-position probability-mass audits further support a formatting/readout-channel
+account, but remain model-specific evidence (Supplementary Sec.~D.5).

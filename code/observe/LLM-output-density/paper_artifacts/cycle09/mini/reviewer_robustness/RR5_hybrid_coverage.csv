@@ -1,0 +1,9 @@
+model,arm,total_cells,matched_cells,matched_fraction
+llama,offkd,24,16,0.6666666666666666
+llama,opd,24,16,0.6666666666666666
+llama,seqkd,24,16,0.6666666666666666
+llama,sft,24,16,0.6666666666666666
+qwen,offkd,24,12,0.5
+qwen,opd,24,0,0.0
+qwen,seqkd,24,0,0.0
+qwen,sft,24,0,0.0

@@ -1,0 +1,28 @@
+{
+  "created_utc": "2026-07-27T13:00:39.530024+00:00",
+  "git_commit": "b9110d44daa13c7a848eb0b5b1a36faa4b5c68cb",
+  "command": "experiments/opd_sft_h1/scripts/cycle09_reviewer_robustness_correction2.py",
+  "status": "COMPLETE_RR2S_LLAMA_FORMAL_STATE_SPECTRUM_REUSE_NO_FORWARD",
+  "formal_protocol_id": "RR2S_llama_D10_formal_WtSdt_state_spectrum_reuse",
+  "numeric_protocol": "Formal D10 BF16 merged checkpoint/load/forward; FP32 Gram accumulation and WS matmul; FP64 Gram eig/SVD and singular-energy accumulation. This pass reused D10 saved complete spectra; no model forward.",
+  "coverage": "4 arms x 3 checkpoints x 4 probes plus 4 base probe profiles; headline L14; 7 modules; eps=.01/.025/.05/.10",
+  "validation": "RR2S ranks matched D10 formal state-rank table before aggregation; tail consistency checked for every spectrum/epsilon.",
+  "row_counts": {
+    "module": 1456,
+    "equal7": 192,
+    "ordering": 144,
+    "output_links": 36,
+    "parity_audit": 1456
+  },
+  "input_paths_and_sha256": {
+    "d10_5_integrated_state_module.csv": "41aa5440f1743a56b8bfc55a27b1c4b47f8262249b3985fbe484ce3b5589c115",
+    "d10_5_integrated_outputs.csv": "9f0d75b037fe443a3c0a18185320ac679d01c5d718f6c511246a71222a9c471e"
+  },
+  "output_sha256": {
+    "RR2S_llama_state_spectrum_module.csv": "38b26845bc4b48fbc72985b16510fe918420e9f84cfbd11639181729d3fbd8f2",
+    "RR2S_llama_state_spectrum_equal7.csv": "0a0c56bbd7898c9ea03a9be3425107812c3168a9642d9fa52fd73f600d315606",
+    "RR2S_llama_continuous_ordering.csv": "1b8724777c8c20e4553a1d2e94a1c0c5c29649055b1038c06cda7b56d7269265",
+    "RR2S_llama_continuous_output_links.csv": "7521e5019a68567304f994339892dc9defa491a9fa703d43ddb222cac623bf29",
+    "RR2S_llama_parity_audit.csv": "3f3ac8da695ee2eb08f46b1cfae18360f534bde0bfcb5b532d539e122ac2fb28"
+  }
+}
