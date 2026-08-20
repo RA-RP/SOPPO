@@ -31,7 +31,8 @@ echo "Experiment: $EXPERIMENT_DIR"
 echo "GetSlice: $GETSLICE_DIR"
 
 # Activate environment
-source "$ENV_DIR/bin/activate"
+source "$SCRIPT_DIR/runtime_env.sh"
+soppo_activate_env "$ENV_DIR"
 export PYTHONPATH="$CODE_DIR:$GETSLICE_DIR:${PYTHONPATH:-}"
 
 echo ""

@@ -73,6 +73,7 @@ SOPPO/code/
 │   └── dpo100.yaml                # DPO-100% 配置
 ├── scripts/cluster/               # 服务器执行脚本
 │   ├── server_paths.sh            # ICLR/SOPPO 平级目录合同
+│   ├── runtime_env.sh             # Miniforge 加载与 Conda 环境激活
 │   ├── 00_server_setup.sh         # 环境准备
 │   ├── 01_server_tests.sh         # 单元测试
 │   ├── 02_prepare_data.sh         # 数据准备
@@ -202,8 +203,8 @@ training:
 ## 5. 服务器执行流程
 
 ### 阶段 -1：环境准备（`00_server_setup.sh`）
-- 在 `gn001` 加载服务器 `python/3.10.4` module；拒绝默认的 Python 3.6.8
-- 创建标准 Python venv：`<SERVER_BASE>/envs/youc`（不依赖 Conda）
+- 在 `gn001` 通过 `runtime_env.sh` 加载已验证的 `miniforge3/25.11.0-0` module
+- 创建固定 Python 3.10 的 Conda 路径环境：`<SERVER_BASE>/envs/youc`
 - 安装依赖（`requirements.lock.txt`）
 - 环境检查：CUDA、PyTorch、HuggingFace
 - 生成后续会话入口：`<SERVER_BASE>/activate_env.sh`

@@ -27,7 +27,8 @@ echo "Code: $CODE_DIR"
 echo "Data output: $DATA_DIR"
 
 # Activate environment
-source "$ENV_DIR/bin/activate"
+source "$SCRIPT_DIR/runtime_env.sh"
+soppo_activate_env "$ENV_DIR"
 
 # Add code to PYTHONPATH
 export PYTHONPATH="$CODE_DIR:${PYTHONPATH:-}"

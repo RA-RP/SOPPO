@@ -30,7 +30,8 @@ echo "Experiment: $EXPERIMENT_DIR"
 echo "Local export: $LOCAL_EXPORT_DIR"
 
 # Activate environment
-source "$ENV_DIR/bin/activate"
+source "$SCRIPT_DIR/runtime_env.sh"
+soppo_activate_env "$ENV_DIR"
 export PYTHONPATH="$CODE_DIR:${PYTHONPATH:-}"
 
 # Create export directory

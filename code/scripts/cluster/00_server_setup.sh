@@ -1,6 +1,6 @@
 #!/bin/bash
 # Stage -1: Environment Setup
-# 在编译节点（gn001）运行；脚本会加载服务器的 Python 3.10 module
+# 在编译节点（gn001）运行；脚本会加载服务器的 Miniforge module
 # Purpose: Create directory structure, install dependencies
 
 set -euo pipefail
@@ -62,50 +62,12 @@ fi
 echo "✓ Directory structure verified"
 
 # ===================================================
-# Python 运行时预检（任何安装动作之前）
+# Miniforge 运行时预检（任何安装动作之前）
 # ===================================================
 
-BOOTSTRAP_PYTHON=""
-for candidate in python3.10 python3 python; do
-    if command -v "$candidate" >/dev/null 2>&1 \
-        && "$candidate" -c 'import sys; raise SystemExit(0 if sys.version_info[:2] == (3, 10) else 1)' 2>/dev/null; then
-        BOOTSTRAP_PYTHON="$(command -v "$candidate")"
-        break
-    fi
-done
-
-if [[ -z "$BOOTSTRAP_PYTHON" && -f /home-ssd/Soft/modules/bashrc ]]; then
-    source /home-ssd/Soft/modules/bashrc
-    if type module >/dev/null 2>&1; then
-        echo "Loading server Python module: python/3.10.4"
-        module load python/3.10.4
-    fi
-
-    for candidate in python3.10 python3 python; do
-        if command -v "$candidate" >/dev/null 2>&1 \
-            && "$candidate" -c 'import sys; raise SystemExit(0 if sys.version_info[:2] == (3, 10) else 1)' 2>/dev/null; then
-            BOOTSTRAP_PYTHON="$(command -v "$candidate")"
-            break
-        fi
-    done
-fi
-
-if [[ -z "$BOOTSTRAP_PYTHON" ]]; then
-    echo ""
-    echo "ERROR: Python 3.10 is required to create $ENV_ROOT/youc."
-    echo "The current shell does not provide a compatible Python runtime."
-    if command -v python3 >/dev/null 2>&1; then
-        echo "Detected python3: $(command -v python3) ($(python3 --version 2>&1))"
-    fi
-    if command -v python >/dev/null 2>&1; then
-        echo "Detected python: $(command -v python) ($(python --version 2>&1))"
-    fi
-    echo "Load the server module with: module load python/3.10.4"
-    echo "Then rerun this script; do not use the system Python 3.6.8 runtime."
-    exit 2
-fi
-
-echo "Python bootstrap: $BOOTSTRAP_PYTHON ($($BOOTSTRAP_PYTHON --version 2>&1))"
+source "$SCRIPT_DIR/runtime_env.sh"
+soppo_load_miniforge
+echo "Conda bootstrap: $(command -v conda) ($(conda --version))"
 
 # ===================================================
 # 创建目录结构
@@ -121,66 +83,59 @@ mkdir -p "$RUN_ROOT"
 mkdir -p "$EXPORT_ROOT"
 mkdir -p "$PLATFORM_LOG_ROOT"
 mkdir -p "$CACHE_ROOT/pip"
+mkdir -p "$CACHE_ROOT/conda/pkgs"
 mkdir -p "$CACHE_ROOT/huggingface"
 mkdir -p "$CACHE_ROOT/modelscope"
 
 echo "✓ Directory structure created"
 
 # ===================================================
-# 创建 Python 虚拟环境
+# 设置缓存路径并加载网络代理
 # ===================================================
 
 echo ""
-echo "=== Creating Python Virtual Environment: $ENV_ROOT/youc ==="
+echo "Setting cache directories and loading network proxy..."
+
+export PIP_CACHE_DIR="$CACHE_ROOT/pip"
+export CONDA_PKGS_DIRS="$CACHE_ROOT/conda/pkgs"
+export HF_HOME="$CACHE_ROOT/huggingface"
+export TRANSFORMERS_CACHE="$CACHE_ROOT/huggingface/transformers"
+export MODELSCOPE_CACHE="$CACHE_ROOT/modelscope"
+
+source /home-ssd/Soft/modules/bashrc
+module load proxy/proxy
+
+echo "✓ Cache paths and network proxy configured"
+
+# ===================================================
+# 创建 Conda 路径环境
+# ===================================================
+
+echo ""
+echo "=== Creating Conda Environment: $ENV_ROOT/youc ==="
 
 ENV_DIR="$ENV_ROOT/youc"
 
-# 拒绝覆盖无法识别的已有目录；正常重跑则复用已创建的 venv。
-if [[ -e "$ENV_DIR" && ! -x "$ENV_DIR/bin/python" ]]; then
+# 拒绝覆盖无法识别的已有目录；正常重跑则复用已创建的 Conda 环境。
+if [[ -e "$ENV_DIR" && ! -f "$ENV_DIR/conda-meta/history" ]]; then
     echo "ERROR: Existing environment directory is incomplete or incompatible: $ENV_DIR"
     echo "Move it aside after manual inspection, then rerun this script."
     exit 1
 fi
 
-if [[ ! -x "$ENV_DIR/bin/python" ]]; then
-    echo "Creating Python venv: $ENV_DIR"
-    "$BOOTSTRAP_PYTHON" -m venv "$ENV_DIR"
-    echo "✓ Python venv created"
+if [[ ! -f "$ENV_DIR/conda-meta/history" ]]; then
+    echo "Creating Conda environment with Python 3.10: $ENV_DIR"
+    conda create --prefix "$ENV_DIR" python=3.10 pip -y
+    echo "✓ Conda environment created"
 else
-    echo "Using existing Python venv: $ENV_DIR"
+    echo "Using existing Conda environment: $ENV_DIR"
 fi
 
-source "$ENV_DIR/bin/activate"
+soppo_activate_env "$ENV_DIR"
 
 echo "Environment activated: $ENV_DIR"
 echo "Python: $(which python)"
 echo "Python version: $(python --version)"
-
-# ===================================================
-# 设置缓存路径
-# ===================================================
-
-echo ""
-echo "Setting cache directories..."
-
-export PIP_CACHE_DIR="$CACHE_ROOT/pip"
-export HF_HOME="$CACHE_ROOT/huggingface"
-export TRANSFORMERS_CACHE="$CACHE_ROOT/huggingface/transformers"
-export MODELSCOPE_CACHE="$CACHE_ROOT/modelscope"
-
-echo "✓ Cache paths configured"
-
-# ===================================================
-# 加载网络代理（必须）
-# ===================================================
-
-echo ""
-echo "Loading network proxy..."
-
-source /home-ssd/Soft/modules/bashrc
-module load proxy/proxy
-
-echo "✓ Network proxy loaded"
 
 # ===================================================
 # 安装依赖
@@ -276,27 +231,19 @@ cat > "$ACTIVATE_SCRIPT" <<'ACTIVATE_EOF'
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BASE_DIR="$SCRIPT_DIR"
 
-# Restore the Python runtime used to create the venv.
-if [[ -f /home-ssd/Soft/modules/bashrc ]]; then
-    source /home-ssd/Soft/modules/bashrc
-    if type module >/dev/null 2>&1; then
-        module load python/3.10.4 >/dev/null 2>&1 || {
-            echo "ERROR: Failed to load python/3.10.4 module" >&2
-            return 1 2>/dev/null || exit 1
-        }
-    fi
-fi
-
-# Activate the path-based Python venv
+# Activate the path-based Conda environment through the shared helper.
 ENV_DIR="$BASE_DIR/envs/youc"
-if [[ ! -f "$ENV_DIR/bin/activate" ]]; then
-    echo "ERROR: Python environment not found: $ENV_DIR" >&2
+RUNTIME_HELPER="$BASE_DIR/SOPPO/code/scripts/cluster/runtime_env.sh"
+if [[ ! -f "$RUNTIME_HELPER" ]]; then
+    echo "ERROR: Runtime helper not found: $RUNTIME_HELPER" >&2
     return 1 2>/dev/null || exit 1
 fi
-source "$ENV_DIR/bin/activate"
+source "$RUNTIME_HELPER"
+soppo_activate_env "$ENV_DIR" || return 1 2>/dev/null || exit 1
 
 # Set cache paths
 export PIP_CACHE_DIR="$BASE_DIR/cache/pip"
+export CONDA_PKGS_DIRS="$BASE_DIR/cache/conda/pkgs"
 export HF_HOME="$BASE_DIR/cache/huggingface"
 export TRANSFORMERS_CACHE="$BASE_DIR/cache/huggingface/transformers"
 export MODELSCOPE_CACHE="$BASE_DIR/cache/modelscope"
