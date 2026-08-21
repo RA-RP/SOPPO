@@ -9,7 +9,7 @@ from pathlib import Path
 
 import jsonlines
 
-from ..data.dataset import data_file_sha256
+from ..data.dataset import TOKENIZATION_CONTRACT, data_file_sha256
 
 
 def combine(inputs, output: Path) -> None:
@@ -60,6 +60,7 @@ def split(combined_cache: Path, targets, output_dir: Path, model_manifest: Path,
             "max_length": max_length,
             "enable_thinking": False,
             "response_only": True,
+            "tokenization_contract": TOKENIZATION_CONTRACT,
             "cache_sha256": data_file_sha256(output),
         }
         manifest_path.write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n", encoding="utf-8")

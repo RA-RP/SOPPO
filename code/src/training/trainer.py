@@ -19,7 +19,13 @@ from torch.nn.parallel import DistributedDataParallel
 from torch.utils.data import DataLoader, DistributedSampler
 
 from ..config import apply_overrides, canonical_json, load_config, save_config, validate_config
-from ..data.dataset import PreferenceCollator, PreferenceDataset, create_dataloader, data_file_sha256
+from ..data.dataset import (
+    PreferenceCollator,
+    PreferenceDataset,
+    TOKENIZATION_CONTRACT,
+    create_dataloader,
+    data_file_sha256,
+)
 from ..model.dpo_loss import (
     DPOLoss,
     model_pair_logps,
@@ -119,6 +125,8 @@ def verify_cache_contract(
         raise ValueError(f"Reference cache thinking-mode mismatch: {cache_file}")
     if manifest.get("response_only") is not True:
         raise ValueError(f"Reference cache is not response-only: {cache_file}")
+    if manifest.get("tokenization_contract") != TOKENIZATION_CONTRACT:
+        raise ValueError(f"Reference cache tokenization-contract mismatch: {cache_file}")
 
 
 class PatternBatchSampler:

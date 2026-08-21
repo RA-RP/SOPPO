@@ -104,4 +104,5 @@
 - 执行顺序：CPU tests → strong smoke → reference → 两条 DPO/headroom → 四条 static PE/validation selection → hard-exp 与 PE-exp → C_epsilon → 8-arm independent test → aggregate。
 - 2026-08-21 服务器路由勘误：当前账户仅关联 `gpu|normal`，且 `sbatch --hold`/typed `--gres` 被集群拒绝，`sbatch -G 1/2` 已实测成功；v0.6 实现改为辅助阶段1卡、smoke/正式训练2卡的直接 `afterok` 提交，并在中途提交失败时自动取消本次已提交 job。该变更只影响调度，不改变训练目标或超参。
 - 2026-08-21 首次 DAG 启动证据：job `1500656` 在训练前因 Slurm spool 副本错误解析 `job_env.sh` 而失败，下游全部由 `afterok` 阻断，未发生训练。实现改为显式传递仓库 cluster 目录，并修正状态工具的 array task ID 字段。
+- 2026-08-21 第二次 DAG 启动证据：tests 与两卡 strong smoke 成功；reference-cache job `1500671` 在完整30k编码时发现 Qwen3 tokenizer 跨 assistant 边界合并 token，使“整体编码必须以单独 prompt 编码为前缀”的旧假设失败。修正为 prompt 与 response+EOS 分别编码后拼接 IDs，使 response-only mask 按构造精确；正式训练仍未启动。
 - 对应结果：尚无；当前只进行本地纯文本编码和静态复核。

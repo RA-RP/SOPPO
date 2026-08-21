@@ -43,6 +43,7 @@
 | SSPO KDE/EMA/hard risk/scheduler | `src/model/sspo_loss.py` |
 | exact-global PE | `src/model/pe_loss.py` |
 | DDP joint trainer | `src/training/trainer.py` |
+| Qwen3 response-only token边界 | `src/data/dataset.py` |
 | headroom/static selection | `src/training/selectors.py` |
 | strong smoke | `scripts/cluster/03_smoke.sh` |
 | 八条不重复 final runs | `03_preexperiment.sh`, `04_lambda_search.sh`, `05_run_main.sh` |

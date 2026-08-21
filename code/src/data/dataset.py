@@ -11,6 +11,9 @@ import torch
 from torch.utils.data import DataLoader, Dataset
 
 
+TOKENIZATION_CONTRACT = "qwen3_chat_prompt_plus_separate_response_v1"
+
+
 def load_reference_cache(path: Optional[str]) -> Dict[str, Dict[str, float]]:
     if not path:
         return {}
@@ -92,11 +95,15 @@ class PreferenceDataset(Dataset):
             enable_thinking=self.enable_thinking,
         )
         eos = self.tokenizer.eos_token or ""
-        full_text = prompt_text + response + eos
         prompt_ids = self.tokenizer(prompt_text, add_special_tokens=False)["input_ids"]
-        full_ids = self.tokenizer(full_text, add_special_tokens=False)["input_ids"]
-        if full_ids[: len(prompt_ids)] != prompt_ids:
-            raise ValueError("Qwen3 chat template prefix mismatch; response mask is unsafe")
+        # Tokenizing prompt_text and prompt_text+response independently is not
+        # prefix-stable for Qwen3: its tokenizer may merge bytes across the
+        # assistant boundary.  Encode the two regions independently and join
+        # token IDs so the response-only loss boundary is exact by construction.
+        response_ids = self.tokenizer(response + eos, add_special_tokens=False)["input_ids"]
+        if not response_ids:
+            raise ValueError("Response tokenization is empty")
+        full_ids = prompt_ids + response_ids
         response_start = len(prompt_ids)
         if len(full_ids) > self.max_length:
             removed = len(full_ids) - self.max_length

@@ -66,6 +66,8 @@ SSPO-hard 对 unlabeled pair 的 A/B 独立打 hard label；PE 对 A/B 形成一
 
 `src/training/trainer.py` 提供统一 CLI。DPO 使用 reference cache与标准 8 microstep accumulation。joint 路径的每 rank pattern 为：
 
+`src/data/dataset.py` 将 Qwen3 chat prompt 与 response+EOS 分别 tokenize 后拼接 token IDs，从构造上固定 response-only mask；不再假设 tokenizer 对“prompt”和“prompt+response”两次编码具有前缀稳定性。
+
 ```text
 unlabeled microbatch: 3,4,3,4,3,4,3,4  -> 28 pairs/rank
 labeled microsteps:   0,2,4,6, each 1   -> 4 pairs/rank

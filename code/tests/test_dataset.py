@@ -31,6 +31,45 @@ def test_qwen_style_response_mask_and_dynamic_padding(tmp_path):
     assert batch["attention_mask_a"][1, -1] == 0
 
 
+class BoundaryMergingTokenizer(FakeTokenizer):
+    """A tokenizer whose whole-text encoding is not prompt-prefix stable."""
+
+    def __init__(self):
+        self.calls = []
+
+    def __call__(self, text, add_special_tokens):
+        assert add_special_tokens is False
+        self.calls.append(text)
+        values = {
+            "PFX": [10, 11],
+            "xy!": [20, 21, 22],
+            "z!": [30, 31],
+            # This deliberately is not prefixed by [10, 11].
+            "PFXxy!": [99, 20, 21, 22],
+            "PFXz!": [98, 30, 31],
+        }
+        return {"input_ids": values[text]}
+
+
+def test_response_boundary_is_exact_when_whole_text_tokenization_would_merge(tmp_path):
+    path = tmp_path / "boundary.jsonl"
+    with jsonlines.open(path, "w") as writer:
+        writer.write(
+            {
+                "sample_id": "boundary",
+                "prompt": "p",
+                "response_a": "xy",
+                "response_b": "z",
+                "label": 1,
+            }
+        )
+    tokenizer = BoundaryMergingTokenizer()
+    row = PreferenceDataset(str(path), tokenizer, max_length=16, require_labels=True)[0]
+    assert row["input_ids_a"] == [10, 11, 20, 21, 22]
+    assert row["loss_mask_a"] == [0, 0, 1, 1, 1]
+    assert "PFXxy!" not in tokenizer.calls
+
+
 def test_unlabeled_rejects_label_leak(tmp_path):
     path = tmp_path / "bad.jsonl"
     with jsonlines.open(path, "w") as writer:

@@ -16,6 +16,7 @@ from torch.utils.data import DistributedSampler
 from ..data.dataset import (
     PreferenceCollator,
     PreferenceDataset,
+    TOKENIZATION_CONTRACT,
     create_dataloader,
     data_file_sha256,
 )
@@ -125,6 +126,7 @@ def main() -> None:
             "max_length": args.max_length,
             "enable_thinking": False,
             "response_only": True,
+            "tokenization_contract": TOKENIZATION_CONTRACT,
             "cache_sha256": data_file_sha256(output),
         }
         output.with_suffix(".manifest.json").write_text(
