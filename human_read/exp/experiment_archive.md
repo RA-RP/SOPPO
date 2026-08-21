@@ -102,4 +102,5 @@
 - 优化合同：DPO 1 epoch/lr1e-6；SSPO/PE 2 epochs/lr1e-5；AdamW、weight decay0、cosine、warmup.1、clip1、seed42。联合每步精确 8 labeled pairs + 56 unlabeled pairs。
 - checkpoint：全部保留 PEFT adapters；DPO 每20 step、SSPO/PE 每40 step及 final；不保存 optimizer state。评价和 GetSlice 在内存中加载/合并 adapter。
 - 执行顺序：CPU tests → strong smoke → reference → 两条 DPO/headroom → 四条 static PE/validation selection → hard-exp 与 PE-exp → C_epsilon → 8-arm independent test → aggregate。
+- 2026-08-21 服务器路由勘误：当前账户仅关联 `gpu|normal`，且 `sbatch --hold` 被集群拒绝；v0.6 实现改为辅助阶段1卡、smoke/正式训练2卡的直接 `afterok` 提交，并在中途提交失败时自动取消本次已提交 job。该变更只影响调度，不改变训练目标或超参。
 - 对应结果：尚无；当前只进行本地纯文本编码和静态复核。

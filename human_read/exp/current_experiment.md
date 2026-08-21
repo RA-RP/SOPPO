@@ -149,7 +149,7 @@ lambda in {0.1, 0.3, 0.5, 1.0}
 
 ## 7. 强 smoke 与一次提交 DAG
 
-strong smoke 在 `gpu_test` 请求两张卡、50 分钟，记录实际型号而不要求 A800。它覆盖：
+strong smoke 在账户获批的 `gpu` partition 请求两张卡、50 分钟，记录实际型号而不要求 A800。它覆盖：
 
 - 冻结 Qwen3 manifest、离线加载和 chat mask；
 - LoRA trainable/base-frozen 合同；
@@ -158,7 +158,7 @@ strong smoke 在 `gpu_test` 请求两张卡、50 分钟，记录实际型号而�
 - KDE/EMA/threshold、exact-global PE、finite loss/gradient；
 - adapter 保存后重新加载并再训练一步。
 
-服务器执行获批后，`submit_all.sh` 一次提交并先 hold 全部任务，registry 成功后统一 release：
+服务器执行时，`submit_all.sh` 在账户唯一获批的 `gpu` partition 直接提交完整 `afterok` DAG；集群不允许普通用户 `sbatch --hold`，因此任一中途提交失败都会触发已提交 job 的自动取消：
 
 ```text
 CPU tests

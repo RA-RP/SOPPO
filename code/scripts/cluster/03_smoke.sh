@@ -1,5 +1,5 @@
 #!/bin/bash
-# Strong two-rank GPU smoke; gpu_test has a one-hour partition limit.
+# Strong two-rank GPU smoke; routing is selected by submit_all.sh.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

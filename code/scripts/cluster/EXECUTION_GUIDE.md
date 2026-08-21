@@ -135,7 +135,7 @@ sinfo -N -o '%N|%P|%T|%G|%C'
 
 无需等待节点显示 idle 才提交；Slurm 会排队。脚本请求卡而不硬编码节点，正式 job 获得 GPU 后还会检查实际型号。
 
-## 6. 一条命令挂起全部剩余任务
+## 6. 一条命令提交全部剩余任务
 
 只有获得本轮明确服务器执行授权后，执行：
 
@@ -147,11 +147,11 @@ export RUN_CONTEXT=cluster
 bash submit_all.sh
 ```
 
-不要再逐个手工运行 `01`、`03`、`04`……。提交器会先 hold 全部 job，完整写入 registry 后统一 release，并建立：
+不要再逐个手工运行 `01`、`03`、`04`……。实测当前账户只有 `nsgm_jiangwh|gpu|normal` 关联，且集群拒绝普通用户的 `sbatch --hold`。因此提交器将所有阶段路由到 `gpu` partition：辅助阶段申请1张卡，smoke与正式训练申请2张卡；所有 job 直接按 `afterok` 依赖提交。若中途某个 `sbatch` 被拒绝，提交器会自动取消本次已经提交的 job。完整任务图为：
 
 ```text
 CPU tests
-  → gpu_test strong smoke (2 GPU, 50m)
+  → gpu strong smoke (2 GPU, 50m)
   → formal reference/oracle (2×A800)
   → DPO-10 + DPO-100 final array
   → DPO-10 vs frozen-base headroom gate
@@ -162,9 +162,9 @@ CPU tests
   → aggregate/export
 ```
 
-所有依赖为 `afterok`；任何上游失败都会阻止下游，不要求 SSH 会话持续在线。默认最多同时运行 4 个 array 单元，仍取决于集群调度和用户额度。
+所有依赖为 `afterok`；任何上游失败都会阻止下游，不要求 SSH 会话持续在线。现在没有双卡资源不影响提交，2-GPU job 会以 `PD (Resources/Priority)` 等待。默认最多同时运行 4 个 array 单元，仍取决于集群调度和用户额度。
 
-`submit_all.sh` 会自行激活锁定环境，并在提交任何 job 前重验 Qwen3 manifest 与 30k 数据审计；它也拒绝覆盖已存在的 pipeline 目录。如果一次提交中途失败，先保留目录和 held job 供检查，不要直接删除；确认原因后再决定取消 held job 或使用新的 experiment ID。
+`submit_all.sh` 会自行激活锁定环境，并在提交任何 job 前重验 Qwen3 manifest 与 30k 数据审计；它也拒绝覆盖已存在的 pipeline 目录。如果尚未提交任何 job 就失败，脚本会清理由本次创建的空目录；若部分 job 已提交后失败，则自动取消这些 job并保留 pipeline 目录供检查，不要直接删除。
 
 ## 7. 日常查看状态
 

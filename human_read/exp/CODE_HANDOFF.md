@@ -28,6 +28,7 @@
 - 八条最终轨迹不得重复训练：两 DPO、hard-exp、PE-exp、四 static PE。
 - headroom：使用共同的 margin-free mean-logp score，DPO-10 validation accuracy 至少比训练前显式禁用 adapter 的冻结 base 高 .05，并核对前后 score type/样本数；DPO-100 仅是 oracle。static lambda 只用 validation 选择。
 - strong smoke：两 rank，覆盖五种配置、KDE/PE、finite checks、adapter round-trip。
+- Slurm 路由：账户只获批 `gpu` partition且拒绝 `sbatch --hold`；辅助阶段申请1卡，smoke/正式训练申请2卡，直接提交 `afterok` DAG并在中途提交失败时回滚。
 - 数据入口：提交前重验30k行数/SHA、跨 split ID、公开隐藏标签和私有标签精确连接，摘要进入白名单。
 - 下游：adapter-aware independent evaluator、GetSlice 内存合并、八轨迹聚合、无样本级白名单。
 
