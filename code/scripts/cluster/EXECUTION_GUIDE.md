@@ -147,7 +147,7 @@ export RUN_CONTEXT=cluster
 bash submit_all.sh
 ```
 
-不要再逐个手工运行 `01`、`03`、`04`……。实测当前账户只有 `nsgm_jiangwh|gpu|normal` 关联，且集群拒绝普通用户的 `sbatch --hold`。因此提交器将所有阶段路由到 `gpu` partition：辅助阶段申请1张卡，smoke与正式训练申请2张卡；所有 job 直接按 `afterok` 依赖提交。若中途某个 `sbatch` 被拒绝，提交器会自动取消本次已经提交的 job。完整任务图为：
+不要再逐个手工运行 `01`、`03`、`04`……。实测当前账户只有 `nsgm_jiangwh|gpu|normal` 关联，集群拒绝普通用户的 `sbatch --hold` 和 typed `--gres=gpu:tesla:N`，但已实测接受 `sbatch -G 1` 与 `sbatch -G 2`。因此提交器将所有阶段路由到 `gpu` partition，并统一使用 `-G N`：辅助阶段申请1张卡，smoke与正式训练申请2张卡；所有 job 直接按 `afterok` 依赖提交。若中途某个 `sbatch` 被拒绝，提交器会自动取消本次已经提交的 job。完整任务图为：
 
 ```text
 CPU tests

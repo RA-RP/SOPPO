@@ -17,10 +17,14 @@ REGISTRY="$PIPELINE_DIR/task_registry.json"
 GPU_PARTITION="${SOPPO_GPU_PARTITION:-gpu}"
 SMOKE_PARTITION="${SOPPO_SMOKE_PARTITION:-$GPU_PARTITION}"
 CPU_PARTITION="${SOPPO_CPU_PARTITION:-$GPU_PARTITION}"
-GPU2_GRES="${SOPPO_GPU2_GRES:-gpu:tesla:2}"
-GPU1_GRES="${SOPPO_GPU1_GRES:-gpu:tesla:1}"
-AUX_GRES="${SOPPO_AUX_GRES:-$GPU1_GRES}"
+GPU2_COUNT="${SOPPO_GPU2_COUNT:-2}"
+GPU1_COUNT="${SOPPO_GPU1_COUNT:-1}"
+AUX_GPU_COUNT="${SOPPO_AUX_GPU_COUNT:-$GPU1_COUNT}"
 ARRAY_LIMIT="${SOPPO_ARRAY_PARALLELISM:-4}"
+
+[[ "$GPU2_COUNT" =~ ^[1-9][0-9]*$ ]] || { echo "ERROR: invalid SOPPO_GPU2_COUNT" >&2; exit 1; }
+[[ "$GPU1_COUNT" =~ ^[1-9][0-9]*$ ]] || { echo "ERROR: invalid SOPPO_GPU1_COUNT" >&2; exit 1; }
+[[ "$AUX_GPU_COUNT" =~ ^[1-9][0-9]*$ ]] || { echo "ERROR: invalid SOPPO_AUX_GPU_COUNT" >&2; exit 1; }
 
 command -v sbatch >/dev/null || { echo "ERROR: sbatch is unavailable" >&2; exit 1; }
 command -v scancel >/dev/null || { echo "ERROR: scancel is unavailable" >&2; exit 1; }
@@ -39,7 +43,7 @@ fi
 GIT_COMMIT="$(git -C "$SOPPO_ROOT" rev-parse HEAD)"
 mkdir -p "$PIPELINE_DIR/logs" "$PIPELINE_DIR/hardware"
 
-echo "Slurm routing: auxiliary=$CPU_PARTITION/$AUX_GRES, smoke=$SMOKE_PARTITION/$GPU2_GRES, formal=$GPU_PARTITION/$GPU2_GRES"
+echo "Slurm routing: auxiliary=$CPU_PARTITION/${AUX_GPU_COUNT}GPU, smoke=$SMOKE_PARTITION/${GPU2_COUNT}GPU, formal=$GPU_PARTITION/${GPU2_COUNT}GPU"
 
 declare -a SUBMITTED_JOBS=()
 submission_failed() {
@@ -73,54 +77,54 @@ submit() {
 }
 
 COMMON_EXPORT="ALL,RUN_CONTEXT=cluster,EXPERIMENT_ID=$EXPERIMENT_ID,SOPPO_DATA_DIR=$DATA_DIR,SOPPO_MODEL_DIR=$MODEL_DIR"
-submit tests -J soppo-tests -p "$CPU_PARTITION" -N 1 -c 8 --gres="$AUX_GRES" -t 01:00:00 \
+submit tests -J soppo-tests -p "$CPU_PARTITION" -N 1 -c 8 -G "$AUX_GPU_COUNT" -t 01:00:00 \
     -o "$PIPELINE_DIR/logs/tests-%j.out" --export="$COMMON_EXPORT" "$SCRIPT_DIR/01_server_tests.sh"
 TESTS="$LAST_JOB_ID"
-submit smoke -J soppo-smoke -p "$SMOKE_PARTITION" -N 1 -c 32 --gres="$GPU2_GRES" -t 00:50:00 \
+submit smoke -J soppo-smoke -p "$SMOKE_PARTITION" -N 1 -c 32 -G "$GPU2_COUNT" -t 00:50:00 \
     -d "afterok:$TESTS" -o "$PIPELINE_DIR/logs/smoke-%j.out" \
     --export="$COMMON_EXPORT,SOPPO_NPROC_PER_NODE=2,SOPPO_REQUIRE_A800=0" "$SCRIPT_DIR/03_smoke.sh"
 SMOKE="$LAST_JOB_ID"
-submit reference_cache -J soppo-ref -p "$GPU_PARTITION" -N 1 -c 32 --gres="$GPU2_GRES" -t 24:00:00 \
+submit reference_cache -J soppo-ref -p "$GPU_PARTITION" -N 1 -c 32 -G "$GPU2_COUNT" -t 24:00:00 \
     -d "afterok:$SMOKE" -o "$PIPELINE_DIR/logs/reference-%j.out" \
     --export="$COMMON_EXPORT,SOPPO_NPROC_PER_NODE=2,SOPPO_REQUIRE_A800=1" "$SCRIPT_DIR/02_finalize_inputs.sh"
 REFERENCE="$LAST_JOB_ID"
-submit dpo_headroom_runs -J soppo-dpo -p "$GPU_PARTITION" -N 1 -c 32 --gres="$GPU2_GRES" -t 2-00:00:00 \
+submit dpo_headroom_runs -J soppo-dpo -p "$GPU_PARTITION" -N 1 -c 32 -G "$GPU2_COUNT" -t 2-00:00:00 \
     --array="0-1%$ARRAY_LIMIT" -d "afterok:$REFERENCE" -o "$PIPELINE_DIR/logs/dpo-%A_%a.out" \
     --export="$COMMON_EXPORT,SOPPO_NPROC_PER_NODE=2,SOPPO_REQUIRE_A800=1" "$SCRIPT_DIR/03_preexperiment.sh"
 PRE="$LAST_JOB_ID"
-submit headroom_gate -J soppo-headroom -p "$CPU_PARTITION" -N 1 -c 4 --gres="$AUX_GRES" -t 01:00:00 \
+submit headroom_gate -J soppo-headroom -p "$CPU_PARTITION" -N 1 -c 4 -G "$AUX_GPU_COUNT" -t 01:00:00 \
     -d "afterok:$PRE" -o "$PIPELINE_DIR/logs/headroom-%j.out" \
     --export="$COMMON_EXPORT" "$SCRIPT_DIR/03_select_preexperiment.sh"
 PRESELECT="$LAST_JOB_ID"
-submit pe_static_runs -J soppo-static -p "$GPU_PARTITION" -N 1 -c 32 --gres="$GPU2_GRES" -t 3-00:00:00 \
+submit pe_static_runs -J soppo-static -p "$GPU_PARTITION" -N 1 -c 32 -G "$GPU2_COUNT" -t 3-00:00:00 \
     --array="0-3%$ARRAY_LIMIT" -d "afterok:$PRESELECT" -o "$PIPELINE_DIR/logs/static-%A_%a.out" \
     --export="$COMMON_EXPORT,SOPPO_NPROC_PER_NODE=2,SOPPO_REQUIRE_A800=1" "$SCRIPT_DIR/04_lambda_search.sh"
 LAMBDA="$LAST_JOB_ID"
-submit static_select -J soppo-static-select -p "$CPU_PARTITION" -N 1 -c 4 --gres="$AUX_GRES" -t 01:00:00 \
+submit static_select -J soppo-static-select -p "$CPU_PARTITION" -N 1 -c 4 -G "$AUX_GPU_COUNT" -t 01:00:00 \
     -d "afterok:$LAMBDA" -o "$PIPELINE_DIR/logs/static-select-%j.out" \
     --export="$COMMON_EXPORT" "$SCRIPT_DIR/04_select_lambda.sh"
 LAMBDA_SELECT="$LAST_JOB_ID"
-submit dynamic_runs -J soppo-dynamic -p "$GPU_PARTITION" -N 1 -c 32 --gres="$GPU2_GRES" -t 3-00:00:00 \
+submit dynamic_runs -J soppo-dynamic -p "$GPU_PARTITION" -N 1 -c 32 -G "$GPU2_COUNT" -t 3-00:00:00 \
     --array="0-1%$ARRAY_LIMIT" -d "afterok:$LAMBDA_SELECT" -o "$PIPELINE_DIR/logs/dynamic-%A_%a.out" \
     --export="$COMMON_EXPORT,SOPPO_NPROC_PER_NODE=2,SOPPO_REQUIRE_A800=1" "$SCRIPT_DIR/05_run_main.sh"
 MAIN="$LAST_JOB_ID"
-submit c_epsilon_prepare -J soppo-ceprep -p "$CPU_PARTITION" -N 1 -c 4 --gres="$AUX_GRES" -t 01:00:00 \
+submit c_epsilon_prepare -J soppo-ceprep -p "$CPU_PARTITION" -N 1 -c 4 -G "$AUX_GPU_COUNT" -t 01:00:00 \
     -d "afterok:$MAIN" -o "$PIPELINE_DIR/logs/ceprep-%j.out" \
     --export="$COMMON_EXPORT" "$SCRIPT_DIR/06_prepare_c_epsilon.sh"
 CE_PREP="$LAST_JOB_ID"
-submit c_epsilon_raw -J soppo-ce -p "$GPU_PARTITION" -N 1 -c 16 --gres="$GPU1_GRES" -t 2-00:00:00 \
+submit c_epsilon_raw -J soppo-ce -p "$GPU_PARTITION" -N 1 -c 16 -G "$GPU1_COUNT" -t 2-00:00:00 \
     --array="0-8%$ARRAY_LIMIT" -d "afterok:$CE_PREP" -o "$PIPELINE_DIR/logs/ce-%A_%a.out" \
     --export="$COMMON_EXPORT,SOPPO_NPROC_PER_NODE=1,SOPPO_REQUIRE_A800=1" "$SCRIPT_DIR/06_c_epsilon.sh"
 CE_RAW="$LAST_JOB_ID"
-submit c_epsilon_derive -J soppo-cederive -p "$CPU_PARTITION" -N 1 -c 8 --gres="$AUX_GRES" -t 02:00:00 \
+submit c_epsilon_derive -J soppo-cederive -p "$CPU_PARTITION" -N 1 -c 8 -G "$AUX_GPU_COUNT" -t 02:00:00 \
     -d "afterok:$CE_RAW" -o "$PIPELINE_DIR/logs/ce-derive-%j.out" \
     --export="$COMMON_EXPORT" "$SCRIPT_DIR/06_derive_c_epsilon.sh"
 CE_DERIVE="$LAST_JOB_ID"
-submit evaluation -J soppo-eval -p "$GPU_PARTITION" -N 1 -c 16 --gres="$GPU1_GRES" -t 24:00:00 \
+submit evaluation -J soppo-eval -p "$GPU_PARTITION" -N 1 -c 16 -G "$GPU1_COUNT" -t 24:00:00 \
     --array="0-7%$ARRAY_LIMIT" -d "afterok:$CE_DERIVE" -o "$PIPELINE_DIR/logs/eval-%A_%a.out" \
     --export="$COMMON_EXPORT,SOPPO_NPROC_PER_NODE=1,SOPPO_REQUIRE_A800=1" "$SCRIPT_DIR/07_evaluate.sh"
 EVAL="$LAST_JOB_ID"
-submit aggregate -J soppo-aggregate -p "$CPU_PARTITION" -N 1 -c 8 --gres="$AUX_GRES" -t 02:00:00 \
+submit aggregate -J soppo-aggregate -p "$CPU_PARTITION" -N 1 -c 8 -G "$AUX_GPU_COUNT" -t 02:00:00 \
     -d "afterok:$EVAL" -o "$PIPELINE_DIR/logs/aggregate-%j.out" \
     --export="$COMMON_EXPORT" "$SCRIPT_DIR/08_aggregate.sh"
 AGG="$LAST_JOB_ID"
