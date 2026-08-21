@@ -44,10 +44,10 @@ run_dpo_smoke() {
         --set "model.name_or_path=$MODEL_DIR" --set "model.manifest_path=$MODEL_MANIFEST" \
         --set "data.data_dir=$SMOKE_ROOT/data" \
         --set "data.reference_cache=$SMOKE_ROOT/reference/targets" --set data.num_workers=0 \
-        --set training.epochs=1 --set training.max_steps=1 \
-        --set training.dpo_batch_size_per_device=2 \
-        --set training.gradient_accumulation_steps=1 --set training.global_batch_size=4 \
-        --set training.backward_subbatch_size_per_device=1 \
+        --set training.epochs=1 --set training.max_steps=2 \
+        --set training.dpo_batch_size_per_device=4 \
+        --set training.gradient_accumulation_steps=1 --set training.global_batch_size=8 \
+        --set training.backward_subbatch_size_per_device=2 \
         --set training.smoke_mode=true --set training.eval_steps=1 --set training.save_steps=1 \
         --set "output.run_dir=$SMOKE_ROOT/runs/$run_name" "$@"
 }
@@ -61,14 +61,14 @@ run_joint_smoke() {
         --set "model.name_or_path=$MODEL_DIR" --set "model.manifest_path=$MODEL_MANIFEST" \
         --set "data.data_dir=$SMOKE_ROOT/data" --set data.num_workers=0 \
         --set training.epochs=1 --set training.max_steps=1 \
-        --set training.dpo_batch_size_per_device=2 \
-        --set training.gradient_accumulation_steps=2 --set training.global_batch_size=12 \
-        --set training.backward_subbatch_size_per_device=1 \
-        --set training.joint_labeled_batch_size_per_device=2 \
+        --set training.dpo_batch_size_per_device=4 \
+        --set training.gradient_accumulation_steps=2 --set training.global_batch_size=16 \
+        --set training.backward_subbatch_size_per_device=2 \
+        --set training.joint_labeled_batch_size_per_device=1 \
         --set 'training.joint_labeled_microsteps=[0]' \
-        --set 'training.joint_unlabeled_microbatch_pattern=[2,2]' \
-        --set training.joint_labeled_global_batch_size=4 \
-        --set training.joint_unlabeled_global_batch_size=8 \
+        --set 'training.joint_unlabeled_microbatch_pattern=[3,4]' \
+        --set training.joint_labeled_global_batch_size=2 \
+        --set training.joint_unlabeled_global_batch_size=14 \
         --set training.smoke_mode=true --set training.eval_steps=1 --set training.save_steps=1 \
         --set "output.run_dir=$SMOKE_ROOT/runs/$run_name" "$@"
 }
@@ -87,14 +87,14 @@ soppo_torchrun -m src.training.trainer \
     --set "model.name_or_path=$MODEL_DIR" --set "model.manifest_path=$MODEL_MANIFEST" \
     --set "data.data_dir=$SMOKE_ROOT/data" --set data.num_workers=0 \
     --set training.epochs=1 --set training.max_steps=1 \
-    --set training.dpo_batch_size_per_device=2 \
-    --set training.gradient_accumulation_steps=2 --set training.global_batch_size=12 \
-    --set training.backward_subbatch_size_per_device=1 \
-    --set training.joint_labeled_batch_size_per_device=2 \
+    --set training.dpo_batch_size_per_device=4 \
+    --set training.gradient_accumulation_steps=2 --set training.global_batch_size=16 \
+    --set training.backward_subbatch_size_per_device=2 \
+    --set training.joint_labeled_batch_size_per_device=1 \
     --set 'training.joint_labeled_microsteps=[0]' \
-    --set 'training.joint_unlabeled_microbatch_pattern=[2,2]' \
-    --set training.joint_labeled_global_batch_size=4 \
-    --set training.joint_unlabeled_global_batch_size=8 \
+    --set 'training.joint_unlabeled_microbatch_pattern=[3,4]' \
+    --set training.joint_labeled_global_batch_size=2 \
+    --set training.joint_unlabeled_global_batch_size=14 \
     --set training.smoke_mode=true --set training.eval_steps=1 --set training.save_steps=1 \
     --set output.save_checkpoints=false \
     --set "output.run_dir=$SMOKE_ROOT/runs/checkpoint_roundtrip"

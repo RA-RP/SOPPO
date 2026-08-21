@@ -22,7 +22,7 @@
 - PE：margin-free pair probability、exact global population、epsilon1e-8；responsibility 和 denominator 默认不断梯度。
 - 动态：hard-exp 与 PE-exp 使用完全相同的 paper `gamma_t`，gamma0=1、gamma_min=2700/26700、decay=.01。
 - 固定：四条 PE lambda `{.1,.3,.5,1.0}`，目标严格归一化为 `1/(1+lambda)` 和 `lambda/(1+lambda)`。
-- batch：logical global64；DPO 4×8×2；joint 每 step 全局 8 labeled pairs +56 unlabeled pairs。为避免 2048 长度 OOM，梯度执行统一按每 rank 1 pair 的 backward subbatch 累积；损失归一化、optimizer step 与 PE exact-global population 不变。
+- batch：logical global64；DPO 4×8×2；joint 每 step 全局 8 labeled pairs +56 unlabeled pairs。为避免 2048 长度 OOM，梯度执行统一限制为每 rank 最多 2 pair 的 backward subbatch；DPO按 `2+2`，joint logical `3/4` 按 `2+1`/`2+2` 回传，损失归一化、optimizer step 与 PE exact-global population 不变。
 - 优化：SSPO/PE 2 epochs、lr1e-5；AdamW、wd0、cosine、warmup.1、clip1、seed42。
 - checkpoint：全部保留 LoRA adapter；DPO 20 step、SSPO/PE 40 step加 final；无 optimizer state。
 - 八条最终轨迹不得重复训练：两 DPO、hard-exp、PE-exp、四 static PE。

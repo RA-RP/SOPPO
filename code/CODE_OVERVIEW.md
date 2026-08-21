@@ -33,7 +33,7 @@ SOPPO-PE-static lambda = 0.1 / 0.3 / 0.5 / 1.0
 
 - 方法名只能是五类配置接口；static lambda 只能取四个预注册值；
 - formal 模型必须 bf16/2048，LoRA 必须 r8/alpha16/dropout0/all projections；
-- formal logical global batch 必须64，DPO为4×8×2，joint为全局8/56；梯度 backward subbatch 固定每 rank 1 pair；
+- formal logical global batch 必须64，DPO为4×8×2，joint为全局8/56；梯度 backward subbatch 限制为每 rank 最多2 pair；
 - DPO 固定1 epoch/lr1e-6/beta.1；SSPO/PE固定2 epochs/lr1e-5/beta10/margin2；
 - AdamW/wd0/cosine/warmup.1/clip1/seed42；
 - paper gamma、30k counts/ratios、reference cache与 label isolation 约束。
@@ -76,7 +76,7 @@ two ranks                              -> 56 U + 8 L
 
 hard 第一遍收集全局 labeled winning/losing 与全部 response reward并更新 KDE/EMA，第二遍回传。PE 第一遍只收集56个全局 pair probability并求 exact coefficient，第二遍回传。DDP `no_sync` 只延迟通信到该 optimizer step 的最后一次 backward，不改变归一化。
 
-正式 bf16/2048 在 A800 上实测发现 DPO logical microbatch=4 的峰值显存不足。实现保留上述 logical batch 与采样顺序，但把所有有梯度的 DPO/SimPO/hard/PE 第二遍切成每 rank 1 pair 的 backward subbatch；每条损失继续除以完整本地 population，DDP 仍只在 optimizer step 最后同步。PE 第一遍仍一次覆盖完整全局56 pair并产生同一组 `dL_PE/dp_i`，所以这一修复不改变目标函数或 PE population 语义。
+正式 bf16/2048 在 A800 上实测发现 DPO logical microbatch=4 的峰值显存不足。实现保留上述 logical batch 与采样顺序，但把所有有梯度的 DPO/SimPO/hard/PE 第二遍限制为每 rank 最多2 pair 的 backward subbatch：DPO logical 4 为 `2+2`，joint logical `3/4` 为 `2+1`/`2+2`。每条损失继续除以完整本地 population，DDP 仍只在 optimizer step 最后同步。PE 第一遍仍一次覆盖完整全局56 pair并产生同一组 `dL_PE/dp_i`，所以这一修复不改变目标函数或 PE population 语义。
 
 validation：DPO 用 reference delta；SSPO/PE 用 margin-free SimPO mean-logp delta。best 依次按更高 accuracy、更低 Brier；每次 metrics 都保留 score type、loss weights、global batch与 hard/PE诊断。
 
@@ -97,7 +97,7 @@ validation：DPO 用 reference delta；SSPO/PE 用 margin-free SimPO mean-logp d
 | lr | 1e-6 | 1e-5 |
 | loss beta | DPO 0.1 | SimPO 10 |
 | margin | — | 2 |
-| logical global batch | 64（4×8×2；backward subbatch=1） | 64 = 8 L + 56 U（backward subbatch=1） |
+| logical global batch | 64（4×8×2；backward subbatch≤2） | 64 = 8 L + 56 U（backward subbatch≤2） |
 | max seq len | 2048 | 2048 |
 | LoRA | r8/alpha16/dropout0 | 同左 |
 | optimizer | AdamW, wd0 | 同左 |

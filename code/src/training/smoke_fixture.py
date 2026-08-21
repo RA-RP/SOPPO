@@ -91,7 +91,6 @@ def main() -> None:
         writer.write_all(oracle)
     tokenizer = load_tokenizer(args.model)
     length_profile = {}
-    observed_maximum = 0
     for filename in (
         "labeled_train.jsonl",
         "labeled_val.jsonl",
@@ -108,11 +107,15 @@ def main() -> None:
             for row in (dataset[index] for index in range(len(dataset)))
         ]
         length_profile[filename] = {"rows": len(lengths), "max_tokens": max(lengths)}
-        observed_maximum = max(observed_maximum, max(lengths))
-    if observed_maximum != args.max_length:
+    missing_limit = [
+        filename
+        for filename, profile in length_profile.items()
+        if profile["max_tokens"] != args.max_length
+    ]
+    if missing_limit:
         raise ValueError(
-            "Smoke fixture did not exercise max-length truncation: "
-            f"observed={observed_maximum}, required={args.max_length}"
+            "Smoke fixture did not exercise max-length truncation in every split: "
+            f"missing={missing_limit}, required={args.max_length}"
         )
     (output / "length_profile.json").write_text(
         json.dumps(length_profile, indent=2, sort_keys=True) + "\n",

@@ -171,7 +171,7 @@ def validate_config(config: Dict[str, Any], world_size: int | None = None) -> No
             "num_devices": 2,
             "global_batch_size": 64,
             "gradient_accumulation_steps": 8,
-            "backward_subbatch_size_per_device": 1,
+            "backward_subbatch_size_per_device": 2,
             "optimizer": "adamw",
             "weight_decay": 0.0,
             "warmup_ratio": 0.1,

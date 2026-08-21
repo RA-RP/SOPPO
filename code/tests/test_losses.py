@@ -77,10 +77,10 @@ def test_two_pass_pe_matches_dense_autograd():
     assert torch.allclose(surrogate_gradient, dense_gradient, atol=1e-6, rtol=1e-5)
 
     subbatched = dense.detach().clone().requires_grad_(True)
-    for start in range(subbatched.numel()):
+    for start in range(0, subbatched.numel(), 2):
         pe_surrogate(
-            subbatched[start : start + 1],
-            coefficients[start : start + 1],
+            subbatched[start : start + 2],
+            coefficients[start : start + 2],
             world_size=1,
         ).backward()
     assert torch.allclose(subbatched.grad, dense_gradient, atol=1e-6, rtol=1e-5)

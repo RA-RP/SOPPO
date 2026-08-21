@@ -31,8 +31,8 @@ def test_backward_subbatching_preserves_order_and_every_field():
         "labels": torch.tensor([1, 0, 1]),
         "ref_logp_a": torch.tensor([-1.0, -2.0, -3.0]),
     }
-    pieces = split_cpu_batch(batch, maximum_size=1)
-    assert [piece["sample_ids"][0] for piece in pieces] == ["a", "b", "c"]
+    pieces = split_cpu_batch(batch, maximum_size=2)
+    assert [piece["sample_ids"] for piece in pieces] == [["a", "b"], ["c"]]
     assert torch.equal(torch.cat([piece["input_ids_a"] for piece in pieces]), batch["input_ids_a"])
     assert torch.equal(torch.cat([piece["labels"] for piece in pieces]), batch["labels"])
     assert torch.equal(torch.cat([piece["ref_logp_a"] for piece in pieces]), batch["ref_logp_a"])
