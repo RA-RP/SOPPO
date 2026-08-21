@@ -1,14 +1,15 @@
-"""
-Evaluation module for preference learning.
-"""
+"""Evaluation metrics and command-line evaluation utilities."""
 
-from .metrics import compute_accuracy, compute_brier_score, compute_calibration
-from .evaluator import evaluate_model, evaluate_and_save_predictions
+from .metrics import (
+    compute_accuracy,
+    compute_brier_score,
+    compute_calibration,
+    compute_confidence_distribution,
+)
 
 __all__ = [
-    'compute_accuracy',
-    'compute_brier_score',
-    'compute_calibration',
-    'evaluate_model',
-    'evaluate_and_save_predictions'
+    "compute_accuracy",
+    "compute_brier_score",
+    "compute_calibration",
+    "compute_confidence_distribution",
 ]
