@@ -191,7 +191,7 @@ def log_training_step(
         step: Current training step
         total_loss: Total loss value
         dpo_loss: DPO loss component
-        aux_loss: Auxiliary loss (PE or pseudo-target)
+        aux_loss: Auxiliary loss (PE or SSPO hard pseudo-risk)
         lambda_t: Current lambda value
         learning_rate: Current learning rate
         diagnostics: Additional diagnostic info

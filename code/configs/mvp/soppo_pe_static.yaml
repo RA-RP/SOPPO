@@ -1,0 +1,7 @@
+_base_: base.yaml
+
+method:
+  name: "soppo_pe_static"
+  use_unlabeled: true
+  weighting: "normalized_fixed_lambda"
+  fixed_lambda: 0.5

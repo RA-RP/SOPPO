@@ -1,362 +1,759 @@
-"""
-Unified trainer for all methods: DPO-10%, Pseudo-target, DPO+PE, DPO-100%
-"""
+"""Server-only LoRA trainer for the five preregistered v0.6 configurations."""
 
-import os
+from __future__ import annotations
+
+import argparse
+import hashlib
 import json
-import torch
-import torch.nn as nn
+import math
+import os
+import random
 from pathlib import Path
-from typing import Dict, Optional, Tuple
-from tqdm import tqdm
-import yaml
+from typing import Callable, Dict, Iterator, List, Optional, Sequence, Tuple
 
-from ..model import compute_dpo_loss, compute_pe_loss, compute_pseudo_target_loss
-from ..model.model_utils import save_checkpoint
-from .scheduler import LambdaScheduler, create_lambda_scheduler
-from .diagnostics import (
-    DiagnosticsTracker,
-    compute_responsibility_quality,
-    compute_prediction_distribution_stats,
-    check_numerical_stability,
-    log_training_step
+import jsonlines
+import numpy as np
+import torch
+import torch.distributed as dist
+from torch.nn.parallel import DistributedDataParallel
+from torch.utils.data import DataLoader, DistributedSampler
+
+from ..config import apply_overrides, canonical_json, load_config, save_config, validate_config
+from ..data.dataset import PreferenceCollator, PreferenceDataset, create_dataloader, data_file_sha256
+from ..model.dpo_loss import (
+    DPOLoss,
+    model_pair_logps,
+    model_pair_mean_logps,
+    preference_delta,
+    response_token_count,
+)
+from ..model.model_utils import (
+    DTYPES,
+    count_parameters,
+    load_tokenizer,
+    load_trainable_policy,
+    save_adapter_checkpoint,
+    unwrap_model,
+)
+from ..model.pe_loss import exact_global_pe_coefficients, pe_surrogate
+from ..model.sspo_loss import (
+    SSPOThresholdState,
+    gather_equal_vector,
+    hard_pseudo_response_losses,
+    objective_weights,
+    pe_pair_probabilities,
+    simpo_pair_losses,
 )
 
 
-class Trainer:
-    """
-    Unified trainer for preference learning methods.
+JOINT_METHODS = {"sspo_hard_exp", "soppo_pe_exp", "soppo_pe_static"}
+PE_METHODS = {"soppo_pe_exp", "soppo_pe_static"}
+DPO_METHODS = {"dpo10", "dpo100"}
 
-    Supports:
-    - DPO-10%: Only labeled data with DPO loss
-    - Pseudo-target: Labeled + unlabeled with instance-level pseudo labels
-    - DPO+PE: Labeled + unlabeled with population-level structure supervision
-    - DPO-100%: All data labeled (oracle upper bound)
-    """
 
-    def __init__(
-        self,
-        method: str,
-        policy_model: nn.Module,
-        reference_model: nn.Module,
-        optimizer: torch.optim.Optimizer,
-        lr_scheduler: Optional = None,
-        lambda_scheduler: Optional[LambdaScheduler] = None,
-        config: Optional[Dict] = None,
-        output_dir: str = "./output",
-        device: str = "cuda"
-    ):
-        """
-        Args:
-            method: Training method ('dpo10', 'pseudo_target', 'dpo_pe', 'dpo100')
-            policy_model: Policy model to train
-            reference_model: Frozen reference model
-            optimizer: Optimizer
-            lr_scheduler: Optional learning rate scheduler
-            lambda_scheduler: Optional lambda scheduler (for pseudo_target and dpo_pe)
-            config: Training configuration
-            output_dir: Output directory for checkpoints and logs
-            device: Training device
-        """
-        self.method = method
-        self.policy_model = policy_model
-        self.reference_model = reference_model
-        self.optimizer = optimizer
-        self.lr_scheduler = lr_scheduler
-        self.lambda_scheduler = lambda_scheduler
-        self.config = config or {}
-        self.output_dir = Path(output_dir)
-        self.device = device
+def distributed_initialize() -> Tuple[int, int, int, torch.device]:
+    rank = int(os.environ.get("RANK", "0"))
+    local_rank = int(os.environ.get("LOCAL_RANK", "0"))
+    world_size = int(os.environ.get("WORLD_SIZE", "1"))
+    if world_size > 1:
+        dist.init_process_group("nccl")
+    torch.cuda.set_device(local_rank)
+    return rank, local_rank, world_size, torch.device("cuda", local_rank)
 
-        # Create output directories
-        self.output_dir.mkdir(parents=True, exist_ok=True)
-        (self.output_dir / "checkpoints").mkdir(exist_ok=True)
-        (self.output_dir / "logs").mkdir(exist_ok=True)
-        (self.output_dir / "diagnostics").mkdir(exist_ok=True)
 
-        # Save config
-        with open(self.output_dir / "config.yaml", "w") as f:
-            yaml.dump(self.config, f)
+def seed_everything(seed: int, rank: int) -> None:
+    value = int(seed) + rank
+    random.seed(value)
+    np.random.seed(value)
+    torch.manual_seed(value)
+    torch.cuda.manual_seed_all(value)
 
-        # Initialize diagnostics
-        self.diagnostics = DiagnosticsTracker()
-        self.log_file = self.output_dir / "logs" / "metrics.jsonl"
 
-        # Training state
-        self.global_step = 0
-        self.best_val_metric = float('-inf')
+def synchronized_rank_zero_action(rank: int, description: str, action: Callable[[], None]) -> None:
+    """Run a filesystem mutation on rank zero and propagate failure to every rank."""
+    error = None
+    if rank == 0:
+        try:
+            action()
+        except Exception as exc:  # preserve the useful failure text for every worker
+            error = f"{type(exc).__name__}: {exc}"
+    payload = [error]
+    if dist.is_initialized():
+        dist.broadcast_object_list(payload, src=0)
+    if payload[0] is not None:
+        raise RuntimeError(f"Rank-zero {description} failed: {payload[0]}")
 
-        print(f"Trainer initialized for method: {method}")
-        print(f"Output directory: {output_dir}")
 
-    def train_step(
-        self,
-        batch_labeled: Dict,
-        batch_unlabeled: Optional[Dict] = None
-    ) -> Dict:
-        """
-        Execute one training step.
+def move_batch(batch: Dict, device: torch.device) -> Dict:
+    return {
+        key: value.to(device, non_blocking=True) if isinstance(value, torch.Tensor) else value
+        for key, value in batch.items()
+    }
 
-        Args:
-            batch_labeled: Batch from labeled dataset
-            batch_unlabeled: Optional batch from unlabeled dataset
 
-        Returns:
-            info: Dictionary with loss and diagnostic information
-        """
-        self.policy_model.train()
-        self.optimizer.zero_grad()
+def cache_for(cache_root: str, data_file: Path) -> Path:
+    return Path(cache_root).resolve() / f"{data_file.name}.ref.jsonl"
 
-        # Extract labeled data
-        input_ids_chosen = batch_labeled['input_ids_a'].to(self.device)
-        attention_mask_chosen = batch_labeled['attention_mask_a'].to(self.device)
-        input_ids_rejected = batch_labeled['input_ids_b'].to(self.device)
-        attention_mask_rejected = batch_labeled['attention_mask_b'].to(self.device)
-        labels = batch_labeled['labels'].to(self.device)
 
-        # Swap chosen/rejected based on labels
-        # label=1 means response_a is preferred, label=0 means response_b is preferred
-        mask = (labels == 0)
-        if mask.any():
-            input_ids_chosen[mask], input_ids_rejected[mask] = \
-                input_ids_rejected[mask].clone(), input_ids_chosen[mask].clone()
-            attention_mask_chosen[mask], attention_mask_rejected[mask] = \
-                attention_mask_rejected[mask].clone(), attention_mask_chosen[mask].clone()
+def verify_cache_contract(
+    cache_file: Path,
+    data_file: Path,
+    model_manifest: Path,
+    max_length: int,
+    enable_thinking: bool,
+) -> None:
+    manifest_path = cache_file.with_suffix(".manifest.json")
+    if not cache_file.is_file() or not manifest_path.is_file():
+        raise FileNotFoundError(f"Incomplete reference cache: {cache_file}")
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    expected_model = hashlib.sha256(model_manifest.read_bytes()).hexdigest()
+    if manifest.get("model_manifest_sha256") != expected_model:
+        raise ValueError(f"Reference cache/model mismatch: {cache_file}")
+    if manifest.get("input_sha256") != data_file_sha256(data_file):
+        raise ValueError(f"Reference cache/data mismatch: {cache_file}")
+    if manifest.get("cache_sha256") != data_file_sha256(cache_file):
+        raise ValueError(f"Reference cache checksum mismatch: {cache_file}")
+    if int(manifest.get("max_length", -1)) != int(max_length):
+        raise ValueError(f"Reference cache max-length mismatch: {cache_file}")
+    if bool(manifest.get("enable_thinking")) != bool(enable_thinking):
+        raise ValueError(f"Reference cache thinking-mode mismatch: {cache_file}")
+    if manifest.get("response_only") is not True:
+        raise ValueError(f"Reference cache is not response-only: {cache_file}")
 
-        # Compute DPO loss on labeled data
-        beta = self.config.get('beta', 0.1)
-        loss_dpo, info_dpo = compute_dpo_loss(
-            self.policy_model,
-            self.reference_model,
-            input_ids_chosen,
-            attention_mask_chosen,
-            input_ids_rejected,
-            attention_mask_rejected,
-            beta=beta
+
+class PatternBatchSampler:
+    """Batch distributed-sampler indices in a repeating, fail-closed size pattern."""
+
+    def __init__(self, sampler: DistributedSampler, pattern: Sequence[int]):
+        self.sampler = sampler
+        self.pattern = tuple(int(value) for value in pattern)
+        if not self.pattern or any(value < 1 for value in self.pattern):
+            raise ValueError("Every joint unlabeled microbatch size must be positive")
+
+    def __iter__(self):
+        iterator = iter(self.sampler)
+        while True:
+            cycle = []
+            try:
+                for size in self.pattern:
+                    cycle.append([next(iterator) for _ in range(size)])
+            except StopIteration:
+                return
+            yield from cycle
+
+    def __len__(self) -> int:
+        return (len(self.sampler) // sum(self.pattern)) * len(self.pattern)
+
+
+def make_dataset(
+    data_file: Path,
+    tokenizer,
+    config: Dict,
+    cache_file: Optional[Path],
+    require_labels: bool,
+) -> PreferenceDataset:
+    return PreferenceDataset(
+        str(data_file),
+        tokenizer,
+        max_length=int(config["model"]["max_seq_len"]),
+        reference_cache_path=str(cache_file) if cache_file else None,
+        require_labels=require_labels,
+        enable_thinking=bool(config["model"]["enable_thinking"]),
+    )
+
+
+def regular_loader(
+    dataset: PreferenceDataset,
+    tokenizer,
+    config: Dict,
+    rank: int,
+    world_size: int,
+    batch_size: int,
+    shuffle: bool,
+):
+    sampler = None
+    if world_size > 1:
+        sampler = DistributedSampler(dataset, shuffle=shuffle, drop_last=shuffle)
+    loader = create_dataloader(
+        dataset,
+        int(batch_size),
+        PreferenceCollator(tokenizer.pad_token_id),
+        shuffle=shuffle,
+        num_workers=int(config["data"]["num_workers"]),
+        sampler=sampler,
+    )
+    return loader, sampler
+
+
+def patterned_loader(
+    dataset: PreferenceDataset,
+    tokenizer,
+    config: Dict,
+    rank: int,
+    world_size: int,
+):
+    if world_size < 2:
+        raise ValueError("The v0.6 joint population contract requires two distributed ranks")
+    sampler = DistributedSampler(dataset, shuffle=True, drop_last=True)
+    batch_sampler = PatternBatchSampler(
+        sampler, config["training"]["joint_unlabeled_microbatch_pattern"]
+    )
+    loader = DataLoader(
+        dataset,
+        batch_sampler=batch_sampler,
+        num_workers=int(config["data"]["num_workers"]),
+        collate_fn=PreferenceCollator(tokenizer.pad_token_id),
+        pin_memory=True,
+    )
+    return loader, sampler
+
+
+def infinite_batches(loader, sampler) -> Iterator[Dict]:
+    cycle_index = 0
+    while True:
+        if sampler is not None:
+            sampler.set_epoch(cycle_index)
+        yield from loader
+        cycle_index += 1
+
+
+def evaluate_validation(
+    model,
+    loader,
+    device: torch.device,
+    method: str,
+    dpo_beta: float,
+    simpo_beta: float,
+    dtype: torch.dtype,
+) -> Dict[str, float]:
+    model.eval()
+    totals = torch.zeros(7, dtype=torch.float64, device=device)
+    with torch.inference_mode():
+        for cpu_batch in loader:
+            batch = move_batch(cpu_batch, device)
+            with torch.autocast("cuda", dtype=dtype, enabled=dtype != torch.float32):
+                if method in DPO_METHODS:
+                    policy_a, policy_b = model_pair_logps(model, batch)
+                    delta = preference_delta(
+                        policy_a,
+                        policy_b,
+                        batch["ref_logp_a"],
+                        batch["ref_logp_b"],
+                        dpo_beta,
+                    )
+                    raw_delta = float(simpo_beta) * (
+                        policy_a / response_token_count(batch["loss_mask_a"])
+                        - policy_b / response_token_count(batch["loss_mask_b"])
+                    )
+                else:
+                    mean_a, mean_b = model_pair_mean_logps(model, batch)
+                    delta = float(simpo_beta) * (mean_a - mean_b)
+                    raw_delta = delta
+            probs = torch.sigmoid(delta.float())
+            labels = batch["labels"]
+            totals[0] += ((probs > 0.5) == labels.bool()).sum()
+            totals[1] += ((probs - labels.float()) ** 2).sum()
+            totals[2] += labels.numel()
+            totals[3] += torch.isfinite(delta).sum()
+            raw_probs = torch.sigmoid(raw_delta.float())
+            totals[4] += ((raw_probs > 0.5) == labels.bool()).sum()
+            totals[5] += ((raw_probs - labels.float()) ** 2).sum()
+            totals[6] += torch.isfinite(raw_delta).sum()
+    if dist.is_initialized():
+        dist.all_reduce(totals)
+    count = float(totals[2])
+    if count == 0 or float(totals[3]) != count or float(totals[6]) != count:
+        raise ValueError("Validation produced missing or non-finite scores")
+    model.train()
+    result = {
+        "val_accuracy": float(totals[0] / count),
+        "val_brier": float(totals[1] / count),
+        "val_samples": int(count),
+        "score_type": "dpo_reference_delta" if method in DPO_METHODS else "simpo_mean_logp_delta",
+    }
+    if method in DPO_METHODS:
+        result.update(
+            {
+                "raw_mean_logp_val_accuracy": float(totals[4] / count),
+                "raw_mean_logp_val_brier": float(totals[5] / count),
+                "raw_mean_logp_score_type": "simpo_mean_logp_delta_margin_free",
+            }
+        )
+    return result
+
+
+def write_json(path: Path, payload: Dict) -> None:
+    temporary = path.with_suffix(path.suffix + ".tmp")
+    temporary.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    temporary.replace(path)
+
+
+def cosine_factor(step: int, planned_steps: int, warmup_steps: int) -> float:
+    if warmup_steps and step < warmup_steps:
+        return float(step + 1) / float(warmup_steps)
+    progress = float(step - warmup_steps) / float(max(1, planned_steps - warmup_steps))
+    return 0.5 * (1.0 + math.cos(math.pi * min(1.0, max(0.0, progress))))
+
+
+def maybe_no_sync(model, synchronize: bool):
+    if isinstance(model, DistributedDataParallel) and not synchronize:
+        return model.no_sync()
+    from contextlib import nullcontext
+
+    return nullcontext()
+
+
+def collect_joint_first_pass(
+    policy,
+    labeled_batches: List[Dict],
+    unlabeled_batches: List[Dict],
+    device: torch.device,
+    dtype: torch.dtype,
+    include_labeled: bool,
+):
+    labeled_scores = []
+    unlabeled_scores = []
+    policy.eval()
+    with torch.no_grad():
+        if include_labeled:
+            for cpu_batch in labeled_batches:
+                batch = move_batch(cpu_batch, device)
+                with torch.autocast("cuda", dtype=dtype, enabled=dtype != torch.float32):
+                    mean_a, mean_b = model_pair_mean_logps(policy, batch)
+                labeled_scores.append((mean_a.float(), mean_b.float(), batch["labels"]))
+        for cpu_batch in unlabeled_batches:
+            batch = move_batch(cpu_batch, device)
+            with torch.autocast("cuda", dtype=dtype, enabled=dtype != torch.float32):
+                mean_a, mean_b = model_pair_mean_logps(policy, batch)
+            unlabeled_scores.append((mean_a.float(), mean_b.float()))
+    policy.train()
+    return labeled_scores, unlabeled_scores
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--config", required=True)
+    parser.add_argument("--set", action="append", default=[])
+    parser.add_argument("--init-checkpoint")
+    args = parser.parse_args()
+    rank, local_rank, world_size, device = distributed_initialize()
+    config = apply_overrides(load_config(args.config), args.set)
+    validate_config(config, world_size=world_size)
+    seed_everything(int(config["training"]["seed"]), rank)
+
+    output_dir = Path(config["output"]["run_dir"]).resolve()
+    def prepare_output() -> None:
+        if output_dir.exists():
+            raise FileExistsError(f"Refuse to overwrite run directory: {output_dir}")
+        output_dir.mkdir(parents=True)
+        (output_dir / "checkpoints").mkdir()
+        (output_dir / "logs").mkdir()
+        save_config(config, output_dir / "config.resolved.yaml")
+        write_json(output_dir / "state.json", {"status": "running", "step": 0})
+
+    synchronized_rank_zero_action(rank, "run-directory initialization", prepare_output)
+
+    model_cfg = config["model"]
+    training = config["training"]
+    method_cfg = config["method"]
+    method = method_cfg["name"]
+    tokenizer = load_tokenizer(model_cfg["name_or_path"])
+    policy = load_trainable_policy(config, adapter_checkpoint=args.init_checkpoint).to(device)
+    if world_size > 1:
+        policy = DistributedDataParallel(
+            policy,
+            device_ids=[local_rank],
+            output_device=local_rank,
+            broadcast_buffers=False,
+            find_unused_parameters=False,
+        )
+    trainable_parameters, total_parameters = count_parameters(policy)
+
+    data_dir = Path(config["data"]["data_dir"]).resolve()
+    train_file = (
+        Path(config["data"].get("train_file") or data_dir / "oracle_train.private.jsonl")
+        if method == "dpo100"
+        else data_dir / "labeled_train.jsonl"
+    )
+    val_file = data_dir / "labeled_val.jsonl"
+    unlabeled_file = data_dir / "unlabeled_train.jsonl"
+    model_manifest = Path(model_cfg["manifest_path"])
+    cache_root = config["data"].get("reference_cache")
+    train_cache = val_cache = None
+    if method in DPO_METHODS:
+        train_cache = cache_for(cache_root, train_file)
+        val_cache = cache_for(cache_root, val_file)
+        verify_cache_contract(
+            train_cache,
+            train_file,
+            model_manifest,
+            int(model_cfg["max_seq_len"]),
+            bool(model_cfg["enable_thinking"]),
+        )
+        verify_cache_contract(
+            val_cache,
+            val_file,
+            model_manifest,
+            int(model_cfg["max_seq_len"]),
+            bool(model_cfg["enable_thinking"]),
         )
 
-        total_loss = loss_dpo
-        info = {
-            'loss_dpo': info_dpo['loss'],
-            'dpo_accuracy': info_dpo['accuracy'],
-            'dpo_probs_mean': info_dpo['probs_mean']
-        }
+    train_dataset = make_dataset(train_file, tokenizer, config, train_cache, True)
+    val_dataset = make_dataset(val_file, tokenizer, config, val_cache, True)
+    val_loader, _ = regular_loader(
+        val_dataset,
+        tokenizer,
+        config,
+        rank,
+        world_size,
+        int(training["dpo_batch_size_per_device"]),
+        False,
+    )
 
-        # Add auxiliary loss for methods using unlabeled data
-        lambda_t = 0.0
-        if self.method in ['pseudo_target', 'dpo_pe'] and batch_unlabeled is not None:
-            # Get current lambda
-            if self.lambda_scheduler is not None:
-                lambda_t = self.lambda_scheduler.get_lambda(self.global_step)
-            else:
-                lambda_t = self.config.get('lambda_pe', 0.5)
+    train_loader = train_sampler = unlabeled_loader = unlabeled_sampler = None
+    if method in DPO_METHODS:
+        train_loader, train_sampler = regular_loader(
+            train_dataset,
+            tokenizer,
+            config,
+            rank,
+            world_size,
+            int(training["dpo_batch_size_per_device"]),
+            True,
+        )
+        steps_per_epoch = len(train_loader) // int(training["gradient_accumulation_steps"])
+    else:
+        train_loader, train_sampler = regular_loader(
+            train_dataset,
+            tokenizer,
+            config,
+            rank,
+            world_size,
+            int(training["joint_labeled_batch_size_per_device"]),
+            True,
+        )
+        unlabeled_dataset = make_dataset(unlabeled_file, tokenizer, config, None, False)
+        unlabeled_loader, unlabeled_sampler = patterned_loader(
+            unlabeled_dataset, tokenizer, config, rank, world_size
+        )
+        steps_per_epoch = len(unlabeled_loader) // int(training["gradient_accumulation_steps"])
 
-            # Extract unlabeled data
-            input_ids_a = batch_unlabeled['input_ids_a'].to(self.device)
-            attention_mask_a = batch_unlabeled['attention_mask_a'].to(self.device)
-            input_ids_b = batch_unlabeled['input_ids_b'].to(self.device)
-            attention_mask_b = batch_unlabeled['attention_mask_b'].to(self.device)
+    planned_steps = int(training["epochs"]) * steps_per_epoch
+    if training.get("max_steps") is not None:
+        planned_steps = min(planned_steps, int(training["max_steps"]))
+    if planned_steps < 1:
+        raise ValueError("Training plan contains zero optimizer steps")
 
-            if self.method == 'pseudo_target':
-                # Compute pseudo-target loss
-                loss_aux, info_aux = compute_pseudo_target_loss(
-                    self.policy_model,
-                    self.reference_model,
-                    input_ids_a,
-                    attention_mask_a,
-                    input_ids_b,
-                    attention_mask_b,
-                    beta=beta,
-                    threshold=self.config.get('pseudo_threshold', 0.5)
-                )
-                info.update({
-                    'loss_pseudo': info_aux['loss'],
-                    'pseudo_label_ratio': info_aux['pseudo_label_ratio'],
-                    'unlabeled_p_i_mean': info_aux['p_i_mean']
-                })
+    trainable = [parameter for parameter in policy.parameters() if parameter.requires_grad]
+    if training["optimizer"] != "adamw":
+        raise ValueError("v0.6 formal contract supports AdamW only")
+    optimizer = torch.optim.AdamW(
+        trainable,
+        lr=float(training["lr"]),
+        betas=(float(training["adam_beta1"]), float(training["adam_beta2"])),
+        weight_decay=float(training["weight_decay"]),
+    )
+    warmup_steps = int(planned_steps * float(training["warmup_ratio"]))
+    lr_scheduler = torch.optim.lr_scheduler.LambdaLR(
+        optimizer, lambda step: cosine_factor(step, planned_steps, warmup_steps)
+    )
+    dtype = DTYPES[model_cfg["torch_dtype"]]
+    dpo_objective = DPOLoss(float(training["dpo_beta"]))
+    threshold_state = SSPOThresholdState(
+        momentum=float(method_cfg["ema_momentum"]),
+        prior=float(method_cfg["pseudo_prior"]),
+        epsilon=float(method_cfg["reward_std_epsilon"]),
+        grid_points=int(method_cfg["kde_grid_points"]),
+    ) if method == "sspo_hard_exp" else None
 
-            elif self.method == 'dpo_pe':
-                # Compute PE structure loss
-                loss_aux, info_aux = compute_pe_loss(
-                    self.policy_model,
-                    self.reference_model,
-                    input_ids_a,
-                    attention_mask_a,
-                    input_ids_b,
-                    attention_mask_b,
-                    beta=beta,
-                    epsilon=self.config.get('epsilon', 1e-8),
-                    distance=self.config.get('pe_distance', 'l1'),
-                    detach_denominator=self.config.get('detach_denominator', False)
-                )
-                info.update({
-                    'loss_pe': info_aux['loss'],
-                    'e_hat_plus_0': info_aux['e_hat_plus_0'],
-                    'e_hat_plus_1': info_aux['e_hat_plus_1'],
-                    'e_hat_minus_0': info_aux['e_hat_minus_0'],
-                    'e_hat_minus_1': info_aux['e_hat_minus_1'],
-                    'dist_plus': info_aux['dist_plus'],
-                    'dist_minus': info_aux['dist_minus'],
-                    'sum_p': info_aux['sum_p'],
-                    'sum_1_minus_p': info_aux['sum_1_minus_p'],
-                    'unlabeled_p_i_mean': info_aux['p_i_mean'],
-                    'unlabeled_p_i_std': info_aux['p_i_std']
-                })
+    metrics_path = output_dir / "logs" / "metrics.jsonl"
+    global_step = 0
+    best_accuracy = -1.0
+    best_brier = float("inf")
+    accumulation = int(training["gradient_accumulation_steps"])
+    labeled_iterator = iter(infinite_batches(train_loader, train_sampler)) if method in JOINT_METHODS else None
 
-            total_loss = loss_dpo + lambda_t * loss_aux
-            info['loss_aux'] = info_aux['loss']
-            info['lambda'] = lambda_t
-
-        # Backward and optimize
-        total_loss.backward()
-
-        # Gradient clipping
-        if self.config.get('max_grad_norm', 0) > 0:
-            torch.nn.utils.clip_grad_norm_(
-                self.policy_model.parameters(),
-                self.config['max_grad_norm']
+    if method == "dpo10":
+        with unwrap_model(policy).disable_adapter():
+            initial_validation = evaluate_validation(
+                policy,
+                val_loader,
+                device,
+                method,
+                float(training["dpo_beta"]),
+                float(training["simpo_beta"]),
+                dtype,
             )
 
-        self.optimizer.step()
+        def write_initial_validation() -> None:
+            write_json(
+                output_dir / "initial_validation.json",
+                {
+                    **initial_validation,
+                    "checkpoint": "frozen_qwen3_base_before_training",
+                    "headroom_score_type": "simpo_mean_logp_delta_margin_free",
+                },
+            )
 
-        if self.lr_scheduler is not None:
-            self.lr_scheduler.step()
-
-        # Update diagnostics
-        info['loss_total'] = total_loss.item()
-        info['learning_rate'] = self.optimizer.param_groups[0]['lr']
-        info['step'] = self.global_step
-
-        self.diagnostics.update(info)
-
-        # Log to file
-        log_training_step(
-            step=self.global_step,
-            total_loss=total_loss.item(),
-            dpo_loss=loss_dpo.item(),
-            aux_loss=info.get('loss_aux', 0.0),
-            lambda_t=lambda_t,
-            learning_rate=info['learning_rate'],
-            diagnostics=info,
-            log_file=str(self.log_file)
+        synchronized_rank_zero_action(
+            rank, "DPO-10 frozen-base validation write", write_initial_validation
         )
 
-        self.global_step += 1
-
-        return info
-
-    def save_checkpoint_at_step(self, step: int, tag: str = ""):
-        """Save checkpoint at current step."""
-        if tag:
-            checkpoint_dir = self.output_dir / "checkpoints" / f"step_{step:06d}_{tag}"
+    for epoch in range(int(training["epochs"])):
+        if method in DPO_METHODS:
+            if train_sampler is not None:
+                train_sampler.set_epoch(epoch)
+            source_iterator = iter(train_loader)
+            optimizer_steps_this_epoch = len(train_loader) // accumulation
         else:
-            checkpoint_dir = self.output_dir / "checkpoints" / f"step_{step:06d}"
+            unlabeled_sampler.set_epoch(epoch)
+            source_iterator = iter(unlabeled_loader)
+            optimizer_steps_this_epoch = len(unlabeled_loader) // accumulation
 
-        save_checkpoint(
-            model=self.policy_model,
-            tokenizer=None,  # Save separately if needed
-            output_dir=str(checkpoint_dir),
-            optimizer=self.optimizer,
-            scheduler=self.lr_scheduler,
-            step=step,
-            config=self.config
-        )
-
-        print(f"Checkpoint saved at step {step}")
-
-    def evaluate(self, dataloader, split: str = "val") -> Dict:
-        """
-        Evaluate model on validation or test set.
-
-        Args:
-            dataloader: DataLoader for evaluation
-            split: Split name ('val' or 'test')
-
-        Returns:
-            metrics: Evaluation metrics
-        """
-        self.policy_model.eval()
-
-        total_correct = 0
-        total_samples = 0
-        all_probs = []
-        all_labels = []
-
-        with torch.no_grad():
-            for batch in tqdm(dataloader, desc=f"Evaluating {split}"):
-                input_ids_a = batch['input_ids_a'].to(self.device)
-                attention_mask_a = batch['attention_mask_a'].to(self.device)
-                input_ids_b = batch['input_ids_b'].to(self.device)
-                attention_mask_b = batch['attention_mask_b'].to(self.device)
-                labels = batch['labels'].to(self.device)
-
-                # Compute preference probabilities
-                from ..model.dpo_loss import compute_sequence_logprob
-
-                policy_a_outputs = self.policy_model(
-                    input_ids=input_ids_a,
-                    attention_mask=attention_mask_a,
-                    return_dict=True
+        for _ in range(optimizer_steps_this_epoch):
+            if global_step >= planned_steps:
+                break
+            optimizer.zero_grad(set_to_none=True)
+            running_supervised = 0.0
+            running_aux = 0.0
+            aux_info: Dict = {}
+            if method in DPO_METHODS:
+                batches = [next(source_iterator) for _micro in range(accumulation)]
+                for index, cpu_batch in enumerate(batches):
+                    synchronize = index == len(batches) - 1
+                    with maybe_no_sync(policy, synchronize):
+                        batch = move_batch(cpu_batch, device)
+                        with torch.autocast("cuda", dtype=dtype, enabled=dtype != torch.float32):
+                            policy_a, policy_b = model_pair_logps(policy, batch)
+                            losses, _ = dpo_objective.per_sample(
+                                policy_a,
+                                policy_b,
+                                batch["ref_logp_a"],
+                                batch["ref_logp_b"],
+                                batch["labels"],
+                            )
+                            contribution = losses.mean() / accumulation
+                        if not torch.isfinite(contribution):
+                            raise FloatingPointError(f"Non-finite DPO loss at step {global_step}")
+                        contribution.backward()
+                        running_supervised += float(losses.mean().detach()) / accumulation
+                supervised_weight, aux_weight = 1.0, 0.0
+            else:
+                unlabeled_batches = [next(source_iterator) for _micro in range(accumulation)]
+                labeled_steps = set(int(value) for value in training["joint_labeled_microsteps"])
+                labeled_batches = [next(labeled_iterator) for index in range(accumulation) if index in labeled_steps]
+                first_labeled, first_unlabeled = collect_joint_first_pass(
+                    policy,
+                    labeled_batches,
+                    unlabeled_batches,
+                    device,
+                    dtype,
+                    method == "sspo_hard_exp",
                 )
-                policy_b_outputs = self.policy_model(
-                    input_ids=input_ids_b,
-                    attention_mask=attention_mask_b,
-                    return_dict=True
+                supervised_weight, aux_weight = objective_weights(method_cfg, global_step)
+                pe_coefficients = None
+                pe_actual = 0.0
+                if method in PE_METHODS:
+                    local_probabilities = torch.cat([
+                        pe_pair_probabilities(a, b, float(training["simpo_beta"]))
+                        for a, b in first_unlabeled
+                    ])
+                    expected = int(training["joint_unlabeled_global_batch_size"]) // world_size
+                    if local_probabilities.numel() != expected:
+                        raise ValueError("PE population is incomplete; patterned batch contract failed")
+                    pe_coefficients, pe_actual, aux_info = exact_global_pe_coefficients(
+                        local_probabilities,
+                        float(training["epsilon"]),
+                        method_cfg["pe_distance"],
+                        bool(method_cfg["detach_denominator"]),
+                    )
+                else:
+                    local_winning = []
+                    local_losing = []
+                    local_all = []
+                    for mean_a, mean_b, labels in first_labeled:
+                        reward_a = float(training["simpo_beta"]) * mean_a
+                        reward_b = float(training["simpo_beta"]) * mean_b
+                        local_winning.append(torch.where(labels.bool(), reward_a, reward_b))
+                        local_losing.append(torch.where(labels.bool(), reward_b, reward_a))
+                        local_all.extend([reward_a, reward_b])
+                    for mean_a, mean_b in first_unlabeled:
+                        local_all.extend([
+                            float(training["simpo_beta"]) * mean_a,
+                            float(training["simpo_beta"]) * mean_b,
+                        ])
+                    global_winning = gather_equal_vector(torch.cat(local_winning))
+                    global_losing = gather_equal_vector(torch.cat(local_losing))
+                    global_all = gather_equal_vector(torch.cat(local_all))
+                    aux_info = threshold_state.update(global_all, global_winning, global_losing)
+
+                local_labeled_total = int(training["joint_labeled_global_batch_size"]) // world_size
+                local_unlabeled_pairs = int(training["joint_unlabeled_global_batch_size"]) // world_size
+                backward_count = len(labeled_batches) + len(unlabeled_batches)
+                backward_index = 0
+                for cpu_batch in labeled_batches:
+                    with maybe_no_sync(policy, backward_index == backward_count - 1):
+                        batch = move_batch(cpu_batch, device)
+                        with torch.autocast("cuda", dtype=dtype, enabled=dtype != torch.float32):
+                            mean_a, mean_b = model_pair_mean_logps(policy, batch)
+                            losses, _ = simpo_pair_losses(
+                                mean_a,
+                                mean_b,
+                                batch["labels"],
+                                float(training["simpo_beta"]),
+                                float(training["simpo_margin"]),
+                            )
+                            contribution = supervised_weight * losses.sum() / local_labeled_total
+                        if not torch.isfinite(contribution):
+                            raise FloatingPointError(f"Non-finite SimPO loss at step {global_step}")
+                        contribution.backward()
+                        running_supervised += float(losses.sum().detach()) / local_labeled_total
+                    backward_index += 1
+
+                coefficient_offset = 0
+                pseudo_positive_weighted = 0.0
+                local_unlabeled_responses = 2 * local_unlabeled_pairs
+                for cpu_batch in unlabeled_batches:
+                    with maybe_no_sync(policy, backward_index == backward_count - 1):
+                        batch = move_batch(cpu_batch, device)
+                        with torch.autocast("cuda", dtype=dtype, enabled=dtype != torch.float32):
+                            mean_a, mean_b = model_pair_mean_logps(policy, batch)
+                            if method in PE_METHODS:
+                                probabilities = pe_pair_probabilities(
+                                    mean_a, mean_b, float(training["simpo_beta"])
+                                )
+                                count = probabilities.numel()
+                                coefficients = pe_coefficients[coefficient_offset : coefficient_offset + count]
+                                coefficient_offset += count
+                                contribution = aux_weight * pe_surrogate(
+                                    probabilities, coefficients, world_size
+                                )
+                                running_aux = pe_actual
+                            else:
+                                rewards = float(training["simpo_beta"]) * torch.cat([mean_a, mean_b])
+                                losses, hard_info = hard_pseudo_response_losses(rewards, threshold_state)
+                                contribution = aux_weight * losses.sum() / local_unlabeled_responses
+                                running_aux += float(losses.sum().detach()) / local_unlabeled_responses
+                                pseudo_positive_weighted += (
+                                    hard_info["pseudo_positive_rate"] * rewards.numel() / local_unlabeled_responses
+                                )
+                        if not torch.isfinite(contribution):
+                            raise FloatingPointError(f"Non-finite auxiliary loss at step {global_step}")
+                        contribution.backward()
+                    backward_index += 1
+                if method in PE_METHODS and coefficient_offset != pe_coefficients.numel():
+                    raise ValueError("PE second pass did not consume every population coefficient")
+                if method == "sspo_hard_exp":
+                    aux_info["pseudo_positive_rate"] = pseudo_positive_weighted
+
+            grad_norm = torch.nn.utils.clip_grad_norm_(trainable, float(training["max_grad_norm"]))
+            if not torch.isfinite(grad_norm):
+                raise FloatingPointError(f"Non-finite gradient norm at step {global_step}")
+            optimizer.step()
+            lr_scheduler.step()
+            global_step += 1
+
+            record = {
+                "step": global_step,
+                "epoch": epoch,
+                "method": method,
+                "loss_supervised": running_supervised,
+                "loss_aux": running_aux,
+                "supervised_weight": supervised_weight,
+                "aux_weight": aux_weight,
+                "learning_rate": optimizer.param_groups[0]["lr"],
+                "grad_norm": float(grad_norm),
+                "global_batch_size": int(training["global_batch_size"]),
+                "joint_labeled_global_batch_size": (
+                    int(training["joint_labeled_global_batch_size"]) if method in JOINT_METHODS else None
+                ),
+                "joint_unlabeled_global_batch_size": (
+                    int(training["joint_unlabeled_global_batch_size"]) if method in JOINT_METHODS else None
+                ),
+                "aux": aux_info or None,
+            }
+            if rank == 0:
+                with jsonlines.open(metrics_path, "a") as writer:
+                    writer.write(record)
+                write_json(output_dir / "state.json", {"status": "running", "step": global_step})
+
+            should_evaluate = global_step % int(training["eval_steps"]) == 0 or global_step == planned_steps
+            if should_evaluate:
+                validation = evaluate_validation(
+                    policy,
+                    val_loader,
+                    device,
+                    method,
+                    float(training["dpo_beta"]),
+                    float(training["simpo_beta"]),
+                    dtype,
                 )
-                reference_a_outputs = self.reference_model(
-                    input_ids=input_ids_a,
-                    attention_mask=attention_mask_a,
-                    return_dict=True
+                if rank == 0:
+                    with jsonlines.open(metrics_path, "a") as writer:
+                        writer.write({"step": global_step, **validation})
+                    accuracy = float(validation["val_accuracy"])
+                    brier = float(validation["val_brier"])
+                    if accuracy > best_accuracy or (accuracy == best_accuracy and brier < best_brier):
+                        best_accuracy, best_brier = accuracy, brier
+                        write_json(
+                            output_dir / "best.json",
+                            {"step": global_step, **validation, "selection_split": "validation"},
+                        )
+
+            should_save = bool(config["output"].get("save_checkpoints", True)) and (
+                global_step % int(training["save_steps"]) == 0 or global_step == planned_steps
+            )
+            if should_save:
+                checkpoint = output_dir / "checkpoints" / f"step_{global_step:06d}"
+                synchronized_rank_zero_action(
+                    rank,
+                    f"checkpoint save at step {global_step}",
+                    lambda: save_adapter_checkpoint(
+                        policy,
+                        tokenizer,
+                        str(checkpoint),
+                        config,
+                        0,
+                        training_state={
+                            "step": global_step,
+                            "threshold": threshold_state.state_dict() if threshold_state else None,
+                        },
+                    ),
                 )
-                reference_b_outputs = self.reference_model(
-                    input_ids=input_ids_b,
-                    attention_mask=attention_mask_b,
-                    return_dict=True
-                )
+            if global_step >= planned_steps:
+                break
+        if global_step >= planned_steps:
+            break
 
-                policy_a_logps = compute_sequence_logprob(
-                    policy_a_outputs.logits, input_ids_a, attention_mask_a
-                )
-                policy_b_logps = compute_sequence_logprob(
-                    policy_b_outputs.logits, input_ids_b, attention_mask_b
-                )
-                reference_a_logps = compute_sequence_logprob(
-                    reference_a_outputs.logits, input_ids_a, attention_mask_a
-                )
-                reference_b_logps = compute_sequence_logprob(
-                    reference_b_outputs.logits, input_ids_b, attention_mask_b
-                )
+    memory = torch.tensor(
+        [torch.cuda.max_memory_allocated(device), torch.cuda.max_memory_reserved(device)],
+        dtype=torch.float64,
+        device=device,
+    )
+    if dist.is_initialized():
+        dist.all_reduce(memory, op=dist.ReduceOp.MAX)
 
-                beta = self.config.get('beta', 0.1)
-                reward_a = beta * (policy_a_logps - reference_a_logps)
-                reward_b = beta * (policy_b_logps - reference_b_logps)
-                delta = reward_a - reward_b
-                probs = torch.sigmoid(delta)
-
-                # Compute accuracy
-                preds = (probs > 0.5).long()
-                correct = (preds == labels).sum().item()
-
-                total_correct += correct
-                total_samples += len(labels)
-
-                all_probs.extend(probs.cpu().numpy().tolist())
-                all_labels.extend(labels.cpu().numpy().tolist())
-
-        # Compute metrics
-        accuracy = total_correct / total_samples if total_samples > 0 else 0.0
-
-        # Compute Brier score
-        all_probs = torch.tensor(all_probs)
-        all_labels = torch.tensor(all_labels, dtype=torch.float)
-        brier = ((all_probs - all_labels) ** 2).mean().item()
-
-        metrics = {
-            f'{split}_accuracy': accuracy,
-            f'{split}_brier': brier,
-            f'{split}_samples': total_samples
+    def write_completion() -> None:
+        completion = {
+            "status": "succeeded",
+            "steps": global_step,
+            "method": method,
+            "config_sha256": hashlib.sha256(canonical_json(config).encode()).hexdigest(),
+            "best_val_accuracy": best_accuracy,
+            "best_val_brier": best_brier,
+            "trainable_parameters": trainable_parameters,
+            "total_parameters": total_parameters,
+            "checkpoint_format": "peft_lora_adapter",
+            "peak_memory_allocated_bytes": int(memory[0]),
+            "peak_memory_reserved_bytes": int(memory[1]),
         }
+        write_json(output_dir / "complete.json", completion)
+        write_json(output_dir / "state.json", completion)
 
-        print(f"{split.upper()} - Accuracy: {accuracy:.4f}, Brier: {brier:.4f}")
+    synchronized_rank_zero_action(rank, "completion write", write_completion)
+    if dist.is_initialized():
+        dist.destroy_process_group()
 
-        return metrics
+
+if __name__ == "__main__":
+    main()

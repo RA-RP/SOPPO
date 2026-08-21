@@ -1,17 +1,12 @@
-# DPO-100%: Oracle upper bound
-# Uses all 9k samples with true labels
-
-# Inherit base config
 _base_: base.yaml
 
-# Method configuration
 method:
   name: "dpo100"
-  use_unlabeled: false  # All data is labeled
-  lambda_pe: 0.0
-  lambda_scheduler: null
+  use_unlabeled: false
 
-# Data: all 9k labeled
-data:
-  use_all_labels: true
-  total_labeled_samples: 9000  # 900 labeled + 8k unlabeled (labels revealed)
+training:
+  epochs: 1
+  lr: 0.000001
+
+# The isolated materializer creates oracle_train.private.jsonl. Validation and
+# test examples never participate in gradients.

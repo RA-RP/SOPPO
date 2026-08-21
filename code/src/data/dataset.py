@@ -1,145 +1,181 @@
-"""
-PyTorch Dataset classes for preference learning.
-"""
+"""Qwen3-aware preference datasets with dynamic padding and response masks."""
+
+from __future__ import annotations
+
+import json
+from pathlib import Path
+from typing import Dict, List, Optional
 
 import jsonlines
-from pathlib import Path
-from typing import Optional, Dict, List
 import torch
-from torch.utils.data import Dataset
+from torch.utils.data import DataLoader, Dataset
+
+
+def load_reference_cache(path: Optional[str]) -> Dict[str, Dict[str, float]]:
+    if not path:
+        return {}
+    cache_path = Path(path)
+    if not cache_path.is_file():
+        raise FileNotFoundError(f"Reference cache not found: {cache_path}")
+    records: Dict[str, Dict[str, float]] = {}
+    with jsonlines.open(cache_path) as reader:
+        for row in reader:
+            sample_id = row["sample_id"]
+            if sample_id in records:
+                raise ValueError(f"Duplicate sample in reference cache: {sample_id}")
+            records[sample_id] = {
+                "ref_logp_a": float(row["ref_logp_a"]),
+                "ref_logp_b": float(row["ref_logp_b"]),
+            }
+    return records
 
 
 class PreferenceDataset(Dataset):
-    """Base dataset for preference pairs."""
+    """Preference pairs encoded with Qwen3's chat template."""
 
-    def __init__(self, data_path: str, tokenizer, max_length: int = 2048):
-        """
-        Args:
-            data_path: Path to JSONL file
-            tokenizer: HuggingFace tokenizer
-            max_length: Maximum sequence length
-        """
-        self.data_path = Path(data_path)
+    def __init__(
+        self,
+        data_path: str,
+        tokenizer,
+        max_length: int = 2048,
+        reference_cache_path: Optional[str] = None,
+        require_labels: Optional[bool] = None,
+        enable_thinking: bool = False,
+        limit: Optional[int] = None,
+    ):
+        self.data_path = Path(data_path).resolve()
         self.tokenizer = tokenizer
-        self.max_length = max_length
-
-        # Load data
+        self.max_length = int(max_length)
+        self.enable_thinking = bool(enable_thinking)
+        self.reference_cache = load_reference_cache(reference_cache_path)
         self.samples = []
         with jsonlines.open(self.data_path) as reader:
-            for obj in reader:
-                self.samples.append(obj)
+            for row in reader:
+                if limit is not None and len(self.samples) >= limit:
+                    break
+                self.samples.append(row)
+        if not self.samples:
+            raise ValueError(f"Dataset is empty: {self.data_path}")
+        seen_ids = set()
+        for row in self.samples:
+            required = ("sample_id", "prompt", "response_a", "response_b")
+            if any(not isinstance(row.get(key), str) or not row[key] for key in required):
+                raise ValueError(f"Malformed preference row in {self.data_path}: {row.get('sample_id')}")
+            if row["sample_id"] in seen_ids:
+                raise ValueError(f"Duplicate sample_id in {self.data_path}: {row['sample_id']}")
+            seen_ids.add(row["sample_id"])
+            has_label = "label" in row
+            if require_labels is True and not has_label:
+                raise ValueError(f"Labeled dataset sample has no label: {row.get('sample_id')}")
+            if has_label and int(row["label"]) not in {0, 1}:
+                raise ValueError(f"Preference label must be 0/1: {row['sample_id']}")
+            if require_labels is False:
+                forbidden = {"label", "original_chosen", "original_rejected"} & set(row)
+                if forbidden:
+                    raise ValueError(
+                        f"Label isolation failure for {row.get('sample_id')}: {sorted(forbidden)}"
+                    )
+            if self.reference_cache and row["sample_id"] not in self.reference_cache:
+                raise ValueError(f"Reference cache misses sample: {row['sample_id']}")
 
-    def __len__(self):
+    def __len__(self) -> int:
         return len(self.samples)
 
-    def __getitem__(self, idx):
-        sample = self.samples[idx]
-
-        prompt = sample['prompt']
-        response_a = sample['response_a']
-        response_b = sample['response_b']
-
-        # Tokenize prompt + response_a
-        text_a = prompt + response_a
-        encoding_a = self.tokenizer(
-            text_a,
-            max_length=self.max_length,
-            truncation=True,
-            padding='max_length',
-            return_tensors='pt'
+    def _chat_ids(self, prompt: str, response: str) -> Dict[str, List[int]]:
+        # Qwen3 inserts the disabled-thinking marker only when constructing a
+        # generation prompt. Build the response sequence from that exact text so
+        # the response boundary cannot silently diverge from the training input.
+        prompt_text = self.tokenizer.apply_chat_template(
+            [{"role": "user", "content": prompt}],
+            tokenize=False,
+            add_generation_prompt=True,
+            enable_thinking=self.enable_thinking,
         )
+        eos = self.tokenizer.eos_token or ""
+        full_text = prompt_text + response + eos
+        prompt_ids = self.tokenizer(prompt_text, add_special_tokens=False)["input_ids"]
+        full_ids = self.tokenizer(full_text, add_special_tokens=False)["input_ids"]
+        if full_ids[: len(prompt_ids)] != prompt_ids:
+            raise ValueError("Qwen3 chat template prefix mismatch; response mask is unsafe")
+        response_start = len(prompt_ids)
+        if len(full_ids) > self.max_length:
+            removed = len(full_ids) - self.max_length
+            full_ids = full_ids[removed:]
+            response_start = max(0, response_start - removed)
+        loss_mask = [0] * response_start + [1] * (len(full_ids) - response_start)
+        if sum(loss_mask[1:]) == 0:
+            raise ValueError("Response was fully truncated; increase model.max_seq_len")
+        return {"input_ids": full_ids, "loss_mask": loss_mask}
 
-        # Tokenize prompt + response_b
-        text_b = prompt + response_b
-        encoding_b = self.tokenizer(
-            text_b,
-            max_length=self.max_length,
-            truncation=True,
-            padding='max_length',
-            return_tensors='pt'
-        )
-
+    def __getitem__(self, index: int) -> Dict:
+        sample = self.samples[index]
+        encoded_a = self._chat_ids(sample["prompt"], sample["response_a"])
+        encoded_b = self._chat_ids(sample["prompt"], sample["response_b"])
         result = {
-            'sample_id': sample['sample_id'],
-            'input_ids_a': encoding_a['input_ids'].squeeze(0),
-            'attention_mask_a': encoding_a['attention_mask'].squeeze(0),
-            'input_ids_b': encoding_b['input_ids'].squeeze(0),
-            'attention_mask_b': encoding_b['attention_mask'].squeeze(0),
+            "sample_id": sample["sample_id"],
+            "input_ids_a": encoded_a["input_ids"],
+            "loss_mask_a": encoded_a["loss_mask"],
+            "input_ids_b": encoded_b["input_ids"],
+            "loss_mask_b": encoded_b["loss_mask"],
         }
-
-        # Add label if present
-        if 'label' in sample:
-            result['label'] = torch.tensor(sample['label'], dtype=torch.long)
-
+        if "label" in sample:
+            result["label"] = int(sample["label"])
+        if self.reference_cache:
+            result.update(self.reference_cache[sample["sample_id"]])
         return result
 
 
-class LabeledDataset(PreferenceDataset):
-    """Dataset for labeled preference pairs (D_L)."""
+class PreferenceCollator:
+    """Right-pad each side to the longest sequence in the current microbatch."""
 
-    def __init__(self, data_path: str, tokenizer, max_length: int = 2048):
-        super().__init__(data_path, tokenizer, max_length)
+    def __init__(self, pad_token_id: int):
+        self.pad_token_id = int(pad_token_id)
 
-        # Verify all samples have labels
-        for sample in self.samples:
-            assert 'label' in sample, f"Sample {sample['sample_id']} missing label"
+    def _pad(self, rows: List[List[int]], value: int) -> torch.Tensor:
+        width = max(len(row) for row in rows)
+        return torch.tensor([row + [value] * (width - len(row)) for row in rows], dtype=torch.long)
 
-
-class UnlabeledDataset(PreferenceDataset):
-    """Dataset for unlabeled preference pairs (D_U).
-
-    Labels are hidden during training. Access to private labels is forbidden.
-    """
-
-    def __init__(self, data_path: str, tokenizer, max_length: int = 2048,
-                 verify_no_labels: bool = True):
-        super().__init__(data_path, tokenizer, max_length)
-
-        # Verify no labels are present
-        if verify_no_labels:
-            for sample in self.samples:
-                assert 'label' not in sample, \
-                    f"Unlabeled dataset should not contain labels: {sample['sample_id']}"
+    def __call__(self, batch: List[Dict]) -> Dict:
+        result = {"sample_ids": [row["sample_id"] for row in batch]}
+        for side in ("a", "b"):
+            ids = [row[f"input_ids_{side}"] for row in batch]
+            masks = [row[f"loss_mask_{side}"] for row in batch]
+            result[f"input_ids_{side}"] = self._pad(ids, self.pad_token_id)
+            result[f"attention_mask_{side}"] = self._pad([[1] * len(row) for row in ids], 0)
+            result[f"loss_mask_{side}"] = self._pad(masks, 0)
+        if "label" in batch[0]:
+            result["labels"] = torch.tensor([row["label"] for row in batch], dtype=torch.long)
+        if "ref_logp_a" in batch[0]:
+            for key in ("ref_logp_a", "ref_logp_b"):
+                result[key] = torch.tensor([row[key] for row in batch], dtype=torch.float32)
+        return result
 
 
-class TestDataset(PreferenceDataset):
-    """Dataset for test set evaluation.
-
-    Loads inputs without labels. True labels loaded separately by evaluation script.
-    """
-
-    def __init__(self, data_path: str, tokenizer, max_length: int = 2048):
-        super().__init__(data_path, tokenizer, max_length)
-
-
-def create_dataloader(dataset, batch_size: int, shuffle: bool = True,
-                     num_workers: int = 0, collate_fn=None):
-    """Create DataLoader with standard settings."""
-    from torch.utils.data import DataLoader
-
+def create_dataloader(
+    dataset: Dataset,
+    batch_size: int,
+    collate_fn,
+    shuffle: bool = True,
+    num_workers: int = 0,
+    sampler=None,
+) -> DataLoader:
     return DataLoader(
         dataset,
         batch_size=batch_size,
-        shuffle=shuffle,
+        shuffle=shuffle if sampler is None else False,
+        sampler=sampler,
         num_workers=num_workers,
         collate_fn=collate_fn,
-        pin_memory=True
+        pin_memory=True,
+        drop_last=shuffle,
     )
 
 
-def preference_collate_fn(batch: List[Dict]) -> Dict:
-    """Collate function for preference datasets."""
+def data_file_sha256(path: str | Path) -> str:
+    import hashlib
 
-    result = {
-        'sample_ids': [item['sample_id'] for item in batch],
-        'input_ids_a': torch.stack([item['input_ids_a'] for item in batch]),
-        'attention_mask_a': torch.stack([item['attention_mask_a'] for item in batch]),
-        'input_ids_b': torch.stack([item['input_ids_b'] for item in batch]),
-        'attention_mask_b': torch.stack([item['attention_mask_b'] for item in batch]),
-    }
-
-    # Add labels if present
-    if 'label' in batch[0]:
-        result['labels'] = torch.stack([item['label'] for item in batch])
-
-    return result
+    digest = hashlib.sha256()
+    with Path(path).open("rb") as handle:
+        for chunk in iter(lambda: handle.read(8 * 1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()

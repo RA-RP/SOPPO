@@ -8,8 +8,6 @@ import json
 import random
 import hashlib
 from pathlib import Path
-from typing import Dict, List, Tuple
-from collections import defaultdict
 
 import jsonlines
 from datasets import load_dataset
@@ -18,9 +16,11 @@ from tqdm import tqdm
 
 def prepare_ultrafeedback_dataset(
     output_dir: str,
-    total_samples: int = 10000,
-    labeled_ratio: float = 0.1,
-    test_ratio: float = 0.1,
+    total_samples: int = 30000,
+    labeled_train_samples: int = 2700,
+    labeled_val_samples: int = 300,
+    unlabeled_samples: int = 24000,
+    test_samples: int = 3000,
     seed: int = 42,
     dataset_name: str = "openbmb/UltraFeedback",
     max_seq_len: int = 2048
@@ -30,19 +30,21 @@ def prepare_ultrafeedback_dataset(
 
     Args:
         output_dir: Server directory to save processed data
-        total_samples: Total samples to sample (default 10k)
-        labeled_ratio: Ratio of labeled training data (default 0.1)
-        test_ratio: Ratio of test data (default 0.1)
+        total_samples: Exact number of unique prompts required (default 30k)
+        labeled_train_samples: Exact labeled training count
+        labeled_val_samples: Exact labeled validation count
+        unlabeled_samples: Exact hidden-label training count
+        test_samples: Exact independent test count
         seed: Random seed
         dataset_name: HuggingFace dataset name
         max_seq_len: Maximum sequence length for truncation check
 
     Output structure:
         <output_dir>/
-        ├── labeled_train.jsonl     # 900 samples
-        ├── labeled_val.jsonl       # 100 samples (from 1k labeled)
-        ├── unlabeled_train.jsonl   # 8k samples (position randomized)
-        ├── test_inputs.jsonl       # 1k samples (position randomized)
+        ├── labeled_train.jsonl     # 2.7k samples
+        ├── labeled_val.jsonl       # 300 samples
+        ├── unlabeled_train.jsonl   # 24k samples (position randomized)
+        ├── test_inputs.jsonl       # 3k samples (position randomized)
         ├── private_labels/
         │   ├── unlabeled_labels.jsonl
         │   └── test_labels.jsonl
@@ -58,49 +60,85 @@ def prepare_ultrafeedback_dataset(
     print(f"Loading dataset: {dataset_name}")
     dataset = load_dataset(dataset_name, split="train")
 
-    # Step 1: Sample total_samples randomly
-    print(f"Sampling {total_samples} samples...")
+    def scored_completions(sample):
+        values = []
+        for completion in sample.get("completions", []):
+            response = completion.get("response")
+            score = completion.get("overall_score")
+            if isinstance(response, str) and response and isinstance(score, (int, float)):
+                values.append(completion)
+        if len(values) < 2:
+            return []
+        scores = [float(value["overall_score"]) for value in values]
+        return values if max(scores) > min(scores) else []
+
+    requested_total = (
+        labeled_train_samples + labeled_val_samples + unlabeled_samples + test_samples
+    )
+    if requested_total != total_samples:
+        raise ValueError(
+            f"Explicit split counts sum to {requested_total}, expected total_samples={total_samples}"
+        )
+    expected_counts = {
+        "labeled_total": int(total_samples * 0.10),
+        "labeled_train": int(total_samples * 0.09),
+        "labeled_val": int(total_samples * 0.01),
+        "unlabeled": int(total_samples * 0.80),
+        "test": int(total_samples * 0.10),
+    }
+    actual_counts = {
+        "labeled_total": labeled_train_samples + labeled_val_samples,
+        "labeled_train": labeled_train_samples,
+        "labeled_val": labeled_val_samples,
+        "unlabeled": unlabeled_samples,
+        "test": test_samples,
+    }
+    if actual_counts != expected_counts:
+        raise ValueError(
+            "The frozen split must remain 9% labeled-train + 1% labeled-val + "
+            f"80% unlabeled + 10% test; expected {expected_counts}, got {actual_counts}"
+        )
+
+    # Step 1: shuffle the full split, then collect exactly total_samples valid,
+    # prompt-unique records. Sampling before dedup could silently produce <30k.
+    print(f"Collecting exactly {total_samples} unique valid prompts...")
     all_indices = list(range(len(dataset)))
     random.shuffle(all_indices)
-    sampled_indices = all_indices[:total_samples]
-    sampled_data = dataset.select(sampled_indices)
-
-    # Step 2: Deduplicate by prompt
-    print("Deduplicating by prompt...")
-    prompt_to_samples = defaultdict(list)
-    for idx, sample in enumerate(tqdm(sampled_data)):
-        prompt = sample['instruction']
-        prompt_hash = hashlib.sha256(prompt.encode()).hexdigest()
-        prompt_to_samples[prompt_hash].append((idx, sample))
-
-    # Keep first sample for each prompt
     deduplicated = []
-    for prompt_hash, samples in prompt_to_samples.items():
-        deduplicated.append(samples[0])
-
-    print(f"After deduplication: {len(deduplicated)} samples")
+    prompt_hashes = set()
+    for idx in tqdm(all_indices):
+        sample = dataset[idx]
+        prompt = sample['instruction']
+        if not isinstance(prompt, str) or not prompt:
+            continue
+        prompt_hash = hashlib.sha256(prompt.encode()).hexdigest()
+        if prompt_hash in prompt_hashes or not scored_completions(sample):
+            continue
+        prompt_hashes.add(prompt_hash)
+        deduplicated.append((idx, sample))
+        if len(deduplicated) == total_samples:
+            break
+    if len(deduplicated) != total_samples:
+        raise ValueError(
+            f"Dataset supplies only {len(deduplicated)} valid unique prompts; required {total_samples}"
+        )
+    print(f"Unique valid prompts selected: {len(deduplicated)}")
 
     # Step 3: Split into labeled, unlabeled, test
     # Ensure no prompt appears in multiple splits
     random.shuffle(deduplicated)
 
-    n_labeled = int(len(deduplicated) * labeled_ratio)
-    n_test = int(len(deduplicated) * test_ratio)
-    n_unlabeled = len(deduplicated) - n_labeled - n_test
-
-    labeled_samples = deduplicated[:n_labeled]
-    unlabeled_samples = deduplicated[n_labeled:n_labeled + n_unlabeled]
-    test_samples = deduplicated[n_labeled + n_unlabeled:]
-
-    # Further split labeled into train/val (90/10)
-    n_labeled_val = int(len(labeled_samples) * 0.1)
-    labeled_val = labeled_samples[:n_labeled_val]
-    labeled_train = labeled_samples[n_labeled_val:]
+    labeled_end = labeled_train_samples + labeled_val_samples
+    unlabeled_end = labeled_end + unlabeled_samples
+    labeled_train = deduplicated[:labeled_train_samples]
+    labeled_val = deduplicated[labeled_train_samples:labeled_end]
+    unlabeled_records = deduplicated[labeled_end:unlabeled_end]
+    test_records = deduplicated[unlabeled_end:]
 
     print(f"Split sizes - Labeled train: {len(labeled_train)}, "
           f"Labeled val: {len(labeled_val)}, "
-          f"Unlabeled: {len(unlabeled_samples)}, "
-          f"Test: {len(test_samples)}")
+          f"Unlabeled: {len(unlabeled_records)}, "
+          f"Test: {len(test_records)}")
 
     # Step 4: Process and save data
     truncation_stats = {"labeled": 0, "unlabeled": 0, "test": 0}
@@ -112,12 +150,10 @@ def prepare_ultrafeedback_dataset(
         idx, sample = idx_sample_tuple
 
         prompt = sample['instruction']
-        completions = sample.get('completions', [])
+        completions = scored_completions(sample)
 
-        # Find chosen and rejected based on ratings or annotations
-        # Assuming UltraFeedback format with scores
         if len(completions) < 2:
-            return None
+            raise ValueError(f"Selected sample lost its valid strict preference: uf_{idx}")
 
         # Sort by score descending
         sorted_completions = sorted(completions,
@@ -192,7 +228,7 @@ def prepare_ultrafeedback_dataset(
     print("Processing unlabeled set...")
     unlabeled_labels = []
     with jsonlines.open(output_path / "unlabeled_train.jsonl", "w") as f:
-        for item in tqdm(unlabeled_samples):
+        for item in tqdm(unlabeled_records):
             processed = process_sample(item, hide_label=True, randomize_position=True)
             if processed:
                 data, label_info, is_trunc, pos_key = processed
@@ -212,7 +248,7 @@ def prepare_ultrafeedback_dataset(
     print("Processing test set...")
     test_labels = []
     with jsonlines.open(output_path / "test_inputs.jsonl", "w") as f:
-        for item in tqdm(test_samples):
+        for item in tqdm(test_records):
             processed = process_sample(item, hide_label=True, randomize_position=True)
             if processed:
                 data, label_info, is_trunc, pos_key = processed
@@ -234,16 +270,16 @@ def prepare_ultrafeedback_dataset(
     # Position randomization check
     position_audit = {
         "unlabeled": {
-            "total": len(unlabeled_samples),
+            "total": len(unlabeled_records),
             "original_position": position_stats["unlabeled_original"],
             "swapped_position": position_stats["unlabeled_swapped"],
-            "ratio": position_stats["unlabeled_swapped"] / len(unlabeled_samples) if unlabeled_samples else 0
+            "ratio": position_stats["unlabeled_swapped"] / len(unlabeled_records) if unlabeled_records else 0
         },
         "test": {
-            "total": len(test_samples),
+            "total": len(test_records),
             "original_position": position_stats["test_original"],
             "swapped_position": position_stats["test_swapped"],
-            "ratio": position_stats["test_swapped"] / len(test_samples) if test_samples else 0
+            "ratio": position_stats["test_swapped"] / len(test_records) if test_records else 0
         }
     }
 
@@ -252,9 +288,9 @@ def prepare_ultrafeedback_dataset(
         "labeled_truncated": truncation_stats["labeled"],
         "labeled_total": len(labeled_train) + len(labeled_val),
         "unlabeled_truncated": truncation_stats["unlabeled"],
-        "unlabeled_total": len(unlabeled_samples),
+        "unlabeled_total": len(unlabeled_records),
         "test_truncated": truncation_stats["test"],
-        "test_total": len(test_samples)
+        "test_total": len(test_records)
     }
 
     # Compute SHA-256 checksums
@@ -264,6 +300,11 @@ def prepare_ultrafeedback_dataset(
         filepath = output_path / filename
         with open(filepath, "rb") as f:
             checksums[filename] = hashlib.sha256(f.read()).hexdigest()
+    private_checksums = {}
+    for filename in ["unlabeled_labels.jsonl", "test_labels.jsonl"]:
+        filepath = private_labels_path / filename
+        with open(filepath, "rb") as f:
+            private_checksums[filename] = hashlib.sha256(f.read()).hexdigest()
 
     # Save manifests
     manifest_private = {
@@ -272,12 +313,20 @@ def prepare_ultrafeedback_dataset(
         "total_samples_after_dedup": len(deduplicated),
         "labeled_train": len(labeled_train),
         "labeled_val": len(labeled_val),
-        "unlabeled_train": len(unlabeled_samples),
-        "test": len(test_samples),
+        "unlabeled_train": len(unlabeled_records),
+        "test": len(test_records),
+        "split_ratios": {
+            "labeled_total": 0.10,
+            "labeled_train": 0.09,
+            "labeled_val": 0.01,
+            "unlabeled_train": 0.80,
+            "test": 0.10,
+        },
         "seed": seed,
         "position_audit": position_audit,
         "truncation_audit": truncation_audit,
         "checksums": checksums,
+        "private_checksums": private_checksums,
         "max_seq_len_check": max_seq_len
     }
 
@@ -285,18 +334,26 @@ def prepare_ultrafeedback_dataset(
         "dataset": dataset_name,
         "labeled_train": len(labeled_train),
         "labeled_val": len(labeled_val),
-        "unlabeled_train": len(unlabeled_samples),
-        "test": len(test_samples),
+        "unlabeled_train": len(unlabeled_records),
+        "test": len(test_records),
+        "split_ratios": {
+            "labeled_total": 0.10,
+            "labeled_train": 0.09,
+            "labeled_val": 0.01,
+            "unlabeled_train": 0.80,
+            "test": 0.10,
+        },
         "position_randomization_ratio": {
             "unlabeled": position_audit["unlabeled"]["ratio"],
             "test": position_audit["test"]["ratio"]
         },
         "truncation_ratio": {
             "labeled": truncation_stats["labeled"] / (len(labeled_train) + len(labeled_val)),
-            "unlabeled": truncation_stats["unlabeled"] / len(unlabeled_samples) if unlabeled_samples else 0,
-            "test": truncation_stats["test"] / len(test_samples) if test_samples else 0
+            "unlabeled": truncation_stats["unlabeled"] / len(unlabeled_records) if unlabeled_records else 0,
+            "test": truncation_stats["test"] / len(test_records) if test_records else 0
         },
-        "checksums": checksums
+        "checksums": checksums,
+        "private_checksums": private_checksums,
     }
 
     with open(output_path / "manifest_private.json", "w") as f:
@@ -309,8 +366,8 @@ def prepare_ultrafeedback_dataset(
     print(f"Output directory: {output_dir}")
     print(f"Labeled train: {len(labeled_train)}")
     print(f"Labeled val: {len(labeled_val)}")
-    print(f"Unlabeled: {len(unlabeled_samples)}")
-    print(f"Test: {len(test_samples)}")
+    print(f"Unlabeled: {len(unlabeled_records)}")
+    print(f"Test: {len(test_records)}")
     print(f"\nPosition randomization (should be ~0.50):")
     print(f"  Unlabeled: {position_audit['unlabeled']['ratio']:.3f}")
     print(f"  Test: {position_audit['test']['ratio']:.3f}")
@@ -342,9 +399,11 @@ if __name__ == "__main__":
     import argparse
     parser = argparse.ArgumentParser()
     parser.add_argument("--output_dir", required=True, help="Server output directory")
-    parser.add_argument("--total_samples", type=int, default=10000)
-    parser.add_argument("--labeled_ratio", type=float, default=0.1)
-    parser.add_argument("--test_ratio", type=float, default=0.1)
+    parser.add_argument("--total_samples", type=int, default=30000)
+    parser.add_argument("--labeled_train_samples", type=int, default=2700)
+    parser.add_argument("--labeled_val_samples", type=int, default=300)
+    parser.add_argument("--unlabeled_samples", type=int, default=24000)
+    parser.add_argument("--test_samples", type=int, default=3000)
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--dataset_name", default="openbmb/UltraFeedback")
     parser.add_argument("--max_seq_len", type=int, default=2048)
@@ -354,8 +413,10 @@ if __name__ == "__main__":
     success = prepare_ultrafeedback_dataset(
         output_dir=args.output_dir,
         total_samples=args.total_samples,
-        labeled_ratio=args.labeled_ratio,
-        test_ratio=args.test_ratio,
+        labeled_train_samples=args.labeled_train_samples,
+        labeled_val_samples=args.labeled_val_samples,
+        unlabeled_samples=args.unlabeled_samples,
+        test_samples=args.test_samples,
         seed=args.seed,
         dataset_name=args.dataset_name,
         max_seq_len=args.max_seq_len

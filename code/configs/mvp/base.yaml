@@ -1,63 +1,99 @@
-# Base configuration for MVP experiments
-# Cycle: cycle-20260818-01
-# Experiment: v0.3 MVP
+# Frozen defaults for cycle-20260818-01 / experiment design v0.6.
+# Stage scripts may override run_dir, smoke limits, and the registered static lambda only.
 
-# Model
 model:
-  name_or_path: "Qwen/Qwen3-4B"  # Will be overridden with server path
-  torch_dtype: "float16"
-  use_flash_attention: false
+  repo_id: "Qwen/Qwen3-4B"
+  name_or_path: null
+  manifest_path: null
+  torch_dtype: "bfloat16"
+  attention_implementation: "sdpa"
   max_seq_len: 2048
+  enable_thinking: false
+  gradient_checkpointing: true
+  use_cache: false
+  lora:
+    r: 8
+    alpha: 16
+    dropout: 0.0
+    bias: "none"
+    task_type: "CAUSAL_LM"
+    target_modules:
+      - q_proj
+      - k_proj
+      - v_proj
+      - o_proj
+      - gate_proj
+      - up_proj
+      - down_proj
 
-# Data
 data:
   dataset_name: "openbmb/UltraFeedback"
-  total_samples: 10000
+  data_dir: null
+  reference_cache: null
+  total_samples: 30000
   labeled_ratio: 0.1
   test_ratio: 0.1
+  unlabeled_ratio: 0.8
+  labeled_train_samples: 2700
+  labeled_val_samples: 300
+  unlabeled_train_samples: 24000
+  test_samples: 3000
+  num_workers: 2
   seed: 42
 
-# Training
 training:
-  # Hyperparameters (locked from stage 0 pre-experiment)
-  beta: 0.1  # To be determined in stage 0
-  lr: 1e-6  # To be determined in stage 0
-  epsilon: 1e-8  # To be determined in stage 0
-
-  # Training schedule
+  dpo_beta: 0.1
+  simpo_beta: 10.0
+  simpo_margin: 2.0
+  lr: 0.00001
+  epsilon: 0.00000001
   epochs: 2
-  batch_size_per_device: 8
-  gradient_accumulation_steps: 8
+  max_steps: null
   num_devices: 2
-  global_batch_size: 128  # = batch_size_per_device * grad_accum * num_devices
-
-  # Optimizer
+  dpo_batch_size_per_device: 4
+  gradient_accumulation_steps: 8
+  global_batch_size: 64
+  # Per rank and optimizer step: four labeled pairs and 28 unlabeled pairs.
+  # Across two ranks this is the frozen 8/56 joint split, still total batch 64.
+  joint_labeled_batch_size_per_device: 1
+  joint_labeled_microsteps: [0, 2, 4, 6]
+  joint_unlabeled_microbatch_pattern: [3, 4, 3, 4, 3, 4, 3, 4]
+  joint_labeled_global_batch_size: 8
+  joint_unlabeled_global_batch_size: 56
+  smoke_mode: false
   optimizer: "adamw"
   adam_beta1: 0.9
   adam_beta2: 0.999
-  weight_decay: 0.01
+  weight_decay: 0.0
   max_grad_norm: 1.0
-
-  # Learning rate schedule
   warmup_ratio: 0.1
-  lr_scheduler_type: "linear"
-
-  # Evaluation
-  eval_steps: 20
-  save_steps: 20
+  lr_scheduler_type: "cosine"
+  eval_steps: 40
+  save_steps: 40
   logging_steps: 1
-
-  # Random seed (MVP: single seed)
   seed: 42
+  distributed_backend: "ddp"
 
-# Method-specific settings (overridden in method configs)
 method:
   name: "base"
   use_unlabeled: false
-  lambda_pe: 0.0
-  lambda_scheduler: "fixed"
+  weighting: null
+  fixed_lambda: null
+  gamma0: 1.0
+  gamma_min: 0.1011235955
+  gamma_decay: 0.01
+  pseudo_prior: 0.5
+  ema_momentum: 0.95
+  reward_std_epsilon: 0.000001
+  kde_grid_points: 200
+  kde_bandwidth: "scott"
+  pe_distance: "l1"
+  detach_denominator: false
+  population_batch_contract: "exact_global_optimizer_batch"
 
-# Output
 output:
-  save_total_limit: null  # Keep all checkpoints during C_ε observation
-  save_best_only: false  # Save all checkpoints for observation
+  run_dir: null
+  refuse_overwrite: true
+  save_total_limit: null
+  save_best_only: false
+  save_checkpoints: true

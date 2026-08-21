@@ -24,11 +24,12 @@
 ## 当前状态
 
 - Cycle ID：`cycle-20260818-01`
-- 唯一活动阶段：`EXP_DISCUSSION`
-- 当前讨论对象：`exp/current_experiment.md` v0.3 MVP
+- 唯一活动阶段：`CODE_IMPLEMENTATION`
+- 当前实现依据：`exp/current_experiment.md` v0.6 SSPO-aligned 30k MVP
 - 理论通过状态：v0.2 已明确通过（2026-08-19）
-- 实验设计通过状态：待用户明确确认
-- `CODE_IMPLEMENTATION` 及其后续阶段：全部锁定
+- 实验设计通过状态：v0.6 已逐项确认，用户已明确要求开始编码（2026-08-21）
+- 代码交接状态：实现与本地静态复核已完成；等待用户明确确认当前代码版本可以提交服务器
+- `SERVER_EXECUTION` 及其后续阶段：全部锁定
 
 ## 阅读顺序
 

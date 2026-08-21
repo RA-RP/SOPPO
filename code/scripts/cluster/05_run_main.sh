@@ -1,145 +1,25 @@
 #!/bin/bash
-# Stage 4: Main Experiment (MVP single seed)
-# Server-only script - DO NOT run locally
-
+# Two dynamic trajectories; together with stages 03/04 these form eight final runs.
 set -euo pipefail
-
-echo "=== Stage 4: Main Experiment (MVP) ==="
-echo "Cycle: cycle-20260818-01"
-echo "Experiment: v0.3 MVP"
-echo "Date: $(date)"
-
-# Check if running on server
-if [[ "${RUN_CONTEXT:-}" != "cluster" ]]; then
-    echo "ERROR: This script must run on the server (RUN_CONTEXT=cluster)"
-    exit 1
-fi
-
-# Parse arguments from the shared server path contract.
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-source "$SCRIPT_DIR/server_paths.sh"
-ENV_DIR=${1:-"$ENV_ROOT/youc"}
-CODE_DIR=${2:-"$CODE_ROOT"}
-DATA_DIR=${3:-"$DATA_ROOT/ultrafeedback/mvp-v0.3"}
-MODEL_PATH=${4:-"$MODEL_ROOT/Qwen3-4B"}
-OUTPUT_DIR=${5:-"$RUN_ROOT/$EXPERIMENT_ID"}
+source "$SCRIPT_DIR/job_env.sh"
+soppo_job_init
 
-echo "Environment: $ENV_DIR"
-echo "Code: $CODE_DIR"
-echo "Data: $DATA_DIR"
-echo "Model: $MODEL_PATH"
-echo "Output: $OUTPUT_DIR"
+INDEX="${SLURM_ARRAY_TASK_ID:-${1:-}}"
+[[ "$INDEX" =~ ^[0-1]$ ]] || { echo "ERROR: dynamic array index must be 0..1" >&2; exit 2; }
+DATA_DIR="${SOPPO_DATA_DIR:-$DATA_ROOT/ultrafeedback/mvp-v0.5-30k}"
+MODEL_DIR="${SOPPO_MODEL_DIR:-$MODEL_ROOT/Qwen3-4B}"
+MANIFEST="$MODEL_DIR/model_manifest.json"
+ROOT="$RUN_ROOT/$EXPERIMENT_ID/main"
+soppo_hardware_gate "$RUN_ROOT/$EXPERIMENT_ID/pipeline/hardware/dynamic_${INDEX}.csv"
 
-# Activate environment
-source "$SCRIPT_DIR/runtime_env.sh"
-soppo_activate_env "$ENV_DIR"
-export PYTHONPATH="$CODE_DIR:${PYTHONPATH:-}"
-
-# Create output directory
-mkdir -p "$OUTPUT_DIR"
-
-echo ""
-echo "=== MVP Experiment Configuration ==="
-echo "Seed: 42 (single seed)"
-echo "Methods: DPO-10%, Pseudo-target, DPO+PE, DPO-100%"
-echo "Schedulers (for Pseudo-target and DPO+PE): Fixed, Linear-Warmup, Exp-Warmup"
-echo "Total runs: 8"
-echo "  - DPO-10%: 1 run"
-echo "  - Pseudo-target: 3 runs (3 schedulers)"
-echo "  - DPO+PE: 3 runs (3 schedulers)"
-echo "  - DPO-100%: 1 run"
-echo ""
-
-# Method configurations
-METHODS=(
-    "dpo10:fixed:0.0"
-    "pseudo_target:fixed:LAMBDA_STAR"
-    "pseudo_target:linear_warmup:LAMBDA_STAR"
-    "pseudo_target:exp_warmup:LAMBDA_STAR"
-    "dpo_pe:fixed:LAMBDA_STAR"
-    "dpo_pe:linear_warmup:LAMBDA_STAR"
-    "dpo_pe:exp_warmup:LAMBDA_STAR"
-    "dpo100:fixed:0.0"
-)
-
-echo "Training configurations:"
-for method_config in "${METHODS[@]}"; do
-    IFS=':' read -r method scheduler lambda <<< "$method_config"
-    echo "  - Method: $method, Scheduler: $scheduler, Lambda: $lambda"
-done
-
-echo ""
-echo "Note: LAMBDA_STAR should be replaced with value from Stage 3"
-echo ""
-
-# Placeholder: actual training would happen here
-# Each method would be an independent job
-
-cat > "$OUTPUT_DIR/main_experiment_plan.txt" <<EOF
-Main Experiment Plan for cycle-20260818-01 (MVP)
-
-Configuration:
-- Seed: 42 (single seed for MVP)
-- Locked hyperparameters from Stage 2:
-  - epsilon: [from preexperiment]
-  - beta: [from preexperiment]
-  - lr: [from preexperiment]
-- Lambda: [from lambda search]
-
-Training Runs (8 total):
-1. DPO-10% (baseline)
-   - Data: 900 labeled train only
-   - Scheduler: N/A
-   - Output: $OUTPUT_DIR/dpo10_fixed/seed-42/
-
-2-4. Pseudo-target (3 schedulers)
-   - Data: 900 labeled + 8k unlabeled
-   - Schedulers: fixed, linear_warmup, exp_warmup
-   - Output: $OUTPUT_DIR/pseudo_target_[scheduler]/seed-42/
-
-5-7. DPO+PE (3 schedulers)
-   - Data: 900 labeled + 8k unlabeled
-   - Schedulers: fixed, linear_warmup, exp_warmup
-   - Output: $OUTPUT_DIR/dpo_pe_[scheduler]/seed-42/
-
-8. DPO-100% (oracle)
-   - Data: all 9k labeled (unlabeled labels revealed)
-   - Scheduler: N/A
-   - Output: $OUTPUT_DIR/dpo100_fixed/seed-42/
-
-Each run produces:
-- config.yaml (frozen configuration)
-- checkpoints/ (every 20 steps, ~10 total)
-- logs/metrics.jsonl (step-by-step metrics)
-- diagnostics/ (responsibility quality, encoding estimates)
-
-Checkpoints:
-- Keep all during C_epsilon observation (Stage 5)
-- Delete intermediate checkpoints after C_epsilon complete
-- Retain only best checkpoint per method
-
-Evaluation:
-- Validation: every 20 steps on 100 labeled val
-- Test: only after training complete, on 1k test
-
-Expected Duration:
-- Training: ~2-4 hours per run
-- Total: ~16-32 GPU hours
-- Wall time: 1-2 days (with parallelization)
-EOF
-
-cat "$OUTPUT_DIR/main_experiment_plan.txt"
-
-echo ""
-echo "=== Stage 4 Planning Complete ==="
-echo "Main experiment plan saved to: $OUTPUT_DIR/main_experiment_plan.txt"
-echo ""
-echo "Implementation needed:"
-echo "1. Training script that takes method, scheduler, seed as arguments"
-echo "2. Checkpoint saving every 20 steps"
-echo "3. Validation evaluation every 20 steps"
-echo "4. Diagnostic logging (responsibility, encoding estimates)"
-echo ""
-echo "After training completes:"
-echo "1. Proceed to Stage 5 (C_epsilon observation)"
-echo "2. Then Stage 6 (test evaluation)"
+case "$INDEX" in
+    0) CONFIG=sspo_hard_exp; RUN_NAME=sspo_hard_exp ;;
+    1) CONFIG=soppo_pe_exp; RUN_NAME=soppo_pe_exp ;;
+esac
+soppo_torchrun -m src.training.trainer \
+    --config "$CODE_ROOT/configs/mvp/$CONFIG.yaml" \
+    --set "model.name_or_path=$MODEL_DIR" --set "model.manifest_path=$MANIFEST" \
+    --set "data.data_dir=$DATA_DIR" \
+    --set training.eval_steps=40 --set training.save_steps=40 \
+    --set "output.run_dir=$ROOT/$RUN_NAME"

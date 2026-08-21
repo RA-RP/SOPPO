@@ -36,6 +36,17 @@
 - 实际实验目录或取消原因：首次实际运行前创建 `../../exp/exp-20260818-01-standard-mvp/`；服务器操作见 `../../../machine/A800_standard_MVP_runbook.md`。
 - 对应结果：尚无。
 
+### `cycle-20260818-01` / `exp-20260819-01-mvp` / 设计版本 v0.5 30k MVP — 2026-08-21
+
+- 状态：已批准；用户明确把数据规模扩大为 30k，并明确要求保持原始比例。当前处于 `CODE_IMPLEMENTATION`，服务器执行仍需代码交接后的单独授权。
+- 对应理论版本：`../theory/current_theory.md` v0.2（已通过）。
+- 数据合同：2,700 labeled-train（9%）+ 300 labeled-validation（1%）+ 24,000 unlabeled（80%）+ 3,000 test（10%）= 30,000；旧 10k 目录不覆盖，新目录为 `mvp-v0.5-30k`。
+- Batch 合同：常规 labeled global batch=32（4×4×2）；DPO+PE 的 exact population global batch=128（8×8×2）；DPO-100 global batch=128（8×8×2）。
+- smoke 合同：`gpu_test` 请求 2 张 GPU，wall time 50 分钟；不假定卡型，记录实际硬件；覆盖 Qwen3 离线加载、reference cache、SFT/DPO-10/Pseudo/DPO-100/DPO+PE、FSDP、前反向、精确 PE population batch 和 checkpoint round-trip。正式训练运行时硬检查 2×A800。
+- 自动执行：`submit_all.sh` 先以 hold 提交完整 Slurm DAG，注册全部 job ID 后一次释放；所有边使用 `afterok`，任一上游失败会阻止下游。
+- checkpoint 合同：不自动删除。预实验与 λ 搜索每 80 step 保存并保留最终点；主实验每 40 step 保存并保留最终点。保存内容为 HF 模型、tokenizer 与运行配置，不包含 optimizer state。
+- 科学判断：H1/H2/H3、validation-only 选择、headroom ≥5%、单种子趋势边界和测试标签隔离保持不变。
+
 ### `cycle-20260818-01` / `exp-20260818-01-standard-mvp` / 设计版本 v0.2 — 2026-08-18
 
 - 状态：设计中；替代 v0.1 的执行位置规则，研究问题、对照与判断标准不变。
@@ -63,3 +74,32 @@
 - 理论现已更新为 v0.2 并获用户明确通过；当前活动对象改为 `current_experiment.md` v0.1，处于 `EXP_DISCUSSION`。
 - 正式流程新增 `CODE_IMPLEMENTATION`：实验设计通过后先在 `../../code/` 完成实现和 `CODE_OVERVIEW.md` 交接，再由用户确认代码版本是否可以提交服务器。
 - 旧归档中任何“实验批准后直接执行”或“实现与服务器执行合并”的表述均已失效；历史条目保留仅用于追溯。
+
+### `cycle-20260818-01` / `exp-20260819-01-mvp` / 设计版本 v0.4 MVP — 2026-08-21
+
+- 状态：已批准（用户明确确认，2026-08-21）；当前处于 `CODE_IMPLEMENTATION`，服务器执行尚未授权。替代 v0.3 的服务器执行架构草案，研究问题、四组核心对照、单种子 MVP 与 H1/H2/H3 判断标准不变。
+- 对应理论版本：`../theory/current_theory.md` v0.2（已通过）。
+- 版本变化：模型固定为 ModelScope `Qwen/Qwen3-4B`；环境要求 Transformers ≥4.51.0 并锁定 ModelScope；模型在 `gn001` 下载校验。新增 `gpu_test` 单卡 10 分钟强制 smoke，并把剩余服务器工作改为一次提交的 Slurm job-array/`afterok` DAG。
+- 要回答的问题：与当前 v0.4 完整设计 §1 相同，检验 population-level label-encoding 结构监督能否在有限偏好标签下优于 DPO-10% 与 instance-level pseudo target。
+- 假设与预测：H1/H2/H3 及 Acc >2%、Brier 不恶化、C_ε 机制诊断不变；自动化不改变统计或科学判断标准。
+- 变量、对照和数据：UltraFeedback 10k；DPO-10%、Pseudo-target、DPO+PE、DPO-100%；seed=42；Qwen3-4B；测试标签继续与训练入口隔离。
+- 指标与预先判断标准：预实验 headroom ≥5%；ε/β/lr 与 λ 只依据 validation 和预注册 tie-break 规则选择；任一验收失败时自动链停止，不自行更换模型、数据或阈值。
+- 消融与执行顺序：Qwen3 下载/manifest → 一次提交 DAG → CPU 测试 → 10 分钟 GPU smoke → 预实验数组/选择 → λ 数组/选择 → 主实验数组 → C_ε 数组 → 独立评价数组 → 聚合与白名单导出。
+- `C_{\gamma}` 观测计划：沿用当前设计的 C_ε 方案；只有主实验 checkpoint 合同完整后才运行。
+- 资源预算与停止条件：沿用 v0.3 约 53–103 GPU·小时估算，增加 smoke ≤10 GPU 分钟；smoke、headroom、NaN/Inf、标签隔离、依赖产物或状态合同失败均阻断下游。
+- 实际实验目录或取消原因：尚未执行；代码实现已解锁，服务器授权仍锁定。
+- 对应结果：尚无。
+
+### `cycle-20260818-01` / `exp-20260819-01-mvp` / 设计版本 v0.6 SSPO-aligned 30k MVP — 2026-08-21
+
+- 状态：已批准；用户确认设计无问题并明确要求开始编码。当前处于 `CODE_IMPLEMENTATION`，服务器执行仍未授权。
+- 对应理论版本：`../theory/current_theory.md` v0.2（已通过）。
+- 版本变化：替代 v0.5 的 SFT/Pseudo/DPO+PE 设计。删除 SFT、hard-static 和 linear scheduler；headroom 改为同一 mean-logp score 下 DPO-10 对训练前冻结 base 的提升，阈值仍为 .05；DPO-100 只作 oracle。训练统一 Qwen3-4B 标准 LoRA r8/alpha16/dropout0/all projections、max length 2048、global batch64。
+- 数据合同：继续复用 30k 的 2,700 labeled-train + 300 validation + 24,000 unlabeled + 3,000 test；不覆盖已冻结的 `mvp-v0.5-30k` 数据目录。
+- 八条最终轨迹：DPO-10、DPO-100、SSPO-hard-exp、SOPPO-PE-exp，以及 normalized fixed lambda `{0.1,0.3,0.5,1.0}` 的四条 PE。
+- SSPO 对齐：labeled 为 SimPO mean-logp loss（beta10、margin2），hard unlabeled 为 single-response KDE Bayes threshold pseudo-risk，prior .5、EMA .95、200 grid；论文未给 bandwidth，冻结 Scott rule 作为复现决定。
+- PE 对照：pair probability 不含 margin；PE responsibility/denominator 默认不断梯度；exp arm 与 hard 使用同一个 `gamma_t=max(gamma_min, exp(-0.01t))`，static arm 使用 `1/(1+lambda)` 与 `lambda/(1+lambda)`。
+- 优化合同：DPO 1 epoch/lr1e-6；SSPO/PE 2 epochs/lr1e-5；AdamW、weight decay0、cosine、warmup.1、clip1、seed42。联合每步精确 8 labeled pairs + 56 unlabeled pairs。
+- checkpoint：全部保留 PEFT adapters；DPO 每20 step、SSPO/PE 每40 step及 final；不保存 optimizer state。评价和 GetSlice 在内存中加载/合并 adapter。
+- 执行顺序：CPU tests → strong smoke → reference → 两条 DPO/headroom → 四条 static PE/validation selection → hard-exp 与 PE-exp → C_epsilon → 8-arm independent test → aggregate。
+- 对应结果：尚无；当前只进行本地纯文本编码和静态复核。

@@ -1,213 +1,268 @@
-"""
-Model loading and utility functions.
-"""
+"""Offline Qwen3 loading plus standard PEFT LoRA adapter checkpoints."""
+
+from __future__ import annotations
+
+import json
+from pathlib import Path
+from typing import Dict, Tuple
 
 import torch
+from peft import LoraConfig, PeftModel, get_peft_model
+from torch.nn.parallel import DistributedDataParallel
 from transformers import AutoModelForCausalLM, AutoTokenizer
-from pathlib import Path
-from typing import Tuple, Optional
+
+from .model_manifest import verify_manifest
 
 
-def load_model_and_tokenizer(
-    model_name_or_path: str,
-    device: str = 'cuda',
-    torch_dtype: torch.dtype = torch.float16,
-    use_flash_attention: bool = False
-) -> Tuple[AutoModelForCausalLM, AutoTokenizer]:
-    """
-    Load language model and tokenizer.
+DTYPES = {
+    "bfloat16": torch.bfloat16,
+    "float16": torch.float16,
+    "float32": torch.float32,
+}
 
-    Args:
-        model_name_or_path: Path or HF model name (e.g., "Qwen/Qwen3-4B")
-        device: Device to load model ('cuda' or 'cpu')
-        torch_dtype: Model dtype (default fp16)
-        use_flash_attention: Whether to use flash attention
 
-    Returns:
-        model: Loaded language model
-        tokenizer: Loaded tokenizer
-    """
-    print(f"Loading model from: {model_name_or_path}")
+def _verify_adapter_contract(checkpoint: Path, config: Dict) -> None:
+    adapter_path = checkpoint / "adapter_config.json"
+    metadata_path = checkpoint / "checkpoint_meta.json"
+    if not adapter_path.is_file() or not metadata_path.is_file():
+        raise FileNotFoundError(f"LoRA adapter checkpoint is incomplete: {checkpoint}")
+    recorded = json.loads(adapter_path.read_text(encoding="utf-8"))
+    expected = config["model"]["lora"]
+    actual_contract = {
+        "r": int(recorded.get("r", -1)),
+        "alpha": int(recorded.get("lora_alpha", -1)),
+        "dropout": float(recorded.get("lora_dropout", -1)),
+        "bias": recorded.get("bias"),
+        "task_type": recorded.get("task_type"),
+        "target_modules": set(recorded.get("target_modules") or []),
+    }
+    expected_contract = {
+        "r": int(expected["r"]),
+        "alpha": int(expected["alpha"]),
+        "dropout": float(expected["dropout"]),
+        "bias": expected["bias"],
+        "task_type": expected["task_type"],
+        "target_modules": set(expected["target_modules"]),
+    }
+    if actual_contract != expected_contract:
+        raise ValueError(
+            f"Adapter/config LoRA contract mismatch: actual={actual_contract}, "
+            f"expected={expected_contract}"
+        )
+    expected_base = Path(config["model"]["name_or_path"]).resolve()
+    recorded_base = recorded.get("base_model_name_or_path")
+    if not recorded_base or Path(recorded_base).resolve() != expected_base:
+        raise ValueError("Adapter was not created from the configured frozen base model")
+    metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+    if Path(metadata.get("base_model", "")).resolve() != expected_base:
+        raise ValueError("Adapter checkpoint metadata/base-model mismatch")
 
-    # Load tokenizer
+
+def _verify_trainable_lora_parameters(policy, target_modules) -> None:
+    expected_targets = set(target_modules)
+    observed_targets = set()
+    unexpected = []
+    for name, parameter in policy.named_parameters():
+        if not parameter.requires_grad:
+            continue
+        pieces = set(name.split("."))
+        targets = pieces & expected_targets
+        if len(targets) != 1 or not ({"lora_A", "lora_B"} & pieces):
+            unexpected.append(name)
+        else:
+            observed_targets.update(targets)
+    if unexpected:
+        raise ValueError(f"Non-contract trainable parameters found: {unexpected[:8]}")
+    if observed_targets != expected_targets:
+        raise ValueError(
+            f"LoRA target coverage mismatch: observed={sorted(observed_targets)}, "
+            f"expected={sorted(expected_targets)}"
+        )
+
+
+def verify_frozen_model(model_dir: str, manifest_path: str) -> None:
+    verify_manifest(Path(model_dir).resolve(), Path(manifest_path).resolve())
+
+
+def load_tokenizer(model_dir: str):
     tokenizer = AutoTokenizer.from_pretrained(
-        model_name_or_path,
-        trust_remote_code=True,
-        use_fast=True
+        model_dir,
+        local_files_only=True,
+        trust_remote_code=False,
+        use_fast=True,
     )
-
-    # Ensure pad token is set
-    if tokenizer.pad_token is None:
+    if tokenizer.pad_token_id is None:
         tokenizer.pad_token = tokenizer.eos_token
-        tokenizer.pad_token_id = tokenizer.eos_token_id
-
-    # Load model
-    model_kwargs = {
-        'trust_remote_code': True,
-        'torch_dtype': torch_dtype,
-        'device_map': device if device == 'auto' else None,
-    }
-
-    if use_flash_attention:
-        model_kwargs['attn_implementation'] = 'flash_attention_2'
-
-    model = AutoModelForCausalLM.from_pretrained(
-        model_name_or_path,
-        **model_kwargs
-    )
-
-    if device != 'auto' and device != 'cpu':
-        model = model.to(device)
-
-    print(f"Model loaded successfully on {device}")
-    print(f"Model dtype: {model.dtype}")
-    print(f"Number of parameters: {sum(p.numel() for p in model.parameters()) / 1e9:.2f}B")
-
-    return model, tokenizer
+    tokenizer.padding_side = "right"
+    return tokenizer
 
 
-def freeze_model(model: torch.nn.Module) -> torch.nn.Module:
-    """
-    Freeze all parameters of a model.
-
-    Args:
-        model: Model to freeze
-
-    Returns:
-        Frozen model
-    """
-    for param in model.parameters():
-        param.requires_grad = False
-
-    model.eval()
-    print("Model frozen (all parameters set to requires_grad=False)")
-
-    return model
-
-
-def unfreeze_model(model: torch.nn.Module) -> torch.nn.Module:
-    """
-    Unfreeze all parameters of a model.
-
-    Args:
-        model: Model to unfreeze
-
-    Returns:
-        Unfrozen model
-    """
-    for param in model.parameters():
-        param.requires_grad = True
-
-    model.train()
-    print("Model unfrozen (all parameters set to requires_grad=True)")
-
-    return model
-
-
-def save_checkpoint(
-    model: torch.nn.Module,
-    tokenizer: AutoTokenizer,
-    output_dir: str,
-    optimizer: Optional[torch.optim.Optimizer] = None,
-    scheduler: Optional = None,
-    step: Optional[int] = None,
-    config: Optional[dict] = None
+def _load_frozen_base(
+    model_dir: str,
+    manifest_path: str,
+    dtype_name: str,
+    attention_implementation: str,
+    gradient_checkpointing: bool,
 ):
-    """
-    Save model checkpoint.
-
-    Args:
-        model: Model to save
-        tokenizer: Tokenizer to save
-        output_dir: Directory to save checkpoint
-        optimizer: Optional optimizer state
-        scheduler: Optional scheduler state
-        step: Optional training step number
-        config: Optional config to save
-    """
-    output_path = Path(output_dir)
-    output_path.mkdir(parents=True, exist_ok=True)
-
-    # Save model and tokenizer
-    model.save_pretrained(output_path)
-    tokenizer.save_pretrained(output_path)
-
-    # Save optimizer and scheduler states
-    if optimizer is not None:
-        torch.save(optimizer.state_dict(), output_path / "optimizer.pt")
-    if scheduler is not None:
-        torch.save(scheduler.state_dict(), output_path / "scheduler.pt")
-
-    # Save metadata
-    metadata = {
-        'step': step,
-    }
-    if config is not None:
-        metadata['config'] = config
-
-    torch.save(metadata, output_path / "metadata.pt")
-
-    print(f"Checkpoint saved to {output_dir}")
+    verify_frozen_model(model_dir, manifest_path)
+    if dtype_name not in DTYPES:
+        raise ValueError(f"Unsupported dtype: {dtype_name}")
+    model = AutoModelForCausalLM.from_pretrained(
+        model_dir,
+        local_files_only=True,
+        trust_remote_code=False,
+        torch_dtype=DTYPES[dtype_name],
+        attn_implementation=attention_implementation,
+        low_cpu_mem_usage=True,
+    )
+    model.config.use_cache = False
+    if gradient_checkpointing:
+        model.gradient_checkpointing_enable(
+            gradient_checkpointing_kwargs={"use_reentrant": False}
+        )
+        # A frozen base with gradient checkpointing needs a differentiable input
+        # so checkpointed blocks retain the LoRA adapter graph.
+        model.enable_input_require_grads()
+    return model
 
 
-def load_checkpoint(
-    checkpoint_dir: str,
-    device: str = 'cuda',
-    torch_dtype: torch.dtype = torch.float16
-) -> Tuple[AutoModelForCausalLM, AutoTokenizer, dict]:
-    """
-    Load model checkpoint.
-
-    Args:
-        checkpoint_dir: Directory containing checkpoint
-        device: Device to load model
-        torch_dtype: Model dtype
-
-    Returns:
-        model: Loaded model
-        tokenizer: Loaded tokenizer
-        metadata: Metadata dictionary
-    """
-    checkpoint_path = Path(checkpoint_dir)
-
-    # Load model and tokenizer
-    model, tokenizer = load_model_and_tokenizer(
-        str(checkpoint_path),
-        device=device,
-        torch_dtype=torch_dtype
+def load_policy_model(
+    model_dir: str,
+    manifest_path: str,
+    dtype_name: str = "bfloat16",
+    attention_implementation: str = "sdpa",
+    gradient_checkpointing: bool = False,
+):
+    """Load the immutable base model (reference-cache and manifest paths)."""
+    return _load_frozen_base(
+        model_dir,
+        manifest_path,
+        dtype_name,
+        attention_implementation,
+        gradient_checkpointing,
     )
 
-    # Load metadata if exists
-    metadata_path = checkpoint_path / "metadata.pt"
-    if metadata_path.exists():
-        metadata = torch.load(metadata_path, map_location='cpu')
+
+def _lora_config(config: Dict) -> LoraConfig:
+    values = config["model"]["lora"]
+    return LoraConfig(
+        r=int(values["r"]),
+        lora_alpha=int(values["alpha"]),
+        lora_dropout=float(values["dropout"]),
+        bias=values["bias"],
+        task_type=values["task_type"],
+        target_modules=list(values["target_modules"]),
+    )
+
+
+def load_trainable_policy(config: Dict, adapter_checkpoint: str | None = None):
+    model_cfg = config["model"]
+    base = _load_frozen_base(
+        model_cfg["name_or_path"],
+        model_cfg["manifest_path"],
+        model_cfg["torch_dtype"],
+        model_cfg["attention_implementation"],
+        bool(model_cfg["gradient_checkpointing"]),
+    )
+    if adapter_checkpoint:
+        checkpoint = Path(adapter_checkpoint).resolve()
+        _verify_adapter_contract(checkpoint, config)
+        policy = PeftModel.from_pretrained(
+            base,
+            str(checkpoint),
+            is_trainable=True,
+            local_files_only=True,
+        )
     else:
-        metadata = {}
+        policy = get_peft_model(base, _lora_config(config))
+    trainable, total = count_parameters(policy)
+    if trainable <= 0 or trainable >= total:
+        raise ValueError(f"Expected LoRA-only training, got trainable={trainable}, total={total}")
+    _verify_trainable_lora_parameters(policy, model_cfg["lora"]["target_modules"])
+    return policy
 
-    print(f"Checkpoint loaded from {checkpoint_dir}")
-    if 'step' in metadata:
-        print(f"Training step: {metadata['step']}")
 
-    return model, tokenizer, metadata
+def load_adapter_for_inference(
+    checkpoint: str,
+    base_model_dir: str,
+    manifest_path: str,
+    dtype_name: str,
+    attention_implementation: str = "sdpa",
+    merge: bool = False,
+):
+    checkpoint_path = Path(checkpoint).resolve()
+    adapter_path = checkpoint_path / "adapter_config.json"
+    metadata_path = checkpoint_path / "checkpoint_meta.json"
+    if not adapter_path.is_file() or not metadata_path.is_file():
+        raise FileNotFoundError(f"Adapter checkpoint is incomplete: {checkpoint_path}")
+    adapter_config = json.loads(
+        adapter_path.read_text(encoding="utf-8")
+    )
+    recorded_base = adapter_config.get("base_model_name_or_path")
+    if not recorded_base or Path(recorded_base).resolve() != Path(base_model_dir).resolve():
+        raise ValueError("Adapter/base-model mismatch during inference")
+    metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+    if (
+        Path(metadata.get("base_model", "")).resolve() != Path(base_model_dir).resolve()
+        or Path(metadata.get("model_manifest", "")).resolve() != Path(manifest_path).resolve()
+    ):
+        raise ValueError("Adapter checkpoint metadata does not match the frozen inference base")
+    base = _load_frozen_base(
+        base_model_dir,
+        manifest_path,
+        dtype_name,
+        attention_implementation,
+        gradient_checkpointing=False,
+    )
+    model = PeftModel.from_pretrained(
+        base,
+        str(checkpoint_path),
+        is_trainable=False,
+        local_files_only=True,
+    )
+    return model.merge_and_unload(safe_merge=True) if merge else model
 
 
-def count_parameters(model: torch.nn.Module) -> dict:
-    """
-    Count model parameters.
+def count_parameters(model) -> Tuple[int, int]:
+    total = sum(parameter.numel() for parameter in model.parameters())
+    trainable = sum(parameter.numel() for parameter in model.parameters() if parameter.requires_grad)
+    return trainable, total
 
-    Args:
-        model: Model to analyze
 
-    Returns:
-        Dictionary with parameter counts
-    """
-    total = sum(p.numel() for p in model.parameters())
-    trainable = sum(p.numel() for p in model.parameters() if p.requires_grad)
+def unwrap_model(model):
+    return model.module if isinstance(model, DistributedDataParallel) else model
 
-    return {
-        'total': total,
-        'trainable': trainable,
-        'frozen': total - trainable,
-        'total_billions': total / 1e9,
-        'trainable_billions': trainable / 1e9
+
+def save_adapter_checkpoint(
+    model,
+    tokenizer,
+    output_dir: str,
+    config: Dict,
+    rank: int,
+    training_state: Dict | None = None,
+) -> None:
+    """Write a small, HF/PEFT-loadable LoRA adapter on rank zero."""
+    if rank != 0:
+        return
+    output = Path(output_dir)
+    if output.exists():
+        raise FileExistsError(f"Refuse to overwrite checkpoint: {output}")
+    output.mkdir(parents=True)
+    policy = unwrap_model(model)
+    if not isinstance(policy, PeftModel):
+        raise TypeError("Checkpoint contract requires a PEFT LoRA policy")
+    policy.save_pretrained(output, safe_serialization=True)
+    tokenizer.save_pretrained(output)
+    import yaml
+
+    with (output / "run_config.yaml").open("w", encoding="utf-8") as handle:
+        yaml.safe_dump(config, handle, sort_keys=True, allow_unicode=True)
+    metadata = {
+        "format": "peft_lora_adapter",
+        "base_model": str(Path(config["model"]["name_or_path"]).resolve()),
+        "model_manifest": str(Path(config["model"]["manifest_path"]).resolve()),
+        "training_state": training_state or {},
     }
+    (output / "checkpoint_meta.json").write_text(
+        json.dumps(metadata, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+    )

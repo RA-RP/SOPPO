@@ -12,7 +12,7 @@ fi
 
 echo "=== Stage -1: Environment Setup ==="
 echo "Cycle: cycle-20260818-01"
-echo "Experiment: v0.3 MVP"
+echo "Experiment design: v0.6 SSPO-aligned 30k MVP"
 echo "Date: $(date)"
 
 # ===================================================
@@ -155,17 +155,13 @@ python -m pip install --upgrade pip
 echo "Installing PyTorch 2.4.0 with CUDA 12.1..."
 python -m pip install torch==2.4.0 --index-url https://download.pytorch.org/whl/cu121
 
-# 安装其他依赖
+# 安装其他锁定依赖。torch 已满足时 pip 不会再次下载 CUDA wheel。
 if [[ -f "$CODE_DIR/requirements.lock.txt" ]]; then
     echo "Installing packages from requirements.lock.txt..."
     python -m pip install -r "$CODE_DIR/requirements.lock.txt"
 else
-    echo "Installing core packages..."
-    python -m pip install 'transformers>=4.40.0'
-    python -m pip install 'datasets>=2.18.0'
-    python -m pip install 'accelerate>=0.28.0'
-    python -m pip install numpy scipy tqdm
-    python -m pip install jsonlines pyyaml
+    echo "ERROR: Locked requirements file is mandatory" >&2
+    exit 1
 fi
 
 echo "✓ Dependencies installed"
@@ -181,6 +177,9 @@ python -c "import torch; print(f'✓ PyTorch: {torch.__version__}')"
 python -c "import transformers; print(f'✓ Transformers: {transformers.__version__}')"
 python -c "import datasets; print(f'✓ Datasets: {datasets.__version__}')"
 python -c "import accelerate; print(f'✓ Accelerate: {accelerate.__version__}')"
+python -c "import peft; print(f'✓ PEFT: {peft.__version__}')"
+python -c "import modelscope; print(f'✓ ModelScope: {modelscope.__version__}')"
+python -c "from transformers import Qwen3ForCausalLM; print('✓ Qwen3 class available')"
 
 echo ""
 echo "Checking CUDA..."

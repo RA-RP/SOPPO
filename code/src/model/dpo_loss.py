@@ -1,193 +1,113 @@
-"""
-Standard DPO (Direct Preference Optimization) loss.
+"""Response-only scores and standard reference-based DPO."""
 
-Reference: Rafailov et al., "Direct Preference Optimization" (2023)
-"""
+from __future__ import annotations
+
+from typing import Dict, Tuple
 
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from typing import Dict, Tuple
-
-
-class DPOLoss(nn.Module):
-    """
-    DPO loss for preference learning.
-
-    L_DPO = -E[log σ(β * (log π_θ(y_w|x) - log π_ref(y_w|x)
-                           - log π_θ(y_l|x) + log π_ref(y_l|x)))]
-
-    where:
-    - y_w: preferred (chosen) response
-    - y_l: dis-preferred (rejected) response
-    - β: temperature parameter controlling preference strength
-    """
-
-    def __init__(self, beta: float = 0.1):
-        """
-        Args:
-            beta: Temperature parameter (default 0.1)
-        """
-        super().__init__()
-        self.beta = beta
-
-    def forward(
-        self,
-        policy_chosen_logps: torch.Tensor,
-        policy_rejected_logps: torch.Tensor,
-        reference_chosen_logps: torch.Tensor,
-        reference_rejected_logps: torch.Tensor,
-    ) -> Tuple[torch.Tensor, Dict]:
-        """
-        Compute DPO loss.
-
-        Args:
-            policy_chosen_logps: Log probabilities of chosen responses under policy
-            policy_rejected_logps: Log probabilities of rejected responses under policy
-            reference_chosen_logps: Log probabilities of chosen responses under reference
-            reference_rejected_logps: Log probabilities of rejected responses under reference
-
-        Returns:
-            loss: Scalar loss
-            info: Dictionary with diagnostic information
-        """
-        # Compute implicit rewards
-        policy_chosen_rewards = self.beta * (policy_chosen_logps - reference_chosen_logps)
-        policy_rejected_rewards = self.beta * (policy_rejected_logps - reference_rejected_logps)
-
-        # Compute preference logits
-        logits = policy_chosen_rewards - policy_rejected_rewards
-
-        # DPO loss: -log σ(logits)
-        loss = -F.logsigmoid(logits).mean()
-
-        # Compute preference probabilities for diagnostics
-        probs = torch.sigmoid(logits)
-
-        info = {
-            'loss': loss.item(),
-            'logits_mean': logits.mean().item(),
-            'logits_std': logits.std().item(),
-            'probs_mean': probs.mean().item(),
-            'probs_std': probs.std().item(),
-            'accuracy': (probs > 0.5).float().mean().item(),
-            'policy_chosen_rewards_mean': policy_chosen_rewards.mean().item(),
-            'policy_rejected_rewards_mean': policy_rejected_rewards.mean().item(),
-        }
-
-        return loss, info
-
-
-def compute_dpo_loss(
-    policy_model,
-    reference_model,
-    input_ids_chosen: torch.Tensor,
-    attention_mask_chosen: torch.Tensor,
-    input_ids_rejected: torch.Tensor,
-    attention_mask_rejected: torch.Tensor,
-    beta: float = 0.1
-) -> Tuple[torch.Tensor, Dict]:
-    """
-    Compute DPO loss from models and inputs.
-
-    Args:
-        policy_model: Policy model being trained
-        reference_model: Frozen reference model
-        input_ids_chosen: Input IDs for chosen responses
-        attention_mask_chosen: Attention mask for chosen responses
-        input_ids_rejected: Input IDs for rejected responses
-        attention_mask_rejected: Attention mask for rejected responses
-        beta: Temperature parameter
-
-    Returns:
-        loss: Scalar loss
-        info: Diagnostic information
-    """
-    # Get logits from policy model
-    with torch.cuda.amp.autocast():
-        policy_chosen_outputs = policy_model(
-            input_ids=input_ids_chosen,
-            attention_mask=attention_mask_chosen,
-            return_dict=True
-        )
-        policy_rejected_outputs = policy_model(
-            input_ids=input_ids_rejected,
-            attention_mask=attention_mask_rejected,
-            return_dict=True
-        )
-
-    # Get logits from reference model (no gradient)
-    with torch.no_grad():
-        reference_chosen_outputs = reference_model(
-            input_ids=input_ids_chosen,
-            attention_mask=attention_mask_chosen,
-            return_dict=True
-        )
-        reference_rejected_outputs = reference_model(
-            input_ids=input_ids_rejected,
-            attention_mask=attention_mask_rejected,
-            return_dict=True
-        )
-
-    # Compute log probabilities
-    policy_chosen_logps = compute_sequence_logprob(
-        policy_chosen_outputs.logits, input_ids_chosen, attention_mask_chosen
-    )
-    policy_rejected_logps = compute_sequence_logprob(
-        policy_rejected_outputs.logits, input_ids_rejected, attention_mask_rejected
-    )
-    reference_chosen_logps = compute_sequence_logprob(
-        reference_chosen_outputs.logits, input_ids_chosen, attention_mask_chosen
-    )
-    reference_rejected_logps = compute_sequence_logprob(
-        reference_rejected_outputs.logits, input_ids_rejected, attention_mask_rejected
-    )
-
-    # Compute DPO loss
-    dpo_loss_fn = DPOLoss(beta=beta)
-    loss, info = dpo_loss_fn(
-        policy_chosen_logps,
-        policy_rejected_logps,
-        reference_chosen_logps,
-        reference_rejected_logps
-    )
-
-    return loss, info
 
 
 def compute_sequence_logprob(
     logits: torch.Tensor,
     input_ids: torch.Tensor,
-    attention_mask: torch.Tensor
+    loss_mask: torch.Tensor,
 ) -> torch.Tensor:
-    """
-    Compute log probability of a sequence.
-
-    Args:
-        logits: Model logits [batch_size, seq_len, vocab_size]
-        input_ids: Input token IDs [batch_size, seq_len]
-        attention_mask: Attention mask [batch_size, seq_len]
-
-    Returns:
-        log_probs: Log probability for each sequence [batch_size]
-    """
-    # Shift logits and labels for next-token prediction
-    shift_logits = logits[:, :-1, :].contiguous()
-    shift_labels = input_ids[:, 1:].contiguous()
-    shift_mask = attention_mask[:, 1:].contiguous()
-
-    # Compute log probabilities
-    log_probs = F.log_softmax(shift_logits, dim=-1)
-
-    # Gather log probs for the actual tokens
-    token_log_probs = torch.gather(
-        log_probs,
-        dim=-1,
-        index=shift_labels.unsqueeze(-1)
+    """Sum next-token log-probabilities only over response tokens."""
+    shift_logits = logits[:, :-1, :].float()
+    shift_labels = input_ids[:, 1:]
+    shift_mask = loss_mask[:, 1:].to(shift_logits.dtype)
+    token_logps = F.log_softmax(shift_logits, dim=-1).gather(
+        -1, shift_labels.unsqueeze(-1)
     ).squeeze(-1)
+    return (token_logps * shift_mask).sum(dim=-1)
 
-    # Mask padding tokens and sum
-    masked_log_probs = token_log_probs * shift_mask
-    sequence_log_probs = masked_log_probs.sum(dim=-1)
 
-    return sequence_log_probs
+def response_token_count(loss_mask: torch.Tensor) -> torch.Tensor:
+    return loss_mask[:, 1:].sum(dim=-1).clamp_min(1)
+
+
+def compute_response_mean_logprob(
+    logits: torch.Tensor,
+    input_ids: torch.Tensor,
+    loss_mask: torch.Tensor,
+) -> torch.Tensor:
+    return compute_sequence_logprob(logits, input_ids, loss_mask) / response_token_count(loss_mask)
+
+
+def _model_pair_scores(model, batch: Dict[str, torch.Tensor], mean: bool) -> Tuple[torch.Tensor, torch.Tensor]:
+    values = []
+    for side in ("a", "b"):
+        outputs = model(
+            input_ids=batch[f"input_ids_{side}"],
+            attention_mask=batch[f"attention_mask_{side}"],
+            use_cache=False,
+            return_dict=True,
+        )
+        function = compute_response_mean_logprob if mean else compute_sequence_logprob
+        values.append(
+            function(
+                outputs.logits,
+                batch[f"input_ids_{side}"],
+                batch[f"loss_mask_{side}"],
+            )
+        )
+    return values[0], values[1]
+
+
+def model_pair_logps(model, batch: Dict[str, torch.Tensor]) -> Tuple[torch.Tensor, torch.Tensor]:
+    return _model_pair_scores(model, batch, mean=False)
+
+
+def model_pair_mean_logps(model, batch: Dict[str, torch.Tensor]) -> Tuple[torch.Tensor, torch.Tensor]:
+    return _model_pair_scores(model, batch, mean=True)
+
+
+def preference_delta(
+    policy_a: torch.Tensor,
+    policy_b: torch.Tensor,
+    reference_a: torch.Tensor,
+    reference_b: torch.Tensor,
+    beta: float,
+) -> torch.Tensor:
+    return float(beta) * ((policy_a - reference_a) - (policy_b - reference_b))
+
+
+class DPOLoss(nn.Module):
+    def __init__(self, beta: float = 0.1):
+        super().__init__()
+        self.beta = float(beta)
+
+    def per_sample(
+        self,
+        policy_a: torch.Tensor,
+        policy_b: torch.Tensor,
+        reference_a: torch.Tensor,
+        reference_b: torch.Tensor,
+        labels: torch.Tensor,
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
+        delta = preference_delta(policy_a, policy_b, reference_a, reference_b, self.beta)
+        direction = labels.to(delta.dtype).mul(2).sub(1)
+        return -F.logsigmoid(direction * delta), delta
+
+    def forward(
+        self,
+        policy_a: torch.Tensor,
+        policy_b: torch.Tensor,
+        reference_a: torch.Tensor,
+        reference_b: torch.Tensor,
+        labels: torch.Tensor,
+    ) -> Tuple[torch.Tensor, Dict]:
+        losses, delta = self.per_sample(
+            policy_a, policy_b, reference_a, reference_b, labels
+        )
+        loss = losses.mean()
+        probs_a = torch.sigmoid(delta)
+        info = {
+            "loss": float(loss.detach()),
+            "accuracy": float(((probs_a > 0.5) == labels.bool()).float().mean().detach()),
+            "p_a_mean": float(probs_a.mean().detach()),
+            "delta_mean": float(delta.mean().detach()),
+        }
+        return loss, info

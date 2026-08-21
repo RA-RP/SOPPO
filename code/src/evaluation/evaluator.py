@@ -1,206 +1,164 @@
-"""
-Model evaluation on test set with label isolation.
-"""
+"""Independent server-only evaluation of PEFT adapters with private labels."""
 
-import torch
-import jsonlines
+from __future__ import annotations
+
+import argparse
+import json
 from pathlib import Path
-from typing import Dict, Optional
-from tqdm import tqdm
 
-from .metrics import (
-    compute_accuracy,
-    compute_brier_score,
-    compute_calibration,
-    compute_confidence_distribution
-)
+import jsonlines
+import torch
+import yaml
 
-
-def evaluate_model(
-    policy_model,
-    reference_model,
-    dataloader,
-    private_labels_path: str,
-    beta: float = 0.1,
-    device: str = "cuda"
-) -> Dict:
-    """
-    Evaluate model on test set.
-
-    Args:
-        policy_model: Trained policy model
-        reference_model: Reference model
-        dataloader: DataLoader for test inputs
-        private_labels_path: Path to private test labels
-        beta: DPO temperature
-        device: Device
-
-    Returns:
-        Evaluation metrics dictionary
-    """
-    policy_model.eval()
-    reference_model.eval()
-
-    # Load private labels
-    private_labels = {}
-    with jsonlines.open(private_labels_path) as reader:
-        for obj in reader:
-            private_labels[obj['sample_id']] = obj['label']
-
-    all_predictions = []
-    all_labels = []
-    all_sample_ids = []
-
-    with torch.no_grad():
-        for batch in tqdm(dataloader, desc="Evaluating"):
-            sample_ids = batch['sample_ids']
-            input_ids_a = batch['input_ids_a'].to(device)
-            attention_mask_a = batch['attention_mask_a'].to(device)
-            input_ids_b = batch['input_ids_b'].to(device)
-            attention_mask_b = batch['attention_mask_b'].to(device)
-
-            # Compute preference probabilities
-            from ..model.dpo_loss import compute_sequence_logprob
-
-            policy_a_outputs = policy_model(
-                input_ids=input_ids_a,
-                attention_mask=attention_mask_a,
-                return_dict=True
-            )
-            policy_b_outputs = policy_model(
-                input_ids=input_ids_b,
-                attention_mask=attention_mask_b,
-                return_dict=True
-            )
-            reference_a_outputs = reference_model(
-                input_ids=input_ids_a,
-                attention_mask=attention_mask_a,
-                return_dict=True
-            )
-            reference_b_outputs = reference_model(
-                input_ids=input_ids_b,
-                attention_mask=attention_mask_b,
-                return_dict=True
-            )
-
-            policy_a_logps = compute_sequence_logprob(
-                policy_a_outputs.logits, input_ids_a, attention_mask_a
-            )
-            policy_b_logps = compute_sequence_logprob(
-                policy_b_outputs.logits, input_ids_b, attention_mask_b
-            )
-            reference_a_logps = compute_sequence_logprob(
-                reference_a_outputs.logits, input_ids_a, attention_mask_a
-            )
-            reference_b_logps = compute_sequence_logprob(
-                reference_b_outputs.logits, input_ids_b, attention_mask_b
-            )
-
-            # Compute p_i = σ(r_θ(x, y_a) - r_θ(x, y_b))
-            reward_a = beta * (policy_a_logps - reference_a_logps)
-            reward_b = beta * (policy_b_logps - reference_b_logps)
-            delta = reward_a - reward_b
-            probs = torch.sigmoid(delta)
-
-            # Match with private labels
-            for i, sample_id in enumerate(sample_ids):
-                if sample_id in private_labels:
-                    all_predictions.append(probs[i].item())
-                    all_labels.append(private_labels[sample_id])
-                    all_sample_ids.append(sample_id)
-                else:
-                    print(f"WARNING: Sample {sample_id} not found in private labels")
-
-    # Convert to tensors
-    predictions = torch.tensor(all_predictions)
-    labels = torch.tensor(all_labels)
-
-    # Compute metrics
-    accuracy = compute_accuracy(predictions, labels)
-    brier = compute_brier_score(predictions, labels)
-    calibration = compute_calibration(predictions, labels)
-    confidence_dist = compute_confidence_distribution(predictions)
-
-    metrics = {
-        'accuracy': accuracy,
-        'brier': brier,
-        'ece': calibration['ece'],
-        'total_samples': len(labels),
-        **confidence_dist
-    }
-
-    print(f"\n=== Evaluation Results ===")
-    print(f"Accuracy: {accuracy:.4f}")
-    print(f"Brier Score: {brier:.4f}")
-    print(f"ECE: {calibration['ece']:.4f}")
-    print(f"Confidence >60%: {confidence_dist['confidence_50']:.4f}")
-    print(f"Mean Entropy: {confidence_dist['mean_entropy']:.4f}")
-
-    return metrics, {
-        'predictions': all_predictions,
-        'labels': all_labels,
-        'sample_ids': all_sample_ids,
-        'calibration': calibration
-    }
+from ..config import validate_config
+from ..data.dataset import PreferenceCollator, PreferenceDataset, create_dataloader
+from ..model.dpo_loss import model_pair_logps, model_pair_mean_logps, preference_delta
+from ..model.model_utils import DTYPES, load_adapter_for_inference, load_tokenizer
+from ..training.trainer import DPO_METHODS, cache_for, verify_cache_contract
+from .metrics import compute_accuracy, compute_brier_score, compute_calibration, compute_confidence_distribution
 
 
-def evaluate_and_save_predictions(
-    policy_model,
-    reference_model,
-    dataloader,
-    private_labels_path: str,
-    output_dir: str,
-    beta: float = 0.1,
-    device: str = "cuda"
-):
-    """
-    Evaluate model and save predictions to file.
+def checkpoint_method(checkpoint: Path) -> tuple[str, dict]:
+    config_path = checkpoint / "run_config.yaml"
+    if not config_path.is_file():
+        raise FileNotFoundError(f"Checkpoint run config is missing: {config_path}")
+    config = yaml.safe_load(config_path.read_text(encoding="utf-8"))
+    validate_config(config, world_size=2)
+    return config["method"]["name"], config
 
-    Args:
-        policy_model: Trained policy model
-        reference_model: Reference model
-        dataloader: DataLoader for test inputs
-        private_labels_path: Path to private test labels
-        output_dir: Directory to save results
-        beta: DPO temperature
-        device: Device
-    """
-    output_path = Path(output_dir)
-    output_path.mkdir(parents=True, exist_ok=True)
 
-    # Evaluate
-    metrics, details = evaluate_model(
-        policy_model,
-        reference_model,
-        dataloader,
-        private_labels_path,
-        beta,
-        device
+def main() -> None:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--checkpoint", required=True)
+    parser.add_argument("--base-model", required=True)
+    parser.add_argument("--model-manifest", required=True)
+    parser.add_argument("--test-inputs", required=True)
+    parser.add_argument("--private-labels", required=True)
+    parser.add_argument("--reference-cache")
+    parser.add_argument("--output", required=True)
+    parser.add_argument("--max-length", type=int, default=2048)
+    parser.add_argument("--batch-size", type=int, default=4)
+    parser.add_argument("--dtype", default="bfloat16")
+    args = parser.parse_args()
+    output = Path(args.output).resolve()
+    checkpoint = Path(args.checkpoint).resolve()
+    if output.exists():
+        raise FileExistsError(f"Refuse to overwrite evaluation: {output}")
+
+    method, run_config = checkpoint_method(checkpoint)
+    test_inputs = Path(args.test_inputs).resolve()
+    cache_file = None
+    if method in DPO_METHODS:
+        if not args.reference_cache:
+            raise ValueError(f"{method} evaluation requires a reference cache")
+        cache_file = cache_for(args.reference_cache, test_inputs)
+        verify_cache_contract(
+            cache_file,
+            test_inputs,
+            Path(args.model_manifest),
+            args.max_length,
+            False,
+        )
+
+    tokenizer = load_tokenizer(args.base_model)
+    dataset = PreferenceDataset(
+        str(test_inputs),
+        tokenizer,
+        max_length=args.max_length,
+        reference_cache_path=str(cache_file) if cache_file else None,
+        require_labels=False,
+        enable_thinking=False,
     )
+    loader = create_dataloader(
+        dataset,
+        args.batch_size,
+        PreferenceCollator(tokenizer.pad_token_id),
+        shuffle=False,
+        num_workers=2,
+    )
+    private = {}
+    with jsonlines.open(args.private_labels) as reader:
+        for row in reader:
+            sample_id = row["sample_id"]
+            if sample_id in private:
+                raise ValueError(f"Duplicate private test-label ID: {sample_id}")
+            private[sample_id] = int(row["label"])
+    public_id_list = [row["sample_id"] for row in dataset.samples]
+    public_ids = set(public_id_list)
+    if len(public_ids) != len(public_id_list):
+        raise ValueError("Duplicate sample IDs in public test inputs")
+    if set(private) != public_ids:
+        raise ValueError("Private test-label IDs do not exactly match public test inputs")
 
-    # Save metrics
-    import json
-    with open(output_path / "test_metrics.json", "w") as f:
-        json.dump(metrics, f, indent=2)
+    model = load_adapter_for_inference(
+        str(checkpoint),
+        args.base_model,
+        args.model_manifest,
+        args.dtype,
+    ).cuda().eval()
+    predictions = []
+    labels = []
+    sample_ids = []
+    dtype = DTYPES[args.dtype]
+    dpo_beta = float(run_config["training"]["dpo_beta"])
+    simpo_beta = float(run_config["training"]["simpo_beta"])
+    with torch.inference_mode():
+        for cpu_batch in loader:
+            batch = {
+                key: value.cuda(non_blocking=True) if isinstance(value, torch.Tensor) else value
+                for key, value in cpu_batch.items()
+            }
+            with torch.autocast("cuda", dtype=dtype, enabled=dtype != torch.float32):
+                if method in DPO_METHODS:
+                    policy_a, policy_b = model_pair_logps(model, batch)
+                    delta = preference_delta(
+                        policy_a,
+                        policy_b,
+                        batch["ref_logp_a"],
+                        batch["ref_logp_b"],
+                        dpo_beta,
+                    )
+                else:
+                    mean_a, mean_b = model_pair_mean_logps(model, batch)
+                    delta = simpo_beta * (mean_a - mean_b)
+            probs = torch.sigmoid(delta.float()).cpu()
+            if not torch.isfinite(probs).all():
+                raise FloatingPointError("Non-finite test predictions")
+            for sample_id, probability in zip(cpu_batch["sample_ids"], probs):
+                sample_ids.append(sample_id)
+                predictions.append(float(probability))
+                labels.append(private[sample_id])
 
-    # Save predictions (SERVER ONLY - DO NOT RETURN TO LOCAL)
-    with jsonlines.open(output_path / "test_predictions.jsonl", "w") as writer:
-        for sample_id, pred, label in zip(
-            details['sample_ids'],
-            details['predictions'],
-            details['labels']
-        ):
-            writer.write({
-                'sample_id': sample_id,
-                'prediction': pred,
-                'label': label
-            })
+    prediction_tensor = torch.tensor(predictions)
+    label_tensor = torch.tensor(labels)
+    calibration = compute_calibration(prediction_tensor, label_tensor)
+    metrics = {
+        "method": method,
+        "accuracy": compute_accuracy(prediction_tensor, label_tensor),
+        "brier": compute_brier_score(prediction_tensor, label_tensor),
+        "ece": calibration["ece"],
+        "samples": len(labels),
+        "score_type": "dpo_reference_delta" if method in DPO_METHODS else "simpo_mean_logp_delta",
+        "dpo_beta": dpo_beta if method in DPO_METHODS else None,
+        "simpo_beta": simpo_beta if method not in DPO_METHODS else None,
+        **compute_confidence_distribution(prediction_tensor),
+    }
+    output.mkdir(parents=True)
+    (output / "metrics.json").write_text(
+        json.dumps(metrics, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+    )
+    (output / "calibration.json").write_text(
+        json.dumps(calibration, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+    )
+    with jsonlines.open(output / "predictions.private.jsonl", "w") as writer:
+        for sample_id, probability, label in zip(sample_ids, predictions, labels):
+            writer.write({"sample_id": sample_id, "probability": probability, "label": label})
+    (output / "complete.json").write_text(
+        json.dumps({"status": "succeeded", "metrics": "metrics.json"}, indent=2) + "\n",
+        encoding="utf-8",
+    )
+    print(json.dumps(metrics, indent=2, sort_keys=True))
 
-    # Save calibration data
-    with open(output_path / "calibration.json", "w") as f:
-        json.dump(details['calibration'], f, indent=2)
 
-    print(f"\nResults saved to {output_dir}")
-    print("- test_metrics.json (can be returned)")
-    print("- test_predictions.jsonl (SERVER ONLY)")
-    print("- calibration.json (can be returned)")
+if __name__ == "__main__":
+    main()

@@ -59,7 +59,7 @@ def compute_calibration(predictions: torch.Tensor, labels: torch.Tensor,
     Returns:
         Calibration statistics dictionary
     """
-    predictions_np = predictions.cpu().numpy()
+    predictions_np = predictions.cpu().numpy().astype(np.float64)
     labels_np = labels.cpu().numpy()
 
     # Create bins
@@ -69,9 +69,10 @@ def compute_calibration(predictions: torch.Tensor, labels: torch.Tensor,
 
     # Compute calibration per bin
     calibration_data = []
-    for bin_lower, bin_upper in zip(bin_lowers, bin_uppers):
+    for index, (bin_lower, bin_upper) in enumerate(zip(bin_lowers, bin_uppers)):
         # Find samples in this bin
-        in_bin = (predictions_np >= bin_lower) & (predictions_np < bin_upper)
+        upper_check = predictions_np <= bin_upper if index == n_bins - 1 else predictions_np < bin_upper
+        in_bin = (predictions_np >= bin_lower) & upper_check
         prop_in_bin = in_bin.mean()
 
         if in_bin.sum() > 0:
@@ -112,7 +113,7 @@ def compute_confidence_distribution(predictions: torch.Tensor) -> Dict:
     Returns:
         Confidence statistics
     """
-    predictions_np = predictions.cpu().numpy()
+    predictions_np = predictions.cpu().numpy().astype(np.float64)
 
     # Distance from 0.5
     distance_from_half = np.abs(predictions_np - 0.5)
@@ -123,7 +124,7 @@ def compute_confidence_distribution(predictions: torch.Tensor) -> Dict:
     confidence_90 = (distance_from_half > 0.4).mean()  # >90% or <10%
 
     # Entropy
-    epsilon = 1e-10
+    epsilon = np.finfo(np.float64).eps
     p_clipped = np.clip(predictions_np, epsilon, 1 - epsilon)
     entropy = -(p_clipped * np.log(p_clipped) +
                (1 - p_clipped) * np.log(1 - p_clipped))

@@ -1,0 +1,6 @@
+_base_: base.yaml
+
+method:
+  name: "sspo_hard_exp"
+  use_unlabeled: true
+  weighting: "exponential_gamma"

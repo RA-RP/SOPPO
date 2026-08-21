@@ -1,244 +1,205 @@
-# SOPPO 服务器执行指南
+# SOPPO v0.6 SSPO-aligned 30k：服务器执行指南
 
-> **状态：LOCKED。** 本文件只定义服务器目录与命令接口，不构成上传或执行授权。只有实验设计获明确批准、代码交接完成，并且用户明确确认“当前代码版本可以提交服务器”后，才能执行下列服务器命令。
+> 当前状态：`LOCKED`。以下是代码交接通过后的服务器命令，不代表现在已获得上传或执行授权。
 
-## 0. 先说明命令中的三个容易混淆之处
-
-本服务器当前记录的实际根目录是：
-
-```text
-/home-ssd/Users/nsgm_jiangwh/youchang
-```
-
-文档中的 `<SERVER_BASE>` 只是这个绝对路径的占位符，**不能把尖括号原样输入 shell**。为了减少重复输入，登录服务器后先定义一次：
+## 1. 路径只记这一条
 
 ```bash
 export SERVER_BASE=/home-ssd/Users/nsgm_jiangwh/youchang
 ```
 
-原命令中的三行分别表示：
-
-```bash
-source "$SERVER_BASE/activate_env.sh"                 # 激活 Python 环境并设置缓存、PYTHONPATH
-cd "$SERVER_BASE/SOPPO/code/scripts/cluster"         # 进入八个阶段脚本所在目录
-export RUN_CONTEXT=cluster                            # 声明当前是服务器会话；脚本用它阻止本地误执行
-```
-
-`activate_env.sh` **不在 Git 仓库中**。它由服务器首次成功运行 `00_server_setup.sh` 后生成，实际位置是：
-
-```text
-/home-ssd/Users/nsgm_jiangwh/youchang/activate_env.sh
-```
-
-因此，尚未运行完 `00_server_setup.sh` 时看不到它是正常的。可在服务器检查：
-
-```bash
-export SERVER_BASE=/home-ssd/Users/nsgm_jiangwh/youchang
-ls -l "$SERVER_BASE/activate_env.sh"
-```
-
-若返回 `No such file or directory`，不要继续执行 `01`—`08`；先按第 3.3 节完成一次性环境准备。
-
-## 1. 唯一目录合同
-
-`<SERVER_BASE>` 表示 `/home-ssd/Users/nsgm_jiangwh/youchang`。目标结构如下：
+服务器结构必须为：
 
 ```text
 <SERVER_BASE>/
-├── ICLR/                              # 静态资料镜像，无 .git
-├── SOPPO/                             # 唯一 Git 仓库
-│   ├── .git/
-│   ├── code/
-│   │   ├── src/
-│   │   ├── configs/
-│   │   ├── scripts/cluster/
-│   │   └── observe/LLM-output-density/  # 普通目录，无嵌套 .git
-│   ├── human_read/
-│   └── exp/                       # 仅小型摘要和远程索引
-├── envs/youc/                         # Git 外
-├── cache/{pip,conda/pkgs,huggingface,modelscope}/
+├── SOPPO/                 # 唯一 Git repo
+├── ICLR/                  # 与 SOPPO 平级，静态且无 Git
+├── envs/youc/
+├── cache/
 ├── data/
 ├── models/
-├── runs/<experiment_id>/             # 重量级实验产物
-├── exports/<experiment_id>/          # 可回传白名单
-├── platform_logs/
-├── project_config.json
-└── activate_env.sh
+├── runs/
+└── exports/
 ```
 
-三个 Git 不变量：
+不存在 `<SERVER_BASE>/ICLR/SOPPO`；也不要给 `ICLR` 或 `LLM-output-density` 建 Git。
 
-```text
-必须存在：<SERVER_BASE>/SOPPO/.git
-必须不存在：<SERVER_BASE>/ICLR/.git
-必须不存在：<SERVER_BASE>/SOPPO/code/observe/LLM-output-density/.git
-```
+## 2. 每次登录后的初始化
 
-`ICLR/` 与 `SOPPO/` 必须平级；服务器上不存在 `<SERVER_BASE>/ICLR/SOPPO/`。
-
-## 2. 路径变量
-
-集群脚本通过 `server_paths.sh` 从自身位置自动推导路径，用户通常只需设置 `SERVER_BASE` 方便导航，无需逐个设置以下变量：
+直接复制：
 
 ```bash
 export SERVER_BASE=/home-ssd/Users/nsgm_jiangwh/youchang
-ICLR_ROOT="$SERVER_BASE/ICLR"
-SOPPO_ROOT="$SERVER_BASE/SOPPO"
-CODE_ROOT="$SOPPO_ROOT/code"
-OBSERVE_ROOT="$CODE_ROOT/observe/LLM-output-density"
-
-ENV_ROOT="$SERVER_BASE/envs"
-CACHE_ROOT="$SERVER_BASE/cache"
-DATA_ROOT="$SERVER_BASE/data"
-MODEL_ROOT="$SERVER_BASE/models"
-RUN_ROOT="$SERVER_BASE/runs"
-EXPORT_ROOT="$SERVER_BASE/exports"
-PLATFORM_LOG_ROOT="$SERVER_BASE/platform_logs"
+export RUN_CONTEXT=cluster
+cd "$SERVER_BASE/SOPPO/code/scripts/cluster"
 ```
 
-除非运行手册明确记录覆盖值，其他脚本不得自行硬编码 `/nfs4/ICLR`、本地 `/Users/...` 或旧的 `ICLR/work` 路径。
+环境建立以后，可再执行：
 
-## 3. 服务器准备流程
-
-以下命令只能在 `SERVER_EXECUTION` 获授权后运行。
-
-### 3.1 准备静态 ICLR 镜像
-
-通过获准的文件传输方式把本地静态资料同步到 `<SERVER_BASE>/ICLR/`，同步时排除：
-
-```text
-.git/
-SOPPO/
-.DS_Store
+```bash
+source "$SERVER_BASE/activate_env.sh"
 ```
 
-`ICLR/` 不使用 `git clone`，也不得在服务器上执行 `git init`。
+`activate_env.sh` 不在 Git 中，由 `00_server_setup.sh` 首次成功运行后生成。看不到它时先运行第 4 节的环境准备，不要手工创建。
 
-### 3.2 克隆唯一仓库
+## 3. 先更新唯一仓库
 
 ```bash
 export SERVER_BASE=/home-ssd/Users/nsgm_jiangwh/youchang
-cd "$SERVER_BASE"
-git clone --branch master https://github.com/RA-RP/SOPPO.git SOPPO
+cd "$SERVER_BASE/SOPPO"
+git pull --ff-only origin master
+git status --short
+git rev-parse --short HEAD
 ```
 
-不得把克隆目标写成 `ICLR` 或 `ICLR/SOPPO`。
+`git status --short` 应无输出。`submit_all.sh` 会拒绝 dirty checkout，以保证 task registry 能固定唯一 commit。
 
-### 3.3 环境准备
+## 4. 在 gn001 完成三个前置步骤
 
-`gn001` 的系统默认 Python 3.6.8 不能用于本项目，`python/3.10.4` module 又因缺少 `libffi` 依赖而不可用。服务器已确认可正常加载 `miniforge3/25.11.0-0`；更新到包含本修正的代码版本后，在 `gn001` 执行：
+这些步骤不请求 GPU，也不需要 SSH `gn006`。
+
+### 4.1 环境
 
 ```bash
-source /home-ssd/Soft/modules/bashrc
-module load miniforge3/25.11.0-0
-conda --version
-
 export SERVER_BASE=/home-ssd/Users/nsgm_jiangwh/youchang
+export RUN_CONTEXT=cluster
+cd "$SERVER_BASE/SOPPO/code/scripts/cluster"
+bash 00_server_setup.sh
+```
+
+脚本会加载已验证的 `miniforge3/25.11.0-0`，复用或创建 Python 3.10 的 `$SERVER_BASE/envs/youc`，并安装锁定依赖（包括新增的 `peft==0.15.2`）。不要再加载损坏的 `python/3.10.4` module；即使旧环境已经存在，也要重跑一次本步骤以补齐 PEFT。
+
+如果安装因网络暂时超时，直接重跑 `00_server_setup.sh`；它会复用 env 与 cache，不要删除整个环境。
+
+### 4.2 下载并冻结 Qwen3
+
+```bash
+source "$SERVER_BASE/activate_env.sh"
 cd "$SERVER_BASE/SOPPO/code/scripts/cluster"
 export RUN_CONTEXT=cluster
-bash 00_server_setup.sh
+bash 02_download_model.sh
 ```
 
-`conda --version` 应显示 `conda 25.11.0`。Miniforge 自身显示 Python 3.12.12 是正常的；`00_server_setup.sh` 会用它在独立路径环境中安装 Python 3.10。修正后的脚本也会在 Conda 未加载时自动加载该 Miniforge module。
-
-该脚本创建 Git 外的 `cache/`、`data/`、`models/`、`runs/`、`exports/` 和 `platform_logs/`，创建固定 Python 3.10 的 Conda 路径环境 `$SERVER_BASE/envs/youc`，并拒绝错误的 Git 布局。它还会在最后创建 `$SERVER_BASE/activate_env.sh`；`00`—`08` 均通过仓库内的 `runtime_env.sh` 使用同一套 Miniforge 激活逻辑。
-
-完成后立即确认：
+成功标志：
 
 ```bash
-ls -l "$SERVER_BASE/activate_env.sh"
-"$SERVER_BASE/envs/youc/bin/python" --version
+test -f "$SERVER_BASE/models/Qwen3-4B/model_manifest.json" && echo MODEL_OK
 ```
 
-如果脚本仍尝试加载 `python/3.10.4`，说明服务器上的 `SOPPO` 仍是旧代码；先停止，不要继续 `01`—`08`，并将服务器仓库更新到包含本指南、新版 `00_server_setup.sh` 和 `runtime_env.sh` 的提交。
+脚本通过 ModelScope 下载 `Qwen/Qwen3-4B`，先写临时目录，校验 Qwen3/36 层/safetensors/逐文件 SHA-256 后再原子冻结。
 
-若 PyTorch 的 NVIDIA CUDA wheel 下载出现 `ReadTimeoutError`，不需要删除 `$SERVER_BASE/envs/youc`。脚本默认使用 180 秒超时和 10 次重试；更新脚本后直接重跑即可。也可以在本次服务器会话临时覆盖：
-
-```bash
-export PIP_DEFAULT_TIMEOUT=180
-export PIP_RETRIES=10
-bash 00_server_setup.sh
-```
-
-重跑会复用已经创建的 Conda 环境以及 `$SERVER_BASE/cache/pip` 中成功下载的文件。如果同一 NVIDIA 地址在加长超时后仍失败，应停止并改用 PyTorch 官方 Conda 渠道方案，而不是删除环境或反复从头安装。
-
-若 `02_prepare_data.sh` 在 Hugging Face Hub 报 `ProxyError`，说明当前服务器会话没有正确加载集群代理。新版 `02` 会自行加载 `proxy/proxy` 并固定 `HF_HOME`/`HF_DATASETS_CACHE`；更新代码后可直接重跑，不需要删除已创建的数据目录。旧版脚本的本次会话临时修复是：
+### 4.3 准备新的 30k 数据
 
 ```bash
-source /home-ssd/Soft/modules/bashrc
-module load proxy/proxy
+source "$SERVER_BASE/activate_env.sh"
+cd "$SERVER_BASE/SOPPO/code/scripts/cluster"
+export RUN_CONTEXT=cluster
 bash 02_prepare_data.sh
 ```
 
-## 4. 分阶段命令接口
+默认 endpoint 为已在本服务器实测可达的 `https://hf-mirror.com`。新输出是：
 
-### 4.1 每次重新登录服务器后：只初始化一次会话
+```text
+<SERVER_BASE>/data/ultrafeedback/mvp-v0.5-30k
+```
 
-下面这段可以直接复制。它不会启动实验，只会激活已经创建的环境、进入脚本目录并设置服务器安全标志：
+旧 `mvp-v0.3` 不会被覆盖。成功 manifest 必须是：
+
+```text
+labeled train  = 2,700  (9%)
+labeled val    =   300  (1%)
+unlabeled      = 24,000 (80%)
+test           = 3,000  (10%)
+labeled total  = 3,000  (10%)
+```
+
+脚本会自行验证这些数量/比例、逐文件 SHA-256、公开文件隐藏标签、私有标签 ID 精确连接、A/B 随机化和跨 split 泄漏；已有 30k 目录也必须通过同一审计才会复用。
+
+## 5. 提交前检查存储与资源
+
+本轮 checkpoint 已改为 LoRA adapter，空间需求远小于旧版每点保存4B全模型的1–2TB估算，但仍要区分全盘余量与个人 quota：
+
+```bash
+df -h /home-ssd
+quota -s 2>/dev/null || true
+command -v lfs >/dev/null 2>&1 && lfs quota -u "$USER" /home-ssd 2>/dev/null || true
+```
+
+如果集群不提供 quota 命令，只能联系管理员确认用户/项目配额；不要仅依据 `df` 推断个人可写空间。
+
+查看当前测试/正式节点：
+
+```bash
+sinfo -N -o '%N|%P|%T|%G|%C'
+```
+
+无需等待节点显示 idle 才提交；Slurm 会排队。脚本请求卡而不硬编码节点，正式 job 获得 GPU 后还会检查实际型号。
+
+## 6. 一条命令挂起全部剩余任务
+
+只有获得本轮明确服务器执行授权后，执行：
 
 ```bash
 export SERVER_BASE=/home-ssd/Users/nsgm_jiangwh/youchang
 source "$SERVER_BASE/activate_env.sh"
 cd "$SERVER_BASE/SOPPO/code/scripts/cluster"
 export RUN_CONTEXT=cluster
-
-echo "SERVER_BASE=$SERVER_BASE"
-echo "工作目录=$(pwd)"
-echo "RUN_CONTEXT=$RUN_CONTEXT"
+bash submit_all.sh
 ```
 
-预期最后三项分别显示正确的绝对根目录、以 `/SOPPO/code/scripts/cluster` 结尾的工作目录，以及 `RUN_CONTEXT=cluster`。
+不要再逐个手工运行 `01`、`03`、`04`……。提交器会先 hold 全部 job，完整写入 registry 后统一 release，并建立：
 
-### 4.2 一次只执行一个阶段
-
-不要一次性粘贴 `01`—`08` 的全部命令。每个阶段成功后都应暂停，回传允许的聚合状态并等待下一阶段确认，再执行下一行。
-
-| 阶段 | 作用 | 本阶段命令 |
-|---|---|---|
-| 01 | 服务器测试 | `bash 01_server_tests.sh` |
-| 02 | 数据准备 | `bash 02_prepare_data.sh` |
-| 03 | 预实验与数值稳定性检查 | `bash 03_preexperiment.sh` |
-| 04 | λ 搜索 | `bash 04_lambda_search.sh` |
-| 05 | MVP 主实验 | `bash 05_run_main.sh` |
-| 06 | `C_ε` 观测 | `bash 06_c_epsilon.sh` |
-| 07 | 测试集评价 | `bash 07_evaluate.sh` |
-| 08 | 聚合结果与生成报告 | `bash 08_aggregate.sh` |
-
-例如，首次获准执行时只运行：
-
-```bash
-bash 01_server_tests.sh
+```text
+CPU tests
+  → gpu_test strong smoke (2 GPU, 50m)
+  → formal reference/oracle (2×A800)
+  → DPO-10 + DPO-100 final array
+  → DPO-10 vs frozen-base headroom gate
+  → four normalized fixed-lambda PE final runs → validation selection
+  → SSPO-hard-exp + SOPPO-PE-exp final runs
+  → C_ε prepare/base+8 adapters/derive
+  → independent evaluation of all 8 adapters
+  → aggregate/export
 ```
 
-这些入口当前仍含待服务器验证或占位实现；目录修正不等于数值、训练或评价逻辑已经通过验证。
+所有依赖为 `afterok`；任何上游失败都会阻止下游，不要求 SSH 会话持续在线。默认最多同时运行 4 个 array 单元，仍取决于集群调度和用户额度。
 
-## 5. 产物边界
+`submit_all.sh` 会自行激活锁定环境，并在提交任何 job 前重验 Qwen3 manifest 与 30k 数据审计；它也拒绝覆盖已存在的 pipeline 目录。如果一次提交中途失败，先保留目录和 held job 供检查，不要直接删除；确认原因后再决定取消 held job 或使用新的 experiment ID。
 
-服务器保留、不得回传：
-
-- 原始或处理后数据、私有标签；
-- 模型、adapter、checkpoint、optimizer state；
-- token cache、embedding、逐样本预测和可能包含样本文本的原始日志；
-- 包目录、虚拟环境和依赖缓存。
-
-允许回传到本地 `SOPPO/exp/<experiment_id>/`：
-
-- 聚合 Markdown；
-- 无样本级内容的汇总 JSON/CSV；
-- 汇总图表；
-- 最终配置、公开 manifest、环境摘要和校验值；
-- 任务状态、失败摘要及远程路径索引。
-
-## 6. 静态核验
-
-服务器执行前至少核验：
+## 7. 日常查看状态
 
 ```bash
 export SERVER_BASE=/home-ssd/Users/nsgm_jiangwh/youchang
-test -d "$SERVER_BASE/SOPPO/.git"
-test ! -e "$SERVER_BASE/ICLR/.git"
-test ! -e "$SERVER_BASE/SOPPO/code/observe/LLM-output-density/.git"
-bash -n "$SERVER_BASE"/SOPPO/code/scripts/cluster/*.sh
+cd "$SERVER_BASE/SOPPO/code/scripts/cluster"
+bash status_pipeline.sh
 ```
 
-上述检查只验证目录与 shell 语法；项目测试、环境检查、数据处理和模型操作仍必须作为已授权服务器任务执行。
+也可以看自己的队列：
+
+```bash
+squeue -u "$USER" -o '%.18i %.12P %.24j %.2t %.10M %.30R'
+```
+
+`PD (Priority)` 表示已排队、等待优先级和资源，不是报错。计算节点由 Slurm 分配，不需要也通常不允许直接 SSH。
+
+`status_pipeline.sh` 会把 array job 按 `RUNNING:n/PENDING:n` 汇总，同时列出各 array task 的节点或等待原因。
+
+stage03/04/05 合计正好八条 final trajectories，不会把预实验重新训练一遍。headroom 比较同一个 margin-free mean-logp score 下、显式禁用 adapter 的训练前 Qwen3 与 DPO-10，并核对前后 score type/validation 样本数；DPO-100 只作为 oracle。
+
+## 8. checkpoint 策略
+
+- DPO-10/DPO-100：每 20 step 加最终点；DPO-10 预计保留 step20、step40 和 final。
+- SSPO-hard/所有 PE：每 40 step 加最终点。
+- `save_total_limit=null`，代码不自动删除。
+- checkpoint 是 PEFT LoRA adapter，不再为每个点复制完整 Qwen3 base；`C_ε` 在内存中合并。
+- adapter 不含 optimizer/scheduler state；参数可以重载继续微调，但不保证 optimizer 或 SSPO threshold EMA 的精确断点续跑。
+
+## 9. 完成与回传
+
+最终成功标志：
+
+```bash
+test -f "$SERVER_BASE/exports/exp-20260819-01-mvp/EXPORT_COMPLETE" && echo PIPELINE_OK
+```
+
+只回传该 export 目录中的白名单聚合文件，其中包含环境摘要、数据审计和聚合后的 `C_ε` 轨迹。不要回传数据、私有标签、模型/checkpoint、reference cache、原始训练日志、C_ε raw matrices 或逐样本 predictions。

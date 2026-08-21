@@ -32,11 +32,11 @@
 ## 当前活动阶段
 
 - 当前 cycle：`cycle-20260818-01`
-- 唯一活动阶段：`EXP_DISCUSSION`
-- 当前入口：`human_read/exp/current_experiment.md` v0.3 MVP
-- 已完成门禁：理论 v0.2 已获用户明确通过（2026-08-19）
-- 锁定阶段：`CODE_IMPLEMENTATION`、`SERVER_EXECUTION`、`RESULT_HANDOFF`、`NEXTCYCLE_DISCUSSION`
-- 下一解锁条件：用户明确通过实验设计 v0.3 MVP，并将确认记录到实验当前文件；该确认只解锁代码阶段。
+- 唯一活动阶段：`CODE_IMPLEMENTATION`
+- 当前入口：`human_read/exp/current_experiment.md` v0.6 SSPO-aligned 30k MVP
+- 已完成门禁：理论 v0.2 已获用户明确通过（2026-08-19）；实验设计 v0.6 已由用户逐项确认并明确要求开始编码（2026-08-21）
+- 锁定阶段：`SERVER_EXECUTION`、`RESULT_HANDOFF`、`NEXTCYCLE_DISCUSSION`
+- 下一解锁条件：完成 v0.6 的源码、配置、服务器脚本与 `code/CODE_OVERVIEW.md` 静态交接，并由用户另行明确确认当前代码版本可以提交服务器。
 
 ## 标识与交叉引用
 
