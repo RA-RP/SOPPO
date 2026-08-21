@@ -107,14 +107,15 @@ def main() -> None:
             for row in (dataset[index] for index in range(len(dataset)))
         ]
         length_profile[filename] = {"rows": len(lengths), "max_tokens": max(lengths)}
+    gradient_training_files = {"labeled_train.jsonl", "unlabeled_train.jsonl"}
     missing_limit = [
         filename
-        for filename, profile in length_profile.items()
-        if profile["max_tokens"] != args.max_length
+        for filename in sorted(gradient_training_files)
+        if length_profile[filename]["max_tokens"] != args.max_length
     ]
     if missing_limit:
         raise ValueError(
-            "Smoke fixture did not exercise max-length truncation in every split: "
+            "Smoke fixture did not exercise max-length truncation in every training split: "
             f"missing={missing_limit}, required={args.max_length}"
         )
     (output / "length_profile.json").write_text(

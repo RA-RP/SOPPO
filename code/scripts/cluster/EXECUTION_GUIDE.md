@@ -151,7 +151,7 @@ bash submit_all.sh
 
 ```text
 CPU tests
-  → gpu strong smoke (2×A800, bf16/2048 longest-sample stress + length gate, 90m)
+  → gpu strong smoke (2×A800, bf16/2048 training-split length gate, 90m)
   → formal reference/oracle (2×A800)
   → DPO-10 + DPO-100 final array
   → DPO-10 vs frozen-base headroom gate

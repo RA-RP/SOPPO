@@ -138,7 +138,7 @@ stage03/04/05 合计正好八条 final trajectories，都写在 `runs/<experimen
 
 ## 6. strong smoke
 
-`03_smoke.sh` 在账户唯一获批的 `gpu` partition 请求2×A800、90分钟，并从正式 split 中选取字符长度最大的真实样本，以正式 bf16/2048 压测；tokenization gate 还要求至少一个序列实际达到 2048 截断上限：
+`03_smoke.sh` 在账户唯一获批的 `gpu` partition 请求2×A800、90分钟，并从正式 split 中选取字符长度最大的真实样本，以正式 bf16/2048 压测；tokenization gate 要求 labeled-train 与 unlabeled-train 都至少有一个序列实际达到2048截断上限，validation只记录长度而不强制截断：
 
 - 真实 Qwen3 offline/manifest 与 response mask；
 - reference cache；
