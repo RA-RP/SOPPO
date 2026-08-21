@@ -24,12 +24,13 @@
 ## 当前状态
 
 - Cycle ID：`cycle-20260818-01`
-- 唯一活动阶段：`CODE_IMPLEMENTATION`
+- 唯一活动阶段：`SERVER_EXECUTION`
 - 当前实现依据：`exp/current_experiment.md` v0.6 SSPO-aligned 30k MVP
 - 理论通过状态：v0.2 已明确通过（2026-08-19）
 - 实验设计通过状态：v0.6 已逐项确认，用户已明确要求开始编码（2026-08-21）
-- 代码交接状态：实现与本地静态复核已完成；等待用户明确确认当前代码版本可以提交服务器
-- `SERVER_EXECUTION` 及其后续阶段：全部锁定
+- 代码交接状态：实现基线 `e047ce7` 与本地静态复核已完成；用户于 2026-08-21 明确确认挂载任务并授权服务器执行
+- 服务器执行状态：`AUTHORIZED`；失败 DAG 证据保留后，从 clean、commit-locked checkout 重提
+- `RESULT_HANDOFF` 与 `NEXTCYCLE_DISCUSSION`：锁定
 
 ## 阅读顺序
 

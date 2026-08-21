@@ -1,6 +1,6 @@
 # SOPPO v0.6 SSPO-aligned 30k：服务器执行指南
 
-> 当前状态：`LOCKED`。以下是代码交接通过后的服务器命令，不代表现在已获得上传或执行授权。
+> 当前状态：`AUTHORIZED`。实现基线 `e047ce7` 已完成代码交接，用户于 2026-08-21 明确要求挂载任务；提交时仍须使用包含该基线及授权记录的 clean、commit-locked checkout。
 
 ## 1. 路径只记这一条
 
@@ -54,9 +54,9 @@ git rev-parse --short HEAD
 
 `git status --short` 应无输出。`submit_all.sh` 会拒绝 dirty checkout，以保证 task registry 能固定唯一 commit。
 
-## 4. 在 gn001 完成三个前置步骤
+## 4. 首次准备的三个前置步骤（此前已在 gn001 完成）
 
-这些步骤不请求 GPU，也不需要 SSH `gn006`。
+这些步骤不请求 GPU，也不需要 SSH `gn006`。`gn001` 是本轮首次建环境、下载和数据准备时使用的编译入口，不是 `submit_all.sh` 的硬编码提交主机；环境、模型和数据均位于共享存储，已经成功完成后无需为了提交 DAG 再进入 `gn001`。
 
 ### 4.1 环境
 
@@ -135,9 +135,11 @@ sinfo -N -o '%N|%P|%T|%G|%C'
 
 无需等待节点显示 idle 才提交；Slurm 会排队。脚本请求卡而不硬编码节点，正式 job 获得 GPU 后还会检查实际型号。
 
-## 6. 一条命令提交全部剩余任务
+## 6. 从可用 Slurm 提交节点一条命令提交全部剩余任务
 
-只有获得本轮明确服务器执行授权后，执行：
+提交节点不固定为 `gn001`。只要当前登录节点同时满足以下条件即可运行 `submit_all.sh`：能访问 `<SERVER_BASE>` 共享存储；`sbatch`/`scancel` 可用并能连接 Slurm controller；能激活共享的 `envs/youc`；服务器 SOPPO checkout clean。当前 `mn006` 已满足共享存储、Git、`sbatch` 和 `squeue` 条件，可作为 `gn001` 故障期间的提交入口。训练仍由 Slurm 分配到 GPU 节点，不在 `mn006` 本机执行。
+
+本轮服务器执行授权已于 2026-08-21 明确记录。完成失败 DAG 归档并更新到 clean checkout 后执行：
 
 ```bash
 export SERVER_BASE=/home-ssd/Users/nsgm_jiangwh/youchang

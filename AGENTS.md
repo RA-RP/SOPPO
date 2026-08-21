@@ -32,11 +32,11 @@
 ## 当前活动阶段
 
 - 当前 cycle：`cycle-20260818-01`
-- 唯一活动阶段：`CODE_IMPLEMENTATION`
+- 唯一活动阶段：`SERVER_EXECUTION`
 - 当前入口：`human_read/exp/current_experiment.md` v0.6 SSPO-aligned 30k MVP
-- 已完成门禁：理论 v0.2 已获用户明确通过（2026-08-19）；实验设计 v0.6 已由用户逐项确认并明确要求开始编码（2026-08-21）
-- 锁定阶段：`SERVER_EXECUTION`、`RESULT_HANDOFF`、`NEXTCYCLE_DISCUSSION`
-- 下一解锁条件：完成 v0.6 的源码、配置、服务器脚本与 `code/CODE_OVERVIEW.md` 静态交接，并由用户另行明确确认当前代码版本可以提交服务器。
+- 已完成门禁：理论 v0.2 已获用户明确通过（2026-08-19）；实验设计 v0.6 已由用户逐项确认并明确要求开始编码（2026-08-21）；实现基线 `e047ce7` 完成静态交接后，用户于 2026-08-21 明确要求挂载任务并授权服务器执行。
+- 锁定阶段：`RESULT_HANDOFF`、`NEXTCYCLE_DISCUSSION`
+- 下一解锁条件：服务器形成完整白名单结果摘要，或形成失败/终止摘要与远程证据索引，然后进入 `RESULT_HANDOFF`。
 
 ## 标识与交叉引用
 

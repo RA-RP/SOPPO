@@ -7,9 +7,10 @@
 - 理论依据：`../theory/current_theory.md` v0.2，已于 2026-08-19 明确通过
 - 实验版本：v0.6 SSPO-aligned 30k MVP
 - 实验批准：用户于 2026-08-21 逐项确认 SSPO 对齐、DPO headroom、LoRA、两种 PE 权重和八条最终轨迹，并明确要求开始编码
-- 当前唯一活动阶段：`CODE_IMPLEMENTATION`
-- 下一入口：`../../code/CODE_OVERVIEW.md`
-- 服务器执行：`LOCKED`；代码静态交接完成后仍需用户另行明确授权
+- 当前唯一活动阶段：`SERVER_EXECUTION`
+- 代码交接：实现基线 `e047ce7` 已完成；用户于 2026-08-21 明确确认挂载任务
+- 当前入口：`../../code/scripts/cluster/EXECUTION_GUIDE.md`
+- 服务器执行：`AUTHORIZED`（2026-08-21）；必须从 clean、commit-locked checkout 提交 fail-closed Slurm DAG
 
 v0.6 替代 v0.5 的 SFT/Pseudo/DPO+PE 方案。30k 数据及隔离合同不变，训练目标、超参、LoRA、batch、checkpoint 和任务图以本文件为准。
 

@@ -107,4 +107,5 @@
 - 2026-08-21 第二次 DAG 启动证据：tests 与两卡 strong smoke 成功；reference-cache job `1500671` 在完整30k编码时发现 Qwen3 tokenizer 跨 assistant 边界合并 token，使“整体编码必须以单独 prompt 编码为前缀”的旧假设失败。修正为 prompt 与 response+EOS 分别编码后拼接 IDs，使 response-only mask 按构造精确；正式训练仍未启动。
 - 2026-08-21 第三次 DAG 启动证据：tests、旧版256-length smoke和完整 reference cache成功；DPO array `1501048` 的两个 arm 均失败。`gn014` arm 在 `contribution.backward()` 以 logical microbatch=4、max length2048触发 CUDA OOM；`gn005` arm 在 DDP参数一致性 all-gather触发10分钟NCCL timeout，且该节点处于 draining。经用户明确选择，显存修复冻结为不改变global64/optimizer step/损失的 per-rank backward subbatch≤2，allocator使用 expandable segments，strong smoke升级为2×A800、bf16/2048最长样本压力测试并以同样的subbatch=2作硬门禁，同时默认排除 `gn005,gn021`。这仍是实现修复，不把失败训练当作实验结果。
 - 2026-08-21 第四次 DAG 启动证据：commit `a4eef37` 的21项服务器测试全部通过；smoke job `1501724` 在模型加载和训练前，被过严的“每个 split 都必须出现2048截断”fixture门禁阻断，因为 labeled-validation 最长样本不足2048。修正后只要求实际参与有梯度计算的 labeled-train 与 unlabeled-train 达到2048；validation仍记录长度，但无梯度评价不要求人为达到上限。该失败没有产生训练结果。
-- 对应结果：尚无；当前只进行本地纯文本编码和静态复核。
+- 2026-08-21 代码交接与执行授权：上述 smoke 门禁修复形成实现基线 `e047ce7`；用户确认离线 bundle 已同步成功，并明确表示希望挂载任务。当前阶段转入 `SERVER_EXECUTION`，须先归档失败 DAG，再从包含该实现基线与授权记录的 clean checkout 提交完整 Slurm DAG。
+- 对应结果：尚无；当前已获服务器执行授权，等待修复后 DAG 完成并返回白名单摘要或失败证据。

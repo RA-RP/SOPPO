@@ -5,9 +5,9 @@
 - Cycle：`cycle-20260818-01`
 - Experiment：`exp-20260819-01-mvp`
 - 设计依据：`../human_read/exp/current_experiment.md` v0.6，用户已于 2026-08-21 明确要求开始编码
-- 当前阶段：`CODE_IMPLEMENTATION`
-- 代码交接：实现与本地静态复核已完成，等待用户明确确认当前代码版本可以提交服务器
-- 服务器执行：`LOCKED`；本文不构成上传或 Slurm 授权
+- 当前阶段：`SERVER_EXECUTION`
+- 代码交接：实现基线 `e047ce7` 与本地静态复核已完成；用户于 2026-08-21 明确确认挂载任务
+- 服务器执行：`AUTHORIZED`（2026-08-21）；只允许从 clean、commit-locked checkout 运行执行指南中的 fail-closed DAG
 
 本轮本地只编辑纯文本源码、配置和说明。没有在本地安装/import 项目依赖，没有运行 pytest、数据、模型、训练、评价或 GPU 任务。运行正确性必须由获批后的服务器 tests/strong smoke 证明。
 
@@ -113,7 +113,7 @@ SSPO/PE exp：`gamma0=1`、`gamma_min=2700/26700`、`decay=.01`。PE static使�
 1. `00_server_setup.sh`：补装锁定的 `peft==0.15.2` 并验证 Qwen3/PEFT；
 2. `02_download_model.sh`：若冻结 Qwen3 已存在则只校验；
 3. `02_prepare_data.sh`：若 30k 数据已完成则复用；
-4. 获得新的服务器执行授权后运行 `submit_all.sh`；提交器自行激活环境，并在任何 `sbatch` 前重验模型 manifest、30k 数据和 clean Git checkout。
+4. 按 2026-08-21 已获得的服务器执行授权运行 `submit_all.sh`；提交器自行激活环境，并在任何 `sbatch` 前重验模型 manifest、30k 数据和 clean Git checkout。
 
 完整 DAG：
 
