@@ -151,6 +151,9 @@ def validate_config(config: Dict[str, Any], world_size: int | None = None) -> No
             "num_devices": int(training["num_devices"]),
             "global_batch_size": int(training["global_batch_size"]),
             "gradient_accumulation_steps": int(training["gradient_accumulation_steps"]),
+            "backward_subbatch_size_per_device": int(
+                training["backward_subbatch_size_per_device"]
+            ),
             "optimizer": training["optimizer"],
             "weight_decay": float(training["weight_decay"]),
             "warmup_ratio": float(training["warmup_ratio"]),
@@ -168,6 +171,7 @@ def validate_config(config: Dict[str, Any], world_size: int | None = None) -> No
             "num_devices": 2,
             "global_batch_size": 64,
             "gradient_accumulation_steps": 8,
+            "backward_subbatch_size_per_device": 1,
             "optimizer": "adamw",
             "weight_decay": 0.0,
             "warmup_ratio": 0.1,

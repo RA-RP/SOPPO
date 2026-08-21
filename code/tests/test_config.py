@@ -27,6 +27,7 @@ def test_joint_config_freezes_30k_lora_and_8_56_batch_contract():
     assert config["training"]["joint_labeled_global_batch_size"] == 8
     assert config["training"]["joint_unlabeled_global_batch_size"] == 56
     assert sum(config["training"]["joint_unlabeled_microbatch_pattern"]) == 28
+    assert config["training"]["backward_subbatch_size_per_device"] == 1
     assert config["model"]["lora"]["r"] == 8
     assert config["model"]["lora"]["alpha"] == 16
     assert config["data"]["total_samples"] == 30000
@@ -38,6 +39,9 @@ def test_dpo_requires_reference_and_global_batch_64():
         validate_config(config, world_size=2)
     config = apply_overrides(config, ["data.reference_cache=/server/cache/reference"])
     validate_config(config, world_size=2)
+    assert config["training"]["dpo_batch_size_per_device"] == 4
+    assert config["training"]["gradient_accumulation_steps"] == 8
+    assert config["training"]["backward_subbatch_size_per_device"] == 1
 
 
 def test_joint_batch_contract_fails_closed():

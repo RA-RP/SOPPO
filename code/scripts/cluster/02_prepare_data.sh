@@ -33,7 +33,7 @@ soppo_load_proxy
 
 export HF_HOME="$CACHE_ROOT/huggingface"
 export HF_DATASETS_CACHE="$CACHE_ROOT/huggingface/datasets"
-export TRANSFORMERS_CACHE="$CACHE_ROOT/huggingface/transformers"
+unset TRANSFORMERS_CACHE
 export HF_ENDPOINT="${HF_ENDPOINT:-https://hf-mirror.com}"
 
 # Add code to PYTHONPATH

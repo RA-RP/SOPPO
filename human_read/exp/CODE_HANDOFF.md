@@ -22,14 +22,15 @@
 - PE：margin-free pair probability、exact global population、epsilon1e-8；responsibility 和 denominator 默认不断梯度。
 - 动态：hard-exp 与 PE-exp 使用完全相同的 paper `gamma_t`，gamma0=1、gamma_min=2700/26700、decay=.01。
 - 固定：四条 PE lambda `{.1,.3,.5,1.0}`，目标严格归一化为 `1/(1+lambda)` 和 `lambda/(1+lambda)`。
-- batch：global64；DPO 4×8×2；joint 每 step 全局 8 labeled pairs +56 unlabeled pairs。
+- batch：logical global64；DPO 4×8×2；joint 每 step 全局 8 labeled pairs +56 unlabeled pairs。为避免 2048 长度 OOM，梯度执行统一按每 rank 1 pair 的 backward subbatch 累积；损失归一化、optimizer step 与 PE exact-global population 不变。
 - 优化：SSPO/PE 2 epochs、lr1e-5；AdamW、wd0、cosine、warmup.1、clip1、seed42。
 - checkpoint：全部保留 LoRA adapter；DPO 20 step、SSPO/PE 40 step加 final；无 optimizer state。
 - 八条最终轨迹不得重复训练：两 DPO、hard-exp、PE-exp、四 static PE。
 - headroom：使用共同的 margin-free mean-logp score，DPO-10 validation accuracy 至少比训练前显式禁用 adapter 的冻结 base 高 .05，并核对前后 score type/样本数；DPO-100 仅是 oracle。static lambda 只用 validation 选择。
-- strong smoke：两 rank，覆盖五种配置、KDE/PE、finite checks、adapter round-trip。
+- strong smoke：2×A800、bf16/2048、各 split 最长真实样本；覆盖五种配置、backward subbatch、KDE/PE、finite checks、adapter round-trip。
 - Slurm 路由：账户只获批 `gpu` partition且拒绝 `sbatch --hold`/typed `--gres`；统一使用已验证的 `-G N`，辅助阶段申请1卡，smoke/正式训练申请2卡，直接提交 `afterok` DAG并在中途提交失败时回滚。
 - Slurm worker 路径：由提交器显式 export `SOPPO_CLUSTER_SCRIPT_DIR`，避免 batch 副本从 `/var/spool/slurmd` 错误解析 `job_env.sh`；状态工具使用真正的 array task ID 字段。
+- 版本/节点保护：每个 worker 启动时核对提交时的完整 Git commit 和 clean checkout；默认排除已发生 NCCL 卡死的 `gn005` 与既有排除节点 `gn021`，可由 `SOPPO_EXCLUDE_NODES` 显式覆盖。
 - 数据入口：提交前重验30k行数/SHA、跨 split ID、公开隐藏标签和私有标签精确连接，摘要进入白名单。
 - 下游：adapter-aware independent evaluator、GetSlice 内存合并、八轨迹聚合、无样本级白名单。
 

@@ -138,6 +138,8 @@ lambda in {0.1, 0.3, 0.5, 1.0}
 
 8/56 的实现为每 rank 每 step 8 个 microstep：unlabeled size pattern `[3,4,3,4,3,4,3,4]`，在 microstep `[0,2,4,6]` 另取 1 个 labeled pair；两 rank 合计 8 labeled + 56 unlabeled。optimizer 为 AdamW，weight decay 0，cosine schedule，warmup ratio 0.1，max grad norm 1.0。
 
+显存执行合同：上述 logical batch、optimizer step 和损失归一化全部不变；2048 长度的梯度前向/反向按每 rank 1 pair 的 backward subbatch 顺序累积，只有完整 logical optimizer batch 的最后一次 backward 触发 DDP 同步。PE 第一遍仍在完整 56-pair global unlabeled population 上求精确系数，第二遍只是用同一组系数分块回传，因此不构成 PE microbatch 近似。
+
 ## 6. checkpoint 与选择
 
 - adapter checkpoint 不自动删除，不保存 optimizer/scheduler state，因此不宣称 bit-exact resume。
@@ -149,7 +151,7 @@ lambda in {0.1, 0.3, 0.5, 1.0}
 
 ## 7. 强 smoke 与一次提交 DAG
 
-strong smoke 在账户获批的 `gpu` partition 请求两张卡、50 分钟，记录实际型号而不要求 A800。它覆盖：
+strong smoke 在账户获批的 `gpu` partition 请求 2×A800、90 分钟，并从各 split 选择字符长度最大的真实样本，以 bf16/2048 运行。它覆盖：
 
 - 冻结 Qwen3 manifest、离线加载和 chat mask；
 - LoRA trainable/base-frozen 合同；

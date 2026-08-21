@@ -97,6 +97,44 @@ def move_batch(batch: Dict, device: torch.device) -> Dict:
     }
 
 
+def split_cpu_batch(batch: Dict, maximum_size: int) -> List[Dict]:
+    """Split a collated CPU batch without changing sample order or normalization."""
+    maximum_size = int(maximum_size)
+    if maximum_size < 1:
+        raise ValueError("backward_subbatch_size_per_device must be positive")
+    sample_ids = batch.get("sample_ids")
+    if not isinstance(sample_ids, list) or not sample_ids:
+        raise ValueError("A collated preference batch must contain non-empty sample_ids")
+    size = len(sample_ids)
+    for key, value in batch.items():
+        if isinstance(value, torch.Tensor):
+            if value.ndim == 0 or value.shape[0] != size:
+                raise ValueError(f"Batch field has inconsistent leading dimension: {key}")
+        elif isinstance(value, list):
+            if len(value) != size:
+                raise ValueError(f"Batch field has inconsistent list length: {key}")
+        else:
+            raise TypeError(f"Unsupported collated batch field: {key}={type(value).__name__}")
+    pieces = []
+    for start in range(0, size, maximum_size):
+        stop = min(size, start + maximum_size)
+        pieces.append(
+            {
+                key: value[start:stop]
+                for key, value in batch.items()
+            }
+        )
+    return pieces
+
+
+def split_cpu_batches(batches: Sequence[Dict], maximum_size: int) -> List[Dict]:
+    return [piece for batch in batches for piece in split_cpu_batch(batch, maximum_size)]
+
+
+def batch_sample_count(batches: Sequence[Dict]) -> int:
+    return sum(len(batch["sample_ids"]) for batch in batches)
+
+
 def cache_for(cache_root: str, data_file: Path) -> Path:
     return Path(cache_root).resolve() / f"{data_file.name}.ref.jsonl"
 
@@ -479,6 +517,7 @@ def main() -> None:
     best_accuracy = -1.0
     best_brier = float("inf")
     accumulation = int(training["gradient_accumulation_steps"])
+    backward_subbatch_size = int(training["backward_subbatch_size_per_device"])
     labeled_iterator = iter(infinite_batches(train_loader, train_sampler)) if method in JOINT_METHODS else None
 
     if method == "dpo10":
@@ -526,9 +565,13 @@ def main() -> None:
             running_aux = 0.0
             aux_info: Dict = {}
             if method in DPO_METHODS:
-                batches = [next(source_iterator) for _micro in range(accumulation)]
-                for index, cpu_batch in enumerate(batches):
-                    synchronize = index == len(batches) - 1
+                logical_batches = [next(source_iterator) for _micro in range(accumulation)]
+                backward_batches = split_cpu_batches(logical_batches, backward_subbatch_size)
+                local_dpo_pairs = int(training["dpo_batch_size_per_device"]) * accumulation
+                if batch_sample_count(backward_batches) != local_dpo_pairs:
+                    raise ValueError("DPO logical batch was not preserved during backward subbatching")
+                for index, cpu_batch in enumerate(backward_batches):
+                    synchronize = index == len(backward_batches) - 1
                     with maybe_no_sync(policy, synchronize):
                         batch = move_batch(cpu_batch, device)
                         with torch.autocast("cuda", dtype=dtype, enabled=dtype != torch.float32):
@@ -540,11 +583,11 @@ def main() -> None:
                                 batch["ref_logp_b"],
                                 batch["labels"],
                             )
-                            contribution = losses.mean() / accumulation
+                            contribution = losses.sum() / local_dpo_pairs
                         if not torch.isfinite(contribution):
                             raise FloatingPointError(f"Non-finite DPO loss at step {global_step}")
                         contribution.backward()
-                        running_supervised += float(losses.mean().detach()) / accumulation
+                        running_supervised += float(losses.sum().detach()) / local_dpo_pairs
                 supervised_weight, aux_weight = 1.0, 0.0
             else:
                 unlabeled_batches = [next(source_iterator) for _micro in range(accumulation)]
@@ -597,9 +640,19 @@ def main() -> None:
 
                 local_labeled_total = int(training["joint_labeled_global_batch_size"]) // world_size
                 local_unlabeled_pairs = int(training["joint_unlabeled_global_batch_size"]) // world_size
-                backward_count = len(labeled_batches) + len(unlabeled_batches)
+                labeled_backward_batches = split_cpu_batches(
+                    labeled_batches, backward_subbatch_size
+                )
+                unlabeled_backward_batches = split_cpu_batches(
+                    unlabeled_batches, backward_subbatch_size
+                )
+                if batch_sample_count(labeled_backward_batches) != local_labeled_total:
+                    raise ValueError("Joint labeled population changed during backward subbatching")
+                if batch_sample_count(unlabeled_backward_batches) != local_unlabeled_pairs:
+                    raise ValueError("Joint unlabeled population changed during backward subbatching")
+                backward_count = len(labeled_backward_batches) + len(unlabeled_backward_batches)
                 backward_index = 0
-                for cpu_batch in labeled_batches:
+                for cpu_batch in labeled_backward_batches:
                     with maybe_no_sync(policy, backward_index == backward_count - 1):
                         batch = move_batch(cpu_batch, device)
                         with torch.autocast("cuda", dtype=dtype, enabled=dtype != torch.float32):
@@ -621,7 +674,7 @@ def main() -> None:
                 coefficient_offset = 0
                 pseudo_positive_weighted = 0.0
                 local_unlabeled_responses = 2 * local_unlabeled_pairs
-                for cpu_batch in unlabeled_batches:
+                for cpu_batch in unlabeled_backward_batches:
                     with maybe_no_sync(policy, backward_index == backward_count - 1):
                         batch = move_batch(cpu_batch, device)
                         with torch.autocast("cuda", dtype=dtype, enabled=dtype != torch.float32):
@@ -672,6 +725,7 @@ def main() -> None:
                 "learning_rate": optimizer.param_groups[0]["lr"],
                 "grad_norm": float(grad_norm),
                 "global_batch_size": int(training["global_batch_size"]),
+                "backward_subbatch_size_per_device": backward_subbatch_size,
                 "joint_labeled_global_batch_size": (
                     int(training["joint_labeled_global_batch_size"]) if method in JOINT_METHODS else None
                 ),

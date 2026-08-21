@@ -33,12 +33,12 @@ SOPPO-PE-static lambda = 0.1 / 0.3 / 0.5 / 1.0
 
 - 方法名只能是五类配置接口；static lambda 只能取四个预注册值；
 - formal 模型必须 bf16/2048，LoRA 必须 r8/alpha16/dropout0/all projections；
-- formal global batch 必须64，DPO为4×8×2，joint为全局8/56；
+- formal logical global batch 必须64，DPO为4×8×2，joint为全局8/56；梯度 backward subbatch 固定每 rank 1 pair；
 - DPO 固定1 epoch/lr1e-6/beta.1；SSPO/PE固定2 epochs/lr1e-5/beta10/margin2；
 - AdamW/wd0/cosine/warmup.1/clip1/seed42；
 - paper gamma、30k counts/ratios、reference cache与 label isolation 约束。
 
-smoke 明确设置 `training.smoke_mode=true`，只缩小长度、batch和step，不改变损失定义。
+smoke 明确设置 `training.smoke_mode=true`，只缩小数据量和 optimizer step；序列上限与精度保持正式 bf16/2048，并构造 logical batch>backward subbatch 来覆盖显存分块路径，不改变损失定义。
 
 ### 2.2 LoRA 与 checkpoint
 
@@ -64,7 +64,7 @@ SSPO-hard 对 unlabeled pair 的 A/B 独立打 hard label；PE 对 A/B 形成一
 
 ### 2.4 Trainer 与 batch
 
-`src/training/trainer.py` 提供统一 CLI。DPO 使用 reference cache与标准 8 microstep accumulation。joint 路径的每 rank pattern 为：
+`src/training/trainer.py` 提供统一 CLI。DPO 使用 reference cache与标准 8 logical microstep accumulation。joint 路径的每 rank pattern 为：
 
 `src/data/dataset.py` 将 Qwen3 chat prompt 与 response+EOS 分别 tokenize 后拼接 token IDs，从构造上固定 response-only mask；不再假设 tokenizer 对“prompt”和“prompt+response”两次编码具有前缀稳定性。
 
@@ -75,6 +75,8 @@ two ranks                              -> 56 U + 8 L
 ```
 
 hard 第一遍收集全局 labeled winning/losing 与全部 response reward并更新 KDE/EMA，第二遍回传。PE 第一遍只收集56个全局 pair probability并求 exact coefficient，第二遍回传。DDP `no_sync` 只延迟通信到该 optimizer step 的最后一次 backward，不改变归一化。
+
+正式 bf16/2048 在 A800 上实测发现 DPO logical microbatch=4 的峰值显存不足。实现保留上述 logical batch 与采样顺序，但把所有有梯度的 DPO/SimPO/hard/PE 第二遍切成每 rank 1 pair 的 backward subbatch；每条损失继续除以完整本地 population，DDP 仍只在 optimizer step 最后同步。PE 第一遍仍一次覆盖完整全局56 pair并产生同一组 `dL_PE/dp_i`，所以这一修复不改变目标函数或 PE population 语义。
 
 validation：DPO 用 reference delta；SSPO/PE 用 margin-free SimPO mean-logp delta。best 依次按更高 accuracy、更低 Brier；每次 metrics 都保留 score type、loss weights、global batch与 hard/PE诊断。
 
@@ -95,7 +97,7 @@ validation：DPO 用 reference delta；SSPO/PE 用 margin-free SimPO mean-logp d
 | lr | 1e-6 | 1e-5 |
 | loss beta | DPO 0.1 | SimPO 10 |
 | margin | — | 2 |
-| global batch | 64 | 64 = 8 L + 56 U |
+| logical global batch | 64（4×8×2；backward subbatch=1） | 64 = 8 L + 56 U（backward subbatch=1） |
 | max seq len | 2048 | 2048 |
 | LoRA | r8/alpha16/dropout0 | 同左 |
 | optimizer | AdamW, wd0 | 同左 |
@@ -136,7 +138,7 @@ stage03/04/05 合计正好八条 final trajectories，都写在 `runs/<experimen
 
 ## 6. strong smoke
 
-`03_smoke.sh` 在账户唯一获批的 `gpu` partition 请求2 GPU、50分钟：
+`03_smoke.sh` 在账户唯一获批的 `gpu` partition 请求2×A800、90分钟，并从正式 split 中选取字符长度最大的真实样本，以正式 bf16/2048 压测；tokenization gate 还要求至少一个序列实际达到 2048 截断上限：
 
 - 真实 Qwen3 offline/manifest 与 response mask；
 - reference cache；
@@ -156,6 +158,8 @@ stage03/04/05 合计正好八条 final trajectories，都写在 `runs/<experimen
 - 2048长度和 hard/PE两次前向会增加 wall time；实际耗时以 strong smoke和首个formal日志校准。
 - 当前账户没有 `cpu`/`gpu_test` 关联，且集群只接受 `-G N` 而拒绝 typed `--gres`；辅助阶段在 `gpu` partition 申请1卡，smoke/正式训练申请2卡，卡不足时由 Slurm 排队。
 - Slurm 会把 batch script 复制到 `/var/spool/slurmd`；提交器通过 `SOPPO_CLUSTER_SCRIPT_DIR` 显式传递仓库中的真实脚本目录，worker 不再从 spool 路径寻找 `job_env.sh`。
+- Slurm worker 还会核对提交时冻结的完整 Git commit 和 clean worktree；排队期间若服务器 checkout 被更新，旧 DAG 会 fail-closed，而不会混用代码版本。
+- 2026-08-21 两条 DPO array arm 分别在 `gn014` 发生 backward OOM、在 draining 的 `gn005` 发生 DDP/NCCL timeout。修复后默认排除 `gn005,gn021`，启用 expandable-segments allocator，并由 full-length smoke 验证 backward subbatch。
 - SSPO论文未给KDE bandwidth，Scott rule是明确记录的复现决定。
 - v0.6将已有pair拆成两个SSPO unpaired response，是数据形态适配，不等同于论文使用UltraChat single-response corpus。
 - 单种子不能支持显著性结论；`C_epsilon`不是因果证据。

@@ -76,6 +76,15 @@ def test_two_pass_pe_matches_dense_autograd():
     assert abs(reported_loss - float(loss)) < 1e-7
     assert torch.allclose(surrogate_gradient, dense_gradient, atol=1e-6, rtol=1e-5)
 
+    subbatched = dense.detach().clone().requires_grad_(True)
+    for start in range(subbatched.numel()):
+        pe_surrogate(
+            subbatched[start : start + 1],
+            coefficients[start : start + 1],
+            world_size=1,
+        ).backward()
+    assert torch.allclose(subbatched.grad, dense_gradient, atol=1e-6, rtol=1e-5)
+
 
 def test_half_probability_pe_is_finite_and_symmetric():
     values = torch.full((8,), 0.5, requires_grad=True)

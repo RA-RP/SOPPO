@@ -12,7 +12,9 @@ MODEL_MANIFEST="$MODEL_DIR/model_manifest.json"
 SMOKE_ROOT="$RUN_ROOT/$EXPERIMENT_ID/pipeline/smoke"
 soppo_hardware_gate "$RUN_ROOT/$EXPERIMENT_ID/pipeline/hardware/smoke.csv"
 python -m src.model.model_manifest --model-dir "$MODEL_DIR" --verify
-python -m src.training.smoke_fixture --data-dir "$DATA_DIR" --output "$SMOKE_ROOT/data"
+python -m src.training.smoke_fixture \
+    --data-dir "$DATA_DIR" --output "$SMOKE_ROOT/data" \
+    --model "$MODEL_DIR" --max-length 2048
 
 mkdir -p "$SMOKE_ROOT/reference/targets"
 python -m src.training.cache_tools combine \
@@ -24,14 +26,14 @@ soppo_torchrun -m src.training.reference_cache \
     --model "$MODEL_DIR" --model-manifest "$MODEL_MANIFEST" \
     --input "$SMOKE_ROOT/reference/cache_source.jsonl" \
     --output "$SMOKE_ROOT/reference/combined.ref.jsonl" \
-    --max-length 256 --batch-size 2 --dtype float16
+    --max-length 2048 --batch-size 1 --dtype bfloat16
 python -m src.training.cache_tools split \
     --combined-cache "$SMOKE_ROOT/reference/combined.ref.jsonl" \
     --target "$SMOKE_ROOT/data/labeled_train.jsonl" \
     --target "$SMOKE_ROOT/data/labeled_val.jsonl" \
     --target "$SMOKE_ROOT/data/oracle_train.private.jsonl" \
     --output-dir "$SMOKE_ROOT/reference/targets" \
-    --model-manifest "$MODEL_MANIFEST" --max-length 256
+    --model-manifest "$MODEL_MANIFEST" --max-length 2048
 
 run_dpo_smoke() {
     local config_name="${1:?config required}"
@@ -40,12 +42,12 @@ run_dpo_smoke() {
     soppo_torchrun -m src.training.trainer \
         --config "$CODE_ROOT/configs/mvp/$config_name.yaml" \
         --set "model.name_or_path=$MODEL_DIR" --set "model.manifest_path=$MODEL_MANIFEST" \
-        --set model.torch_dtype=float16 --set model.max_seq_len=256 \
         --set "data.data_dir=$SMOKE_ROOT/data" \
         --set "data.reference_cache=$SMOKE_ROOT/reference/targets" --set data.num_workers=0 \
         --set training.epochs=1 --set training.max_steps=1 \
-        --set training.dpo_batch_size_per_device=1 \
-        --set training.gradient_accumulation_steps=2 --set training.global_batch_size=4 \
+        --set training.dpo_batch_size_per_device=2 \
+        --set training.gradient_accumulation_steps=1 --set training.global_batch_size=4 \
+        --set training.backward_subbatch_size_per_device=1 \
         --set training.smoke_mode=true --set training.eval_steps=1 --set training.save_steps=1 \
         --set "output.run_dir=$SMOKE_ROOT/runs/$run_name" "$@"
 }
@@ -57,15 +59,16 @@ run_joint_smoke() {
     soppo_torchrun -m src.training.trainer \
         --config "$CODE_ROOT/configs/mvp/$config_name.yaml" \
         --set "model.name_or_path=$MODEL_DIR" --set "model.manifest_path=$MODEL_MANIFEST" \
-        --set model.torch_dtype=float16 --set model.max_seq_len=256 \
         --set "data.data_dir=$SMOKE_ROOT/data" --set data.num_workers=0 \
         --set training.epochs=1 --set training.max_steps=1 \
-        --set training.gradient_accumulation_steps=2 --set training.global_batch_size=6 \
-        --set training.joint_labeled_batch_size_per_device=1 \
+        --set training.dpo_batch_size_per_device=2 \
+        --set training.gradient_accumulation_steps=2 --set training.global_batch_size=12 \
+        --set training.backward_subbatch_size_per_device=1 \
+        --set training.joint_labeled_batch_size_per_device=2 \
         --set 'training.joint_labeled_microsteps=[0]' \
-        --set 'training.joint_unlabeled_microbatch_pattern=[1,1]' \
-        --set training.joint_labeled_global_batch_size=2 \
-        --set training.joint_unlabeled_global_batch_size=4 \
+        --set 'training.joint_unlabeled_microbatch_pattern=[2,2]' \
+        --set training.joint_labeled_global_batch_size=4 \
+        --set training.joint_unlabeled_global_batch_size=8 \
         --set training.smoke_mode=true --set training.eval_steps=1 --set training.save_steps=1 \
         --set "output.run_dir=$SMOKE_ROOT/runs/$run_name" "$@"
 }
@@ -82,15 +85,16 @@ PE_CHECKPOINT="$SMOKE_ROOT/runs/soppo_pe_exp/checkpoints/step_000001"
 soppo_torchrun -m src.training.trainer \
     --config "$CODE_ROOT/configs/mvp/soppo_pe_exp.yaml" --init-checkpoint "$PE_CHECKPOINT" \
     --set "model.name_or_path=$MODEL_DIR" --set "model.manifest_path=$MODEL_MANIFEST" \
-    --set model.torch_dtype=float16 --set model.max_seq_len=256 \
     --set "data.data_dir=$SMOKE_ROOT/data" --set data.num_workers=0 \
     --set training.epochs=1 --set training.max_steps=1 \
-    --set training.gradient_accumulation_steps=2 --set training.global_batch_size=6 \
-    --set training.joint_labeled_batch_size_per_device=1 \
+    --set training.dpo_batch_size_per_device=2 \
+    --set training.gradient_accumulation_steps=2 --set training.global_batch_size=12 \
+    --set training.backward_subbatch_size_per_device=1 \
+    --set training.joint_labeled_batch_size_per_device=2 \
     --set 'training.joint_labeled_microsteps=[0]' \
-    --set 'training.joint_unlabeled_microbatch_pattern=[1,1]' \
-    --set training.joint_labeled_global_batch_size=2 \
-    --set training.joint_unlabeled_global_batch_size=4 \
+    --set 'training.joint_unlabeled_microbatch_pattern=[2,2]' \
+    --set training.joint_labeled_global_batch_size=4 \
+    --set training.joint_unlabeled_global_batch_size=8 \
     --set training.smoke_mode=true --set training.eval_steps=1 --set training.save_steps=1 \
     --set output.save_checkpoints=false \
     --set "output.run_dir=$SMOKE_ROOT/runs/checkpoint_roundtrip"

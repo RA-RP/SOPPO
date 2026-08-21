@@ -101,7 +101,7 @@ export PIP_DEFAULT_TIMEOUT="${PIP_DEFAULT_TIMEOUT:-180}"
 export PIP_RETRIES="${PIP_RETRIES:-10}"
 export CONDA_PKGS_DIRS="$CACHE_ROOT/conda/pkgs"
 export HF_HOME="$CACHE_ROOT/huggingface"
-export TRANSFORMERS_CACHE="$CACHE_ROOT/huggingface/transformers"
+unset TRANSFORMERS_CACHE
 export MODELSCOPE_CACHE="$CACHE_ROOT/modelscope"
 
 soppo_load_proxy
@@ -250,7 +250,7 @@ export PIP_DEFAULT_TIMEOUT="${PIP_DEFAULT_TIMEOUT:-180}"
 export PIP_RETRIES="${PIP_RETRIES:-10}"
 export CONDA_PKGS_DIRS="$BASE_DIR/cache/conda/pkgs"
 export HF_HOME="$BASE_DIR/cache/huggingface"
-export TRANSFORMERS_CACHE="$BASE_DIR/cache/huggingface/transformers"
+unset TRANSFORMERS_CACHE
 export MODELSCOPE_CACHE="$BASE_DIR/cache/modelscope"
 
 # Set PYTHONPATH

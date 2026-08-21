@@ -151,7 +151,7 @@ bash submit_all.sh
 
 ```text
 CPU tests
-  → gpu strong smoke (2 GPU, 50m)
+  → gpu strong smoke (2×A800, bf16/2048 longest-sample stress + length gate, 90m)
   → formal reference/oracle (2×A800)
   → DPO-10 + DPO-100 final array
   → DPO-10 vs frozen-base headroom gate
@@ -164,9 +164,13 @@ CPU tests
 
 所有依赖为 `afterok`；任何上游失败都会阻止下游，不要求 SSH 会话持续在线。现在没有双卡资源不影响提交，2-GPU job 会以 `PD (Resources/Priority)` 等待。默认最多同时运行 4 个 array 单元，仍取决于集群调度和用户额度。
 
+提交器默认加 `--exclude=gn005,gn021`：`gn005` 已在本轮出现 DDP/NCCL timeout且处于 draining，`gn021` 延续此前已验证的人工排除。若管理员确认节点已恢复，可显式设置 `export SOPPO_EXCLUDE_NODES=` 清空；也可提供逗号分隔的新名单。
+
 `submit_all.sh` 会自行激活锁定环境，并在提交任何 job 前重验 Qwen3 manifest 与 30k 数据审计；它也拒绝覆盖已存在的 pipeline 目录。如果尚未提交任何 job 就失败，脚本会清理由本次创建的空目录；若部分 job 已提交后失败，则自动取消这些 job并保留 pipeline 目录供检查，不要直接删除。
 
 Slurm 实际执行的是 `/var/spool/slurmd/.../slurm_script` 副本。提交器会通过 `SOPPO_CLUSTER_SCRIPT_DIR` 给所有 worker 传递仓库中的真实 cluster 目录；不得删除这一 export，否则 worker 会在 spool 目录下错误寻找 `job_env.sh`。
+
+每个 worker 还会核对 `submit_all.sh` 提交时记录的完整 Git commit 和 clean checkout。DAG 排队或运行期间不要再次 `git pull` 或修改服务器仓库；否则尚未启动的 worker 会明确失败，防止同一 pipeline 混用不同代码版本。PyTorch allocator 使用 `expandable_segments:True`，并只使用 `HF_HOME`，不再触发 `TRANSFORMERS_CACHE` 的 v5 deprecation warning。
 
 ## 7. 日常查看状态
 
@@ -188,7 +192,17 @@ squeue -u "$USER" -o '%.18i %.12P %.24j %.2t %.10M %.30R'
 
 stage03/04/05 合计正好八条 final trajectories，不会把预实验重新训练一遍。headroom 比较同一个 margin-free mean-logp score 下、显式禁用 adapter 的训练前 Qwen3 与 DPO-10，并核对前后 score type/validation 样本数；DPO-100 只作为 oracle。
 
-## 8. checkpoint 策略
+## 8. 失败后保留证据再重提
+
+失败 DAG 的 pipeline 目录和 partial run 不得删除。先取消仍在 `PENDING (Dependency)` 的下游 job，再把旧目录移动到：
+
+```text
+<SERVER_BASE>/runs/<experiment>/failed_attempts/<attempt-name>/
+```
+
+至少保留旧 `pipeline/`（registry、hardware、logs）以及已创建的 `main/<arm>/`。完整 reference cache 位于 `<SERVER_BASE>/cache/`，与某次 pipeline 分离，校验通过后可直接复用。归档完成、服务器 checkout 更新到新 clean commit 后，重新运行 `submit_all.sh`；新的 full-length strong smoke 必须先通过，才会解锁 formal DPO。
+
+## 9. checkpoint 与重启策略
 
 - DPO-10/DPO-100：每 20 step 加最终点；DPO-10 预计保留 step20、step40 和 final。
 - SSPO-hard/所有 PE：每 40 step 加最终点。
@@ -196,7 +210,9 @@ stage03/04/05 合计正好八条 final trajectories，不会把预实验重新�
 - checkpoint 是 PEFT LoRA adapter，不再为每个点复制完整 Qwen3 base；`C_ε` 在内存中合并。
 - adapter 不含 optimizer/scheduler state；参数可以重载继续微调，但不保证 optimizer 或 SSPO threshold EMA 的精确断点续跑。
 
-## 9. 完成与回传
+当前 `--init-checkpoint` 只是 LoRA warm start，不是正式实验可接受的 exact resume：global step、optimizer、cosine scheduler、数据位置、RNG 和 SSPO KDE/EMA state 都会重置。因此本轮失败 arm 必须从头重跑，不能把 partial checkpoint 当作无缝续训。
+
+## 10. 完成与回传
 
 最终成功标志：
 

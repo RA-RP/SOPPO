@@ -14,11 +14,33 @@ soppo_job_init() {
     fi
     source "$script_dir/server_paths.sh"
     source "$script_dir/runtime_env.sh"
+    if [[ -n "${SLURM_JOB_ID:-}" ]]; then
+        if [[ ! "${SOPPO_EXPECTED_GIT_COMMIT:-}" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "ERROR: Slurm worker is missing SOPPO_EXPECTED_GIT_COMMIT" >&2
+            return 1
+        fi
+        local actual_commit
+        actual_commit="$(git -C "$SOPPO_ROOT" rev-parse HEAD)"
+        if [[ "$actual_commit" != "$SOPPO_EXPECTED_GIT_COMMIT" ]]; then
+            echo "ERROR: Server checkout changed after DAG submission" >&2
+            echo "  expected: $SOPPO_EXPECTED_GIT_COMMIT" >&2
+            echo "  actual:   $actual_commit" >&2
+            return 1
+        fi
+        if [[ -n "$(git -C "$SOPPO_ROOT" status --porcelain)" ]]; then
+            echo "ERROR: Server checkout became dirty after DAG submission" >&2
+            return 1
+        fi
+    fi
     soppo_activate_env "$ENV_ROOT/youc"
     export PYTHONPATH="$CODE_ROOT:${PYTHONPATH:-}"
+    export HF_HOME="$CACHE_ROOT/huggingface"
+    export HF_DATASETS_CACHE="$CACHE_ROOT/huggingface/datasets"
+    unset TRANSFORMERS_CACHE
     export HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 HF_DATASETS_OFFLINE=1
     export TOKENIZERS_PARALLELISM=false
     export OMP_NUM_THREADS="${OMP_NUM_THREADS:-8}"
+    export PYTORCH_CUDA_ALLOC_CONF="${PYTORCH_CUDA_ALLOC_CONF:-expandable_segments:True}"
 }
 
 soppo_hardware_gate() {

@@ -21,6 +21,7 @@ GPU2_COUNT="${SOPPO_GPU2_COUNT:-2}"
 GPU1_COUNT="${SOPPO_GPU1_COUNT:-1}"
 AUX_GPU_COUNT="${SOPPO_AUX_GPU_COUNT:-$GPU1_COUNT}"
 ARRAY_LIMIT="${SOPPO_ARRAY_PARALLELISM:-4}"
+EXCLUDE_NODES="${SOPPO_EXCLUDE_NODES-gn005,gn021}"
 
 [[ "$GPU2_COUNT" =~ ^[1-9][0-9]*$ ]] || { echo "ERROR: invalid SOPPO_GPU2_COUNT" >&2; exit 1; }
 [[ "$GPU1_COUNT" =~ ^[1-9][0-9]*$ ]] || { echo "ERROR: invalid SOPPO_GPU1_COUNT" >&2; exit 1; }
@@ -44,6 +45,12 @@ GIT_COMMIT="$(git -C "$SOPPO_ROOT" rev-parse HEAD)"
 mkdir -p "$PIPELINE_DIR/logs" "$PIPELINE_DIR/hardware"
 
 echo "Slurm routing: auxiliary=$CPU_PARTITION/${AUX_GPU_COUNT}GPU, smoke=$SMOKE_PARTITION/${GPU2_COUNT}GPU, formal=$GPU_PARTITION/${GPU2_COUNT}GPU"
+echo "Slurm node exclusions: ${EXCLUDE_NODES:-none}"
+
+declare -a NODE_ARGS=()
+if [[ -n "$EXCLUDE_NODES" ]]; then
+    NODE_ARGS+=(--exclude="$EXCLUDE_NODES")
+fi
 
 declare -a SUBMITTED_JOBS=()
 submission_failed() {
@@ -66,7 +73,7 @@ submit() {
     local stage="${1:?stage required}"
     shift
     local raw
-    if ! raw="$(sbatch --parsable "$@")"; then
+    if ! raw="$(sbatch --parsable "${NODE_ARGS[@]}" "$@")"; then
         echo "ERROR: sbatch rejected stage: $stage" >&2
         return 1
     fi
@@ -76,13 +83,13 @@ submit() {
     echo "Submitted $stage as Slurm job $LAST_JOB_ID" >&2
 }
 
-COMMON_EXPORT="ALL,RUN_CONTEXT=cluster,EXPERIMENT_ID=$EXPERIMENT_ID,SOPPO_CLUSTER_SCRIPT_DIR=$SCRIPT_DIR,SOPPO_DATA_DIR=$DATA_DIR,SOPPO_MODEL_DIR=$MODEL_DIR"
+COMMON_EXPORT="ALL,RUN_CONTEXT=cluster,EXPERIMENT_ID=$EXPERIMENT_ID,SOPPO_CLUSTER_SCRIPT_DIR=$SCRIPT_DIR,SOPPO_DATA_DIR=$DATA_DIR,SOPPO_MODEL_DIR=$MODEL_DIR,SOPPO_EXPECTED_GIT_COMMIT=$GIT_COMMIT"
 submit tests -J soppo-tests -p "$CPU_PARTITION" -N 1 -c 8 -G "$AUX_GPU_COUNT" -t 01:00:00 \
     -o "$PIPELINE_DIR/logs/tests-%j.out" --export="$COMMON_EXPORT" "$SCRIPT_DIR/01_server_tests.sh"
 TESTS="$LAST_JOB_ID"
-submit smoke -J soppo-smoke -p "$SMOKE_PARTITION" -N 1 -c 32 -G "$GPU2_COUNT" -t 00:50:00 \
+submit smoke -J soppo-smoke -p "$SMOKE_PARTITION" -N 1 -c 32 -G "$GPU2_COUNT" -t 01:30:00 \
     -d "afterok:$TESTS" -o "$PIPELINE_DIR/logs/smoke-%j.out" \
-    --export="$COMMON_EXPORT,SOPPO_NPROC_PER_NODE=2,SOPPO_REQUIRE_A800=0" "$SCRIPT_DIR/03_smoke.sh"
+    --export="$COMMON_EXPORT,SOPPO_NPROC_PER_NODE=2,SOPPO_REQUIRE_A800=1" "$SCRIPT_DIR/03_smoke.sh"
 SMOKE="$LAST_JOB_ID"
 submit reference_cache -J soppo-ref -p "$GPU_PARTITION" -N 1 -c 32 -G "$GPU2_COUNT" -t 24:00:00 \
     -d "afterok:$SMOKE" -o "$PIPELINE_DIR/logs/reference-%j.out" \
@@ -129,7 +136,8 @@ submit aggregate -J soppo-aggregate -p "$CPU_PARTITION" -N 1 -c 8 -G "$AUX_GPU_C
     --export="$COMMON_EXPORT" "$SCRIPT_DIR/08_aggregate.sh"
 AGG="$LAST_JOB_ID"
 
-python - "$REGISTRY" "$EXPERIMENT_ID" "$GIT_COMMIT" \
+python - "$REGISTRY" "$EXPERIMENT_ID" "$GIT_COMMIT" "$EXCLUDE_NODES" \
+    "$AUX_GPU_COUNT" "$GPU2_COUNT" "$GPU1_COUNT" \
     "tests=$TESTS" "smoke=$SMOKE" "reference_cache=$REFERENCE" \
     "dpo_headroom_runs=$PRE" "headroom_gate=$PRESELECT" "pe_static_runs=$LAMBDA" \
     "static_select=$LAMBDA_SELECT" "dynamic_runs=$MAIN" "c_epsilon_prepare=$CE_PREP" \
@@ -137,7 +145,7 @@ python - "$REGISTRY" "$EXPERIMENT_ID" "$GIT_COMMIT" \
 import json
 import os
 import sys
-path, experiment, commit, *pairs = sys.argv[1:]
+path, experiment, commit, excluded, aux_gpus, formal_gpus, post_gpus, *pairs = sys.argv[1:]
 jobs = dict(pair.split("=", 1) for pair in pairs)
 payload = {
     "schema_version": 1,
@@ -145,6 +153,14 @@ payload = {
     "experiment_id": experiment,
     "experiment_design": "v0.6-sspo-aligned-30k",
     "git_commit": commit,
+    "slurm": {
+        "node_exclusions": [name for name in excluded.split(",") if name],
+        "gpu_counts": {
+            "auxiliary": int(aux_gpus),
+            "smoke_and_formal_training": int(formal_gpus),
+            "single_gpu_postprocessing": int(post_gpus),
+        },
+    },
     "submission_status": "submitted",
     "jobs": jobs,
 }

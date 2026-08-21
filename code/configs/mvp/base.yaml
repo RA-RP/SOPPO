@@ -53,6 +53,9 @@ training:
   dpo_batch_size_per_device: 4
   gradient_accumulation_steps: 8
   global_batch_size: 64
+  # Keep the frozen logical batch contract above, but execute every gradient
+  # forward/backward on one pair at a time so max-length 2048 examples fit A800.
+  backward_subbatch_size_per_device: 1
   # Per rank and optimizer step: four labeled pairs and 28 unlabeled pairs.
   # Across two ranks this is the frozen 8/56 joint split, still total batch 64.
   joint_labeled_batch_size_per_device: 1
