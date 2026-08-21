@@ -7,7 +7,11 @@ soppo_job_init() {
         return 1
     fi
     local script_dir
-    script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+    script_dir="${SOPPO_CLUSTER_SCRIPT_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)}"
+    if [[ ! -f "$script_dir/server_paths.sh" || ! -f "$script_dir/runtime_env.sh" ]]; then
+        echo "ERROR: Invalid SOPPO cluster script directory: $script_dir" >&2
+        return 1
+    fi
     source "$script_dir/server_paths.sh"
     source "$script_dir/runtime_env.sh"
     soppo_activate_env "$ENV_ROOT/youc"

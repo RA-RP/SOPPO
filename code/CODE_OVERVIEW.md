@@ -153,6 +153,7 @@ stage03/04/05 合计正好八条 final trajectories，都写在 `runs/<experimen
 
 - 2048长度和 hard/PE两次前向会增加 wall time；实际耗时以 strong smoke和首个formal日志校准。
 - 当前账户没有 `cpu`/`gpu_test` 关联，且集群只接受 `-G N` 而拒绝 typed `--gres`；辅助阶段在 `gpu` partition 申请1卡，smoke/正式训练申请2卡，卡不足时由 Slurm 排队。
+- Slurm 会把 batch script 复制到 `/var/spool/slurmd`；提交器通过 `SOPPO_CLUSTER_SCRIPT_DIR` 显式传递仓库中的真实脚本目录，worker 不再从 spool 路径寻找 `job_env.sh`。
 - SSPO论文未给KDE bandwidth，Scott rule是明确记录的复现决定。
 - v0.6将已有pair拆成两个SSPO unpaired response，是数据形态适配，不等同于论文使用UltraChat single-response corpus。
 - 单种子不能支持显著性结论；`C_epsilon`不是因果证据。

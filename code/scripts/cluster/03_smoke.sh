@@ -2,7 +2,7 @@
 # Strong two-rank GPU smoke; routing is selected by submit_all.sh.
 set -euo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SCRIPT_DIR="${SOPPO_CLUSTER_SCRIPT_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)}"
 source "$SCRIPT_DIR/job_env.sh"
 soppo_job_init
 

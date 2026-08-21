@@ -166,6 +166,8 @@ CPU tests
 
 `submit_all.sh` 会自行激活锁定环境，并在提交任何 job 前重验 Qwen3 manifest 与 30k 数据审计；它也拒绝覆盖已存在的 pipeline 目录。如果尚未提交任何 job 就失败，脚本会清理由本次创建的空目录；若部分 job 已提交后失败，则自动取消这些 job并保留 pipeline 目录供检查，不要直接删除。
 
+Slurm 实际执行的是 `/var/spool/slurmd/.../slurm_script` 副本。提交器会通过 `SOPPO_CLUSTER_SCRIPT_DIR` 给所有 worker 传递仓库中的真实 cluster 目录；不得删除这一 export，否则 worker 会在 spool 目录下错误寻找 `job_env.sh`。
+
 ## 7. 日常查看状态
 
 ```bash

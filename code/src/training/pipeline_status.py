@@ -23,7 +23,7 @@ def main() -> None:
     registry = json.loads(Path(args.registry).read_text(encoding="utf-8"))
     jobs = registry["jobs"]
     ids = [str(value) for value in jobs.values()]
-    queue_text = command(["squeue", "-h", "-j", ",".join(ids), "-o", "%A|%a|%T|%M|%R"])
+    queue_text = command(["squeue", "-h", "-j", ",".join(ids), "-o", "%A|%K|%T|%M|%R"])
     live = defaultdict(list)
     for line in queue_text.splitlines():
         if line:
