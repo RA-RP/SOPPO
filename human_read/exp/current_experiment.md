@@ -8,7 +8,7 @@
 - 实验版本：v0.6 SSPO-aligned 30k MVP
 - 实验批准：用户于 2026-08-21 逐项确认 SSPO 对齐、DPO headroom、LoRA、两种 PE 权重和八条最终轨迹，并明确要求开始编码
 - 当前唯一活动阶段：`SERVER_EXECUTION`
-- 代码交接：实现基线 `e047ce7` 已完成；用户于 2026-08-21 明确确认挂载任务
+- 代码交接：训练实现基线 `e047ce7` 已完成；无 Slurm standalone 平台适配基线 `e4eb95d`（2026-08-22，本地静态复核完成、服务器待验证）
 - 当前入口：`../../code/scripts/standalone/EXECUTION_GUIDE.md`；旧共享集群入口保留为 `../../code/scripts/cluster/EXECUTION_GUIDE.md`
 - 服务器执行：`AUTHORIZED`（2026-08-21）；2026-08-22 用户明确要求迁移至无 Slurm 独占服务器。必须从 clean、commit-locked checkout 启动 fail-closed 顺序 pipeline；新增平台适配尚待服务器验证
 

@@ -6,7 +6,7 @@
 - Experiment：`exp-20260819-01-mvp`
 - 实验设计：`current_experiment.md` v0.6，已由用户逐项确认
 - 当前阶段：`SERVER_EXECUTION`
-- 代码交接：实现基线 `e047ce7` 与本地静态复核已完成；用户于 2026-08-21 明确确认
+- 代码交接：训练实现基线 `e047ce7` 已确认；无 Slurm standalone 平台适配基线 `e4eb95d` 已完成本地静态复核、尚待服务器验证
 - 服务器执行：`AUTHORIZED`（2026-08-21）
 - 当前平台适配：2026-08-22 新增 `scripts/standalone/` 无 Slurm 独占服务器入口；尚待该服务器验证
 - 正式代码说明：`../../code/CODE_OVERVIEW.md`

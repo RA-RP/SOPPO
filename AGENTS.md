@@ -34,7 +34,7 @@
 - 当前 cycle：`cycle-20260818-01`
 - 唯一活动阶段：`SERVER_EXECUTION`
 - 当前入口：`human_read/exp/current_experiment.md` v0.6 SSPO-aligned 30k MVP；当前服务器执行适配为无 Slurm 独占服务器 `code/scripts/standalone/`
-- 已完成门禁：理论 v0.2 已获用户明确通过（2026-08-19）；实验设计 v0.6 已由用户逐项确认并明确要求开始编码（2026-08-21）；实现基线 `e047ce7` 完成静态交接后，用户于 2026-08-21 明确要求挂载任务并授权服务器执行。
+- 已完成门禁：理论 v0.2 已获用户明确通过（2026-08-19）；实验设计 v0.6 已由用户逐项确认并明确要求开始编码（2026-08-21）；训练实现基线 `e047ce7` 完成静态交接后，用户于 2026-08-21 明确要求挂载任务并授权服务器执行；无 Slurm standalone 平台适配基线为 `e4eb95d`（2026-08-22，服务器待验证）。
 - 锁定阶段：`RESULT_HANDOFF`、`NEXTCYCLE_DISCUSSION`
 - 下一解锁条件：独占服务器从 clean、commit-locked checkout 通过新增 standalone 环境/preflight/tests/strong smoke并形成完整白名单结果摘要，或形成失败/终止摘要与远程证据索引，然后进入 `RESULT_HANDOFF`。
 

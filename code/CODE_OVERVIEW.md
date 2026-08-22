@@ -6,7 +6,7 @@
 - Experiment：`exp-20260819-01-mvp`
 - 设计依据：`../human_read/exp/current_experiment.md` v0.6，用户已于 2026-08-21 明确要求开始编码
 - 当前阶段：`SERVER_EXECUTION`
-- 代码交接：实现基线 `e047ce7` 与本地静态复核已完成；用户于 2026-08-21 明确确认挂载任务
+- 代码交接：训练实现基线 `e047ce7`；无 Slurm standalone 平台适配基线 `e4eb95d`（2026-08-22，本地静态复核完成、服务器待验证）
 - 服务器执行：`AUTHORIZED`（2026-08-21）；只允许从 clean、commit-locked checkout 运行执行指南中的 fail-closed pipeline。2026-08-22 新增无 Slurm 独占服务器适配，服务器待验证
 
 本轮本地只编辑纯文本源码、配置和说明。没有在本地安装/import 项目依赖，没有运行 pytest、数据、模型、训练、评价或 GPU 任务。运行正确性必须由获批后的服务器 tests/strong smoke 证明。

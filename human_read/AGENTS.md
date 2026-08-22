@@ -28,7 +28,7 @@
 - 当前实现依据：`exp/current_experiment.md` v0.6 SSPO-aligned 30k MVP
 - 理论通过状态：v0.2 已明确通过（2026-08-19）
 - 实验设计通过状态：v0.6 已逐项确认，用户已明确要求开始编码（2026-08-21）
-- 代码交接状态：实现基线 `e047ce7` 与本地静态复核已完成；用户于 2026-08-21 明确确认挂载任务并授权服务器执行
+- 代码交接状态：训练实现基线 `e047ce7` 已确认；无 Slurm standalone 平台适配基线 `e4eb95d` 已完成本地静态复核、尚待服务器验证
 - 服务器执行状态：`AUTHORIZED`；2026-08-22 迁移到无 Slurm 独占服务器，当前入口为 `../code/scripts/standalone/EXECUTION_GUIDE.md`，新增平台适配尚待服务器验证
 - `RESULT_HANDOFF` 与 `NEXTCYCLE_DISCUSSION`：锁定
 
