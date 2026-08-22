@@ -1,6 +1,6 @@
 # Frozen server-only environment for cycle-20260818-01 / v0.6 SSPO-aligned MVP.
 # PyTorch is installed first from the official CUDA 12.1 wheel index by
-# scripts/cluster/00_server_setup.sh. Keeping it here makes the manifest complete;
+# platform 00_server_setup.sh. Keeping it here makes the manifest complete;
 # the second pip pass treats the already installed wheel as satisfied.
 torch==2.4.0
 transformers==4.51.3

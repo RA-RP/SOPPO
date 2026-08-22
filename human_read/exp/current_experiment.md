@@ -9,8 +9,8 @@
 - 实验批准：用户于 2026-08-21 逐项确认 SSPO 对齐、DPO headroom、LoRA、两种 PE 权重和八条最终轨迹，并明确要求开始编码
 - 当前唯一活动阶段：`SERVER_EXECUTION`
 - 代码交接：实现基线 `e047ce7` 已完成；用户于 2026-08-21 明确确认挂载任务
-- 当前入口：`../../code/scripts/cluster/EXECUTION_GUIDE.md`
-- 服务器执行：`AUTHORIZED`（2026-08-21）；必须从 clean、commit-locked checkout 提交 fail-closed Slurm DAG
+- 当前入口：`../../code/scripts/standalone/EXECUTION_GUIDE.md`；旧共享集群入口保留为 `../../code/scripts/cluster/EXECUTION_GUIDE.md`
+- 服务器执行：`AUTHORIZED`（2026-08-21）；2026-08-22 用户明确要求迁移至无 Slurm 独占服务器。必须从 clean、commit-locked checkout 启动 fail-closed 顺序 pipeline；新增平台适配尚待服务器验证
 
 v0.6 替代 v0.5 的 SFT/Pseudo/DPO+PE 方案。30k 数据及隔离合同不变，训练目标、超参、LoRA、batch、checkpoint 和任务图以本文件为准。
 
@@ -128,7 +128,7 @@ lambda in {0.1, 0.3, 0.5, 1.0}
 
 ## 5. 优化与 batch
 
-所有正式训练使用单节点 2×A800、DDP LoRA、seed 42：
+所有正式训练使用单节点两张约80GB GPU、DDP LoRA、seed 42。旧集群实证卡为 A800；standalone 迁移保持两 rank 与显存下限，并单独记录实际 SKU：
 
 | 路径 | epoch | lr | global batch | 组成 |
 | --- | ---: | ---: | ---: | --- |
@@ -150,7 +150,7 @@ lambda in {0.1, 0.3, 0.5, 1.0}
 - headroom 使用共同的 margin-free mean-response-logp A/B score，要求 `DPO-10` 选中 checkpoint 的 validation accuracy 至少比同一路径训练前、显式禁用 adapter 的冻结 Qwen3 base 高 `0.05`；前后还必须核对同一 validation 样本数和 score type。不再用 SFT。DPO reference delta 在初始化时恒为零，不能用于这个 base-before/after 比较。
 - static lambda 只在四条 static arm 之间按 validation accuracy、Brier、较小 lambda 的确定性顺序选择；test 不参与选择。
 
-## 7. 强 smoke 与一次提交 DAG
+## 7. 强 smoke 与一次启动的任务图
 
 strong smoke 在账户获批的 `gpu` partition 请求 2×A800、90 分钟，并从各 split 选择字符长度最大的真实样本，以 bf16/2048 运行。它覆盖：
 
@@ -161,7 +161,7 @@ strong smoke 在账户获批的 `gpu` partition 请求 2×A800、90 分钟，并
 - KDE/EMA/threshold、exact-global PE、finite loss/gradient；
 - adapter 保存后重新加载并再训练一步。
 
-服务器执行时，`submit_all.sh` 在账户唯一获批的 `gpu` partition 直接提交完整 `afterok` DAG；集群不允许普通用户 `sbatch --hold`，因此任一中途提交失败都会触发已提交 job 的自动取消：
+共享集群保留 `submit_all.sh`/Slurm `afterok` DAG 作为旧执行适配。当前独占服务器不使用调度器，由 `standalone/start_pipeline.sh` 启动后台顺序控制器；同一逻辑任务图中每一步成功才运行下一步，任一失败都会立即停止：
 
 ```text
 CPU tests
@@ -177,7 +177,7 @@ CPU tests
   -> aggregate + whitelist export
 ```
 
-所有依赖为 `afterok`；排队和运行不依赖 SSH 会话。formal job 必须恰好识别请求数量的 A800。
+standalone 运行不依赖 SSH 会话，也不产生排队任务；默认固定两张GPU用于 DDP 训练、其中一张用于串行后处理，并要求每张卡至少79000 MiB。实际 GPU SKU、显存与 torch CUDA 版本必须写入 registry 邻接的 hardware CSV；如果新服务器并非原计划的 A800，结果交接必须把它列为执行环境差异。训练目标、global batch、两 rank DDP 和八条轨迹不因平台迁移而变化。
 
 ## 8. 评价与解释边界
 

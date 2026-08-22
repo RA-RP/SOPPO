@@ -8,6 +8,7 @@
 - 当前阶段：`SERVER_EXECUTION`
 - 代码交接：实现基线 `e047ce7` 与本地静态复核已完成；用户于 2026-08-21 明确确认
 - 服务器执行：`AUTHORIZED`（2026-08-21）
+- 当前平台适配：2026-08-22 新增 `scripts/standalone/` 无 Slurm 独占服务器入口；尚待该服务器验证
 - 正式代码说明：`../../code/CODE_OVERVIEW.md`
 
 实现和静态复核已经完成。用户于 2026-08-21 明确要求挂载任务，代码交接和服务器执行门禁已经通过；当前只允许按执行指南提交并保留完整失败/成功证据，不得在运行中静默改变实验语义。
@@ -27,10 +28,11 @@
 - checkpoint：全部保留 LoRA adapter；DPO 20 step、SSPO/PE 40 step加 final；无 optimizer state。
 - 八条最终轨迹不得重复训练：两 DPO、hard-exp、PE-exp、四 static PE。
 - headroom：使用共同的 margin-free mean-logp score，DPO-10 validation accuracy 至少比训练前显式禁用 adapter 的冻结 base 高 .05，并核对前后 score type/样本数；DPO-100 仅是 oracle。static lambda 只用 validation 选择。
-- strong smoke：2×A800、bf16/2048、各 split 最长真实样本；覆盖五种配置、backward subbatch、KDE/PE、finite checks、adapter round-trip。
+- strong smoke：两张至少79000 MiB GPU、bf16/2048、各 split 最长真实样本；旧集群实证为 A800，standalone 必须记录实际 SKU；覆盖五种配置、backward subbatch、KDE/PE、finite checks、adapter round-trip。
 - Slurm 路由：账户只获批 `gpu` partition且拒绝 `sbatch --hold`/typed `--gres`；统一使用已验证的 `-G N`，辅助阶段申请1卡，smoke/正式训练申请2卡，直接提交 `afterok` DAG并在中途提交失败时回滚。
 - Slurm worker 路径：由提交器显式 export `SOPPO_CLUSTER_SCRIPT_DIR`，避免 batch 副本从 `/var/spool/slurmd` 错误解析 `job_env.sh`；状态工具使用真正的 array task ID 字段。
 - 版本/节点保护：每个 worker 启动时核对提交时的完整 Git commit 和 clean checkout；默认排除已发生 NCCL 卡死的 `gn005` 与既有排除节点 `gn021`，可由 `SOPPO_EXCLUDE_NODES` 显式覆盖。
+- standalone 平台：不改变上述训练合同；后台 controller 串行复用相同 stage worker，固定两卡训练/单卡后处理，以原子 registry 记录状态并在任一失败时阻断下游。实际 GPU 不静默假定为 A800，但每卡默认至少79000 MiB，卡名与 torch CUDA 写入硬件证据。
 - 数据入口：提交前重验30k行数/SHA、跨 split ID、公开隐藏标签和私有标签精确连接，摘要进入白名单。
 - 下游：adapter-aware independent evaluator、GetSlice 内存合并、八轨迹聚合、无样本级白名单。
 
@@ -50,6 +52,8 @@
 | 八条不重复 final runs | `03_preexperiment.sh`, `04_lambda_search.sh`, `05_run_main.sh` |
 | adapter evaluator/GetSlice | `src/evaluation/evaluator.py`, `observe/.../model_utils.py` |
 | 一次提交 DAG | `scripts/cluster/submit_all.sh` |
+| 独占服务器顺序长链 | `scripts/standalone/start_pipeline.sh`, `run_pipeline.sh` |
+| 独占服务器状态/精确停止 | `scripts/standalone/status_pipeline.sh`, `stop_pipeline.sh` |
 
 ## 本地复核边界与交接条件
 

@@ -7,7 +7,7 @@
 - 设计依据：`../human_read/exp/current_experiment.md` v0.6，用户已于 2026-08-21 明确要求开始编码
 - 当前阶段：`SERVER_EXECUTION`
 - 代码交接：实现基线 `e047ce7` 与本地静态复核已完成；用户于 2026-08-21 明确确认挂载任务
-- 服务器执行：`AUTHORIZED`（2026-08-21）；只允许从 clean、commit-locked checkout 运行执行指南中的 fail-closed DAG
+- 服务器执行：`AUTHORIZED`（2026-08-21）；只允许从 clean、commit-locked checkout 运行执行指南中的 fail-closed pipeline。2026-08-22 新增无 Slurm 独占服务器适配，服务器待验证
 
 本轮本地只编辑纯文本源码、配置和说明。没有在本地安装/import 项目依赖，没有运行 pytest、数据、模型、训练、评价或 GPU 任务。运行正确性必须由获批后的服务器 tests/strong smoke 证明。
 
@@ -23,7 +23,7 @@ SOPPO-PE-exp
 SOPPO-PE-static lambda = 0.1 / 0.3 / 0.5 / 1.0
 ```
 
-旧 SFT、hard-static、Pseudo-target、DPO-style PE、linear/exp-warmup lambda 和全参 FSDP 路径已删除。保留数据隔离、Qwen manifest、DPO reference cache、独立 test、L18 `C_epsilon` 和 held-first Slurm DAG。
+旧 SFT、hard-static、Pseudo-target、DPO-style PE、linear/exp-warmup lambda 和全参 FSDP 路径已删除。保留数据隔离、Qwen manifest、DPO reference cache、独立 test、L18 `C_epsilon` 和 fail-closed 顺序任务图。`scripts/cluster/` 保留旧 Slurm 适配；`scripts/standalone/` 只替换平台层并复用同一批 stage worker、Python 入口和冻结配置。
 
 ## 2. 关键实现
 
@@ -106,18 +106,21 @@ validation：DPO 用 reference delta；SSPO/PE 用 margin-free SimPO mean-logp d
 
 SSPO/PE exp：`gamma0=1`、`gamma_min=2700/26700`、`decay=.01`。PE static使用 normalized lambda `{.1,.3,.5,1.0}`。hard：prior.5、EMA.95、KDE grid200、Scott bandwidth。PE：epsilon1e-8、L1、denominator不detach。
 
-## 4. 服务器入口与不重复的八条训练
+## 4. 两类服务器入口与不重复的八条训练
 
-在 `gn001` 单独完成环境、模型和数据：
+旧共享集群入口保留在 `scripts/cluster/EXECUTION_GUIDE.md`：环境、模型、数据准备后由 `submit_all.sh` 提交 Slurm `afterok` DAG；节点级故障恢复继续使用 registry-scoped `cancel_pipeline.sh` 与 `submit_from_dpo.sh`，不得按共享账户整批取消任务。
 
-1. `00_server_setup.sh`：补装锁定的 `peft==0.15.2` 并验证 Qwen3/PEFT；
-2. `02_download_model.sh`：若冻结 Qwen3 已存在则只校验；
-3. `02_prepare_data.sh`：若 30k 数据已完成则复用；
-4. 按 2026-08-21 已获得的服务器执行授权运行 `submit_all.sh`；提交器自行激活环境，并在任何 `sbatch` 前重验模型 manifest、30k 数据和 clean Git checkout。
+当前独占服务器入口为 `scripts/standalone/EXECUTION_GUIDE.md`，基目录由 repo 位置反推并要求 `SOPPO/` 与静态 `ICLR/` 平级：
 
-节点级故障后的恢复不重复已通过门禁：`cancel_pipeline.sh` 只预览/取消指定 task registry 中仍存活的 job，禁止按共享账户整批取消；`submit_from_dpo.sh --reuse-registry <旧成功门禁registry>` 仅在旧 tests、strong smoke、reference-cache 均由 Slurm 记为 `COMPLETED`，reference cache 仍完整，且旧门禁之后除 Markdown/恢复提交器外没有 runtime 文件变化时，才从 DPO 重新提交下游 DAG。恢复 registry 同时记录旧 gate job、旧 commit、恢复原因与新增 job，默认排除本轮发生驱动丢失的 `gn014`。
+1. `standalone/00_server_setup.sh`：使用可配置 conda 或 Python 3.10 venv 建立路径环境，不读取旧集群 module；
+2. `standalone/02_download_model.sh` 与 `02_prepare_data.sh`：完整产物存在时只按 manifest/audit 复核，否则下载并生成；
+3. `standalone/start_pipeline.sh`：用 `nohup + setsid` 启动后台顺序控制器；`status_pipeline.sh` 读取原子 registry 与日志，`stop_pipeline.sh` 只操作 registry 核验过的进程组；
+4. `standalone/run_pipeline.sh`：固定两卡训练、单卡后处理，一次只运行一个 arm；每一步成功才进入下一步，任一步失败立即停止；
+5. standalone controller 仍通过 legacy `SOPPO_CLUSTER_SCRIPT_DIR` 注入新的 runtime helper，从而直接复用 `cluster/01_server_tests.sh`、`03_smoke.sh` 以及 `02_finalize_inputs.sh` 到 `08_aggregate.sh` 的 stage body；它不调用 `sbatch/squeue/scancel`。
 
-完整 DAG：
+两种平台都会在开始前重验模型 manifest、30k 数据、clean Git checkout，并锁定完整 commit。旧服务器仍在排队的同一实验必须先按旧 registry 精确取消，避免新旧服务器产生两个同名运行。
+
+共同逻辑任务图：
 
 ```text
 tests -> strong smoke -> oracle/reference
@@ -140,7 +143,7 @@ stage03/04/05 合计正好八条 final trajectories，都写在 `runs/<experimen
 
 ## 6. strong smoke
 
-`03_smoke.sh` 在账户唯一获批的 `gpu` partition 请求2×A800、90分钟，并从正式 split 中选取字符长度最大的真实样本，以正式 bf16/2048 压测；tokenization gate 要求 labeled-train 与 unlabeled-train 都至少有一个序列实际达到2048截断上限，validation只记录长度而不强制截断：
+`03_smoke.sh` 从正式 split 中选取字符长度最大的真实样本，以正式 bf16/2048 压测；旧集群由 Slurm 请求2×A800，standalone 入口固定映射两张卡并默认要求每卡至少79000 MiB。tokenization gate 要求 labeled-train 与 unlabeled-train 都至少有一个序列实际达到2048截断上限，validation只记录长度而不强制截断：
 
 - 真实 Qwen3 offline/manifest 与 response mask；
 - reference cache；
@@ -149,11 +152,11 @@ stage03/04/05 合计正好八条 final trajectories，都写在 `runs/<experimen
 - hard KDE/EMA、exact-global PE、finite gradient；
 - PE adapter保存后重载再训练一步。
 
-正式任务另有2×A800 runtime gate。smoke通过只表示工程接口闭环，不代表30k训练一定不会出现后期数值或wall-time问题。
+正式任务另有运行时 GPU gate。standalone 不把 SKU 名称静默写死为 A800，会把实际卡名、显存和 torch CUDA 版本写入 hardware CSV；若实际 SKU 不同，结果交接必须披露。smoke通过只表示工程接口闭环，不代表30k训练一定不会出现后期数值或wall-time问题。
 
 ## 7. 静态复核与服务器待验证
 
-本地复核范围：所有 cluster shell `bash -n`、`git diff --check`、旧接口/方法/路径静态搜索、八方法名称和配置入口交叉核对。依赖 import、pytest、Qwen3/PEFT兼容、DDP、显存、数值、adapter round-trip、GetSlice与DAG均必须在服务器验证。
+本地复核范围：cluster/standalone shell `bash -n`、`git diff --check`、旧接口/方法/路径静态搜索、八方法名称和配置入口交叉核对。依赖 import、pytest、Qwen3/PEFT兼容、DDP、显存、数值、adapter round-trip、GetSlice与两类 pipeline 均必须在服务器验证。
 
 已知风险：
 
@@ -161,9 +164,11 @@ stage03/04/05 合计正好八条 final trajectories，都写在 `runs/<experimen
 - 当前账户没有 `cpu`/`gpu_test` 关联，且集群只接受 `-G N` 而拒绝 typed `--gres`；辅助阶段在 `gpu` partition 申请1卡，smoke/正式训练申请2卡，卡不足时由 Slurm 排队。
 - Slurm 会把 batch script 复制到 `/var/spool/slurmd`；提交器通过 `SOPPO_CLUSTER_SCRIPT_DIR` 显式传递仓库中的真实脚本目录，worker 不再从 spool 路径寻找 `job_env.sh`。
 - Slurm worker 还会核对提交时冻结的完整 Git commit 和 clean worktree；排队期间若服务器 checkout 被更新，旧 DAG 会 fail-closed，而不会混用代码版本。
+- standalone 由普通后台进程而非调度器托管；`nohup + setsid` 可跨 SSH 断开，但服务器重启不会自动恢复。registry 记录 PID/PGID与逐阶段状态，当前 checkpoint 仍不支持 exact resume。
+- standalone 默认只使用两张约80GB卡并串行运行所有 arm；GPU编号可配置，global batch/DDP world size不可改。实际新服务器环境、driver、两卡互联和完整 strong smoke 尚待服务器验证。
 - 2026-08-21 两条 DPO array arm 分别在 `gn014` 发生 backward OOM、在 draining 的 `gn005` 发生 DDP/NCCL timeout。修复后默认排除 `gn005,gn021`，启用 expandable-segments allocator，并由 full-length smoke 验证 backward subbatch。
 - SSPO论文未给KDE bandwidth，Scott rule是明确记录的复现决定。
 - v0.6将已有pair拆成两个SSPO unpaired response，是数据形态适配，不等同于论文使用UltraChat single-response corpus。
 - 单种子不能支持显著性结论；`C_epsilon`不是因果证据。
 
-上述静态复核已完成且无报错；这只表示代码已具备请求执行授权的条件。只有用户新的明确确认才能进入 `SERVER_EXECUTION`。
+旧 Slurm 路径的静态复核与部分服务器门禁已有证据；新增 standalone 平台适配仅完成本地静态复核，仍须在新服务器依次通过环境、GPU preflight、tests 与 strong smoke，不能把脚本存在写成已验证成功。
