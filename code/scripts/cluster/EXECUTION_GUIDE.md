@@ -204,6 +204,17 @@ stage03/04/05 合计正好八条 final trajectories，不会把预实验重新�
 
 至少保留旧 `pipeline/`（registry、hardware、logs）以及已创建的 `main/<arm>/`。完整 reference cache 位于 `<SERVER_BASE>/cache/`，与某次 pipeline 分离，校验通过后可直接复用。归档完成、服务器 checkout 更新到新 clean commit 后，重新运行 `submit_all.sh`；新的 full-length strong smoke 必须先通过，才会解锁 formal DPO。
 
+共享账户上不得执行 `scancel -u "$USER"`。`cancel_pipeline.sh` 默认只读预览指定 registry 中仍存活的 job，只有加入 `--execute` 并输入精确 experiment 确认词后才逐个取消这些父 job；不会选择同账户的其他 job。
+
+若 tests、strong smoke 与 reference-cache 已在同一实现基线明确成功，而后续失败被定位为训练开始前的节点级故障，则无需重复三项门禁。先保留成功 gate 所在的旧 registry，取消并归档新误提的完整 DAG 及无效 DPO partial，然后执行：
+
+```bash
+bash submit_from_dpo.sh \
+  --reuse-registry <FAILED_ATTEMPT>/pipeline/task_registry.json
+```
+
+恢复提交器会向 Slurm 复核三个旧 job 均为 `COMPLETED`，核对旧门禁之后只发生 Markdown/恢复提交器变更，重验模型、数据与 reference cache，并从 DPO 开始重建 `afterok` DAG。任一复核失败都会拒绝复用；恢复 registry 会显式记录复用来源，不把旧证据冒充新运行。
+
 ## 9. checkpoint 与重启策略
 
 - DPO-10/DPO-100：每 20 step 加最终点；DPO-10 预计保留 step20、step40 和 final。

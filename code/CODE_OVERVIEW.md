@@ -115,6 +115,8 @@ SSPO/PE exp：`gamma0=1`、`gamma_min=2700/26700`、`decay=.01`。PE static使�
 3. `02_prepare_data.sh`：若 30k 数据已完成则复用；
 4. 按 2026-08-21 已获得的服务器执行授权运行 `submit_all.sh`；提交器自行激活环境，并在任何 `sbatch` 前重验模型 manifest、30k 数据和 clean Git checkout。
 
+节点级故障后的恢复不重复已通过门禁：`cancel_pipeline.sh` 只预览/取消指定 task registry 中仍存活的 job，禁止按共享账户整批取消；`submit_from_dpo.sh --reuse-registry <旧成功门禁registry>` 仅在旧 tests、strong smoke、reference-cache 均由 Slurm 记为 `COMPLETED`，reference cache 仍完整，且旧门禁之后除 Markdown/恢复提交器外没有 runtime 文件变化时，才从 DPO 重新提交下游 DAG。恢复 registry 同时记录旧 gate job、旧 commit、恢复原因与新增 job，默认排除本轮发生驱动丢失的 `gn014`。
+
 完整 DAG：
 
 ```text
