@@ -23,7 +23,7 @@ def checkpoint_method(checkpoint: Path) -> tuple[str, dict]:
     if not config_path.is_file():
         raise FileNotFoundError(f"Checkpoint run config is missing: {config_path}")
     config = yaml.safe_load(config_path.read_text(encoding="utf-8"))
-    validate_config(config, world_size=2)
+    validate_config(config)
     return config["method"]["name"], config
 
 

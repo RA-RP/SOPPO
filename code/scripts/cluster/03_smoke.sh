@@ -1,5 +1,5 @@
 #!/bin/bash
-# Strong two-rank GPU smoke; routing is selected by submit_all.sh.
+# Strong 1/2/4-rank GPU smoke; routing is selected by the pipeline launcher.
 set -euo pipefail
 
 SCRIPT_DIR="${SOPPO_CLUSTER_SCRIPT_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)}"
@@ -10,11 +10,23 @@ DATA_DIR="${SOPPO_DATA_DIR:-$DATA_ROOT/ultrafeedback/mvp-v0.5-30k}"
 MODEL_DIR="${SOPPO_MODEL_DIR:-$MODEL_ROOT/Qwen3-4B}"
 MODEL_MANIFEST="$MODEL_DIR/model_manifest.json"
 SMOKE_ROOT="$RUN_ROOT/$EXPERIMENT_ID/pipeline/smoke"
+WORLD_SIZE="${SOPPO_NPROC_PER_NODE:-2}"
+case "$WORLD_SIZE" in
+    1|2|4) ;;
+    *)
+        echo "ERROR: smoke supports exactly 1, 2, or 4 ranks; got $WORLD_SIZE" >&2
+        exit 1
+        ;;
+esac
+DPO_SMOKE_GLOBAL_BATCH=$((4 * WORLD_SIZE))
+JOINT_SMOKE_GLOBAL_BATCH=$((8 * WORLD_SIZE))
+JOINT_SMOKE_LABELED_GLOBAL_BATCH=$WORLD_SIZE
+JOINT_SMOKE_UNLABELED_GLOBAL_BATCH=$((7 * WORLD_SIZE))
 soppo_hardware_gate "$RUN_ROOT/$EXPERIMENT_ID/pipeline/hardware/smoke.csv"
 python -m src.model.model_manifest --model-dir "$MODEL_DIR" --verify
 python -m src.training.smoke_fixture \
     --data-dir "$DATA_DIR" --output "$SMOKE_ROOT/data" \
-    --model "$MODEL_DIR" --max-length 2048
+    --model "$MODEL_DIR" --max-length 2048 --world-size "$WORLD_SIZE"
 
 mkdir -p "$SMOKE_ROOT/reference/targets"
 python -m src.training.cache_tools combine \
@@ -44,9 +56,11 @@ run_dpo_smoke() {
         --set "model.name_or_path=$MODEL_DIR" --set "model.manifest_path=$MODEL_MANIFEST" \
         --set "data.data_dir=$SMOKE_ROOT/data" \
         --set "data.reference_cache=$SMOKE_ROOT/reference/targets" --set data.num_workers=0 \
+        --set "training.num_devices=$WORLD_SIZE" \
         --set training.epochs=1 --set training.max_steps=2 \
         --set training.dpo_batch_size_per_device=4 \
-        --set training.gradient_accumulation_steps=1 --set training.global_batch_size=8 \
+        --set training.gradient_accumulation_steps=1 \
+        --set "training.global_batch_size=$DPO_SMOKE_GLOBAL_BATCH" \
         --set training.backward_subbatch_size_per_device=2 \
         --set training.smoke_mode=true --set training.eval_steps=1 --set training.save_steps=1 \
         --set "output.run_dir=$SMOKE_ROOT/runs/$run_name" "$@"
@@ -60,15 +74,17 @@ run_joint_smoke() {
         --config "$CODE_ROOT/configs/mvp/$config_name.yaml" \
         --set "model.name_or_path=$MODEL_DIR" --set "model.manifest_path=$MODEL_MANIFEST" \
         --set "data.data_dir=$SMOKE_ROOT/data" --set data.num_workers=0 \
+        --set "training.num_devices=$WORLD_SIZE" \
         --set training.epochs=1 --set training.max_steps=1 \
         --set training.dpo_batch_size_per_device=4 \
-        --set training.gradient_accumulation_steps=2 --set training.global_batch_size=16 \
+        --set training.gradient_accumulation_steps=2 \
+        --set "training.global_batch_size=$JOINT_SMOKE_GLOBAL_BATCH" \
         --set training.backward_subbatch_size_per_device=2 \
         --set training.joint_labeled_batch_size_per_device=1 \
         --set 'training.joint_labeled_microsteps=[0]' \
         --set 'training.joint_unlabeled_microbatch_pattern=[3,4]' \
-        --set training.joint_labeled_global_batch_size=2 \
-        --set training.joint_unlabeled_global_batch_size=14 \
+        --set "training.joint_labeled_global_batch_size=$JOINT_SMOKE_LABELED_GLOBAL_BATCH" \
+        --set "training.joint_unlabeled_global_batch_size=$JOINT_SMOKE_UNLABELED_GLOBAL_BATCH" \
         --set training.smoke_mode=true --set training.eval_steps=1 --set training.save_steps=1 \
         --set "output.run_dir=$SMOKE_ROOT/runs/$run_name" "$@"
 }
@@ -86,15 +102,17 @@ soppo_torchrun -m src.training.trainer \
     --config "$CODE_ROOT/configs/mvp/soppo_pe_exp.yaml" --init-checkpoint "$PE_CHECKPOINT" \
     --set "model.name_or_path=$MODEL_DIR" --set "model.manifest_path=$MODEL_MANIFEST" \
     --set "data.data_dir=$SMOKE_ROOT/data" --set data.num_workers=0 \
+    --set "training.num_devices=$WORLD_SIZE" \
     --set training.epochs=1 --set training.max_steps=1 \
     --set training.dpo_batch_size_per_device=4 \
-    --set training.gradient_accumulation_steps=2 --set training.global_batch_size=16 \
+    --set training.gradient_accumulation_steps=2 \
+    --set "training.global_batch_size=$JOINT_SMOKE_GLOBAL_BATCH" \
     --set training.backward_subbatch_size_per_device=2 \
     --set training.joint_labeled_batch_size_per_device=1 \
     --set 'training.joint_labeled_microsteps=[0]' \
     --set 'training.joint_unlabeled_microbatch_pattern=[3,4]' \
-    --set training.joint_labeled_global_batch_size=2 \
-    --set training.joint_unlabeled_global_batch_size=14 \
+    --set "training.joint_labeled_global_batch_size=$JOINT_SMOKE_LABELED_GLOBAL_BATCH" \
+    --set "training.joint_unlabeled_global_batch_size=$JOINT_SMOKE_UNLABELED_GLOBAL_BATCH" \
     --set training.smoke_mode=true --set training.eval_steps=1 --set training.save_steps=1 \
     --set output.save_checkpoints=false \
     --set "output.run_dir=$SMOKE_ROOT/runs/checkpoint_roundtrip"

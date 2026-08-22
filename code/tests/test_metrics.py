@@ -1,7 +1,9 @@
 import math
 
 import torch
+import pytest
 
+from src.config import distributed_training_profile
 from src.evaluation.metrics import compute_calibration, compute_confidence_distribution
 from src.training.trainer import PatternBatchSampler, split_cpu_batch
 
@@ -16,9 +18,12 @@ def test_calibration_includes_probability_one_and_stays_finite():
     assert math.isfinite(confidence["mean_entropy"])
 
 
-def test_pattern_sampler_preserves_exact_joint_microbatch_shape():
-    sampler = list(range(56))
-    pattern = [3, 4, 3, 4, 3, 4, 3, 4]
+@pytest.mark.parametrize("devices", [1, 2, 4])
+def test_pattern_sampler_preserves_exact_joint_microbatch_shape(devices):
+    pattern = distributed_training_profile(devices)[
+        "joint_unlabeled_microbatch_pattern"
+    ]
+    sampler = list(range(sum(pattern) * 2))
     batches = list(PatternBatchSampler(sampler, pattern))
     assert [len(batch) for batch in batches] == pattern * 2
     assert sorted(index for batch in batches for index in batch) == sampler

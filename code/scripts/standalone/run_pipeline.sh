@@ -1,5 +1,5 @@
 #!/bin/bash
-# Run the complete authorized experiment sequentially on one dedicated 2-GPU server.
+# Run the complete authorized experiment sequentially on 1, 2, or 4 dedicated GPUs.
 set -Eeuo pipefail
 
 if [[ "${RUN_CONTEXT:-}" != "standalone" ]]; then
@@ -21,20 +21,25 @@ POST_GPU_ID="${SOPPO_POST_GPU_ID:-${TRAIN_GPU_IDS%%,*}}"
 MINIMUM_MEMORY_MIB="${SOPPO_MIN_GPU_MEMORY_MIB:-79000}"
 
 IFS=',' read -r -a TRAIN_GPU_ARRAY <<< "$TRAIN_GPU_IDS"
-if (( ${#TRAIN_GPU_ARRAY[@]} != 2 )); then
-    echo "ERROR: v0.6 training contract requires exactly two GPU IDs" >&2
-    exit 1
-fi
+TRAIN_GPU_COUNT="${#TRAIN_GPU_ARRAY[@]}"
+case "$TRAIN_GPU_COUNT" in
+    1|2|4) ;;
+    *) echo "ERROR: SOPPO_TRAIN_GPU_IDS must contain exactly 1, 2, or 4 GPU IDs" >&2; exit 1 ;;
+esac
 for gpu_id in "${TRAIN_GPU_ARRAY[@]}" "$POST_GPU_ID"; do
     [[ "$gpu_id" =~ ^[0-9]+$ ]] || {
         echo "ERROR: GPU IDs must be non-negative integers: $gpu_id" >&2
         exit 1
     }
 done
-if [[ "${TRAIN_GPU_ARRAY[0]}" == "${TRAIN_GPU_ARRAY[1]}" ]]; then
-    echo "ERROR: SOPPO_TRAIN_GPU_IDS contains a duplicate GPU ID" >&2
-    exit 1
-fi
+for (( left = 0; left < TRAIN_GPU_COUNT; left++ )); do
+    for (( right = left + 1; right < TRAIN_GPU_COUNT; right++ )); do
+        if [[ "${TRAIN_GPU_ARRAY[$left]}" == "${TRAIN_GPU_ARRAY[$right]}" ]]; then
+            echo "ERROR: SOPPO_TRAIN_GPU_IDS contains a duplicate GPU ID" >&2
+            exit 1
+        fi
+    done
+done
 [[ "$MINIMUM_MEMORY_MIB" =~ ^[1-9][0-9]*$ ]] || {
     echo "ERROR: SOPPO_MIN_GPU_MEMORY_MIB must be a positive integer" >&2
     exit 1
@@ -150,13 +155,13 @@ run_stage() {
     CURRENT_STAGE=""
 }
 
-echo "Standalone GPU routing: training=$TRAIN_GPU_IDS, postprocess=$POST_GPU_ID"
+echo "Standalone GPU routing: training=$TRAIN_GPU_IDS (${TRAIN_GPU_COUNT} GPUs), postprocess=$POST_GPU_ID"
 python "$SCRIPT_DIR/pipeline_state.py" set-stage \
     --path "$REGISTRY" --stage preflight --state running
 set +e
 (
     export CUDA_VISIBLE_DEVICES="$TRAIN_GPU_IDS"
-    export SOPPO_NPROC_PER_NODE=2
+    export SOPPO_NPROC_PER_NODE="$TRAIN_GPU_COUNT"
     export SOPPO_MIN_GPU_MEMORY_MIB="$MINIMUM_MEMORY_MIB"
     soppo_hardware_gate "$PIPELINE_DIR/hardware/preflight_training.csv"
     export CUDA_VISIBLE_DEVICES="$POST_GPU_ID"
@@ -175,18 +180,18 @@ python "$SCRIPT_DIR/pipeline_state.py" set-stage \
 CURRENT_STAGE=""
 
 run_stage tests "" 1 01_server_tests.sh
-run_stage smoke "$TRAIN_GPU_IDS" 2 03_smoke.sh
-run_stage reference_cache "$TRAIN_GPU_IDS" 2 02_finalize_inputs.sh
+run_stage smoke "$TRAIN_GPU_IDS" "$TRAIN_GPU_COUNT" 03_smoke.sh
+run_stage reference_cache "$TRAIN_GPU_IDS" "$TRAIN_GPU_COUNT" 02_finalize_inputs.sh
 for index in 0 1; do
-    run_stage "dpo_$index" "$TRAIN_GPU_IDS" 2 03_preexperiment.sh "$index"
+    run_stage "dpo_$index" "$TRAIN_GPU_IDS" "$TRAIN_GPU_COUNT" 03_preexperiment.sh "$index"
 done
 run_stage headroom_gate "" 1 03_select_preexperiment.sh
 for index in 0 1 2 3; do
-    run_stage "static_$index" "$TRAIN_GPU_IDS" 2 04_lambda_search.sh "$index"
+    run_stage "static_$index" "$TRAIN_GPU_IDS" "$TRAIN_GPU_COUNT" 04_lambda_search.sh "$index"
 done
 run_stage static_select "" 1 04_select_lambda.sh
 for index in 0 1; do
-    run_stage "dynamic_$index" "$TRAIN_GPU_IDS" 2 05_run_main.sh "$index"
+    run_stage "dynamic_$index" "$TRAIN_GPU_IDS" "$TRAIN_GPU_COUNT" 05_run_main.sh "$index"
 done
 run_stage c_epsilon_prepare "" 1 06_prepare_c_epsilon.sh
 for index in 0 1 2 3 4 5 6 7 8; do

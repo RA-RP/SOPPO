@@ -10,6 +10,20 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/job_env.sh"
 soppo_job_init
 
+FORMAL_GPU_COUNT="${SOPPO_FORMAL_GPU_COUNT:-${SOPPO_GPU2_COUNT:-2}}"
+while (( $# > 0 )); do
+    case "$1" in
+        --formal-gpus)
+            FORMAL_GPU_COUNT="${2:?--formal-gpus requires 1, 2, or 4}"
+            shift 2
+            ;;
+        *)
+            echo "ERROR: unknown argument: $1" >&2
+            exit 2
+            ;;
+    esac
+done
+
 DATA_DIR="${SOPPO_DATA_DIR:-$DATA_ROOT/ultrafeedback/mvp-v0.5-30k}"
 MODEL_DIR="${SOPPO_MODEL_DIR:-$MODEL_ROOT/Qwen3-4B}"
 PIPELINE_DIR="$RUN_ROOT/$EXPERIMENT_ID/pipeline"
@@ -17,13 +31,15 @@ REGISTRY="$PIPELINE_DIR/task_registry.json"
 GPU_PARTITION="${SOPPO_GPU_PARTITION:-gpu}"
 SMOKE_PARTITION="${SOPPO_SMOKE_PARTITION:-$GPU_PARTITION}"
 CPU_PARTITION="${SOPPO_CPU_PARTITION:-$GPU_PARTITION}"
-GPU2_COUNT="${SOPPO_GPU2_COUNT:-2}"
 GPU1_COUNT="${SOPPO_GPU1_COUNT:-1}"
 AUX_GPU_COUNT="${SOPPO_AUX_GPU_COUNT:-$GPU1_COUNT}"
 ARRAY_LIMIT="${SOPPO_ARRAY_PARALLELISM:-4}"
 EXCLUDE_NODES="${SOPPO_EXCLUDE_NODES-gn005,gn021}"
 
-[[ "$GPU2_COUNT" =~ ^[1-9][0-9]*$ ]] || { echo "ERROR: invalid SOPPO_GPU2_COUNT" >&2; exit 1; }
+case "$FORMAL_GPU_COUNT" in
+    1|2|4) ;;
+    *) echo "ERROR: --formal-gpus/SOPPO_FORMAL_GPU_COUNT must be 1, 2, or 4" >&2; exit 1 ;;
+esac
 [[ "$GPU1_COUNT" =~ ^[1-9][0-9]*$ ]] || { echo "ERROR: invalid SOPPO_GPU1_COUNT" >&2; exit 1; }
 [[ "$AUX_GPU_COUNT" =~ ^[1-9][0-9]*$ ]] || { echo "ERROR: invalid SOPPO_AUX_GPU_COUNT" >&2; exit 1; }
 
@@ -44,7 +60,7 @@ fi
 GIT_COMMIT="$(git -C "$SOPPO_ROOT" rev-parse HEAD)"
 mkdir -p "$PIPELINE_DIR/logs" "$PIPELINE_DIR/hardware"
 
-echo "Slurm routing: auxiliary=$CPU_PARTITION/${AUX_GPU_COUNT}GPU, smoke=$SMOKE_PARTITION/${GPU2_COUNT}GPU, formal=$GPU_PARTITION/${GPU2_COUNT}GPU"
+echo "Slurm routing: auxiliary=$CPU_PARTITION/${AUX_GPU_COUNT}GPU, smoke=$SMOKE_PARTITION/${FORMAL_GPU_COUNT}GPU, formal=$GPU_PARTITION/${FORMAL_GPU_COUNT}GPU"
 echo "Slurm node exclusions: ${EXCLUDE_NODES:-none}"
 
 declare -a NODE_ARGS=()
@@ -87,33 +103,33 @@ COMMON_EXPORT="ALL,RUN_CONTEXT=cluster,EXPERIMENT_ID=$EXPERIMENT_ID,SOPPO_CLUSTE
 submit tests -J soppo-tests -p "$CPU_PARTITION" -N 1 -c 8 -G "$AUX_GPU_COUNT" -t 01:00:00 \
     -o "$PIPELINE_DIR/logs/tests-%j.out" --export="$COMMON_EXPORT" "$SCRIPT_DIR/01_server_tests.sh"
 TESTS="$LAST_JOB_ID"
-submit smoke -J soppo-smoke -p "$SMOKE_PARTITION" -N 1 -c 32 -G "$GPU2_COUNT" -t 01:30:00 \
+submit smoke -J soppo-smoke -p "$SMOKE_PARTITION" -N 1 -c 32 -G "$FORMAL_GPU_COUNT" -t 01:30:00 \
     -d "afterok:$TESTS" -o "$PIPELINE_DIR/logs/smoke-%j.out" \
-    --export="$COMMON_EXPORT,SOPPO_NPROC_PER_NODE=2,SOPPO_REQUIRE_A800=1" "$SCRIPT_DIR/03_smoke.sh"
+    --export="$COMMON_EXPORT,SOPPO_NPROC_PER_NODE=$FORMAL_GPU_COUNT,SOPPO_REQUIRE_A800=1" "$SCRIPT_DIR/03_smoke.sh"
 SMOKE="$LAST_JOB_ID"
-submit reference_cache -J soppo-ref -p "$GPU_PARTITION" -N 1 -c 32 -G "$GPU2_COUNT" -t 24:00:00 \
+submit reference_cache -J soppo-ref -p "$GPU_PARTITION" -N 1 -c 32 -G "$FORMAL_GPU_COUNT" -t 24:00:00 \
     -d "afterok:$SMOKE" -o "$PIPELINE_DIR/logs/reference-%j.out" \
-    --export="$COMMON_EXPORT,SOPPO_NPROC_PER_NODE=2,SOPPO_REQUIRE_A800=1" "$SCRIPT_DIR/02_finalize_inputs.sh"
+    --export="$COMMON_EXPORT,SOPPO_NPROC_PER_NODE=$FORMAL_GPU_COUNT,SOPPO_REQUIRE_A800=1" "$SCRIPT_DIR/02_finalize_inputs.sh"
 REFERENCE="$LAST_JOB_ID"
-submit dpo_headroom_runs -J soppo-dpo -p "$GPU_PARTITION" -N 1 -c 32 -G "$GPU2_COUNT" -t 2-00:00:00 \
+submit dpo_headroom_runs -J soppo-dpo -p "$GPU_PARTITION" -N 1 -c 32 -G "$FORMAL_GPU_COUNT" -t 2-00:00:00 \
     --array="0-1%$ARRAY_LIMIT" -d "afterok:$REFERENCE" -o "$PIPELINE_DIR/logs/dpo-%A_%a.out" \
-    --export="$COMMON_EXPORT,SOPPO_NPROC_PER_NODE=2,SOPPO_REQUIRE_A800=1" "$SCRIPT_DIR/03_preexperiment.sh"
+    --export="$COMMON_EXPORT,SOPPO_NPROC_PER_NODE=$FORMAL_GPU_COUNT,SOPPO_REQUIRE_A800=1" "$SCRIPT_DIR/03_preexperiment.sh"
 PRE="$LAST_JOB_ID"
 submit headroom_gate -J soppo-headroom -p "$CPU_PARTITION" -N 1 -c 4 -G "$AUX_GPU_COUNT" -t 01:00:00 \
     -d "afterok:$PRE" -o "$PIPELINE_DIR/logs/headroom-%j.out" \
     --export="$COMMON_EXPORT" "$SCRIPT_DIR/03_select_preexperiment.sh"
 PRESELECT="$LAST_JOB_ID"
-submit pe_static_runs -J soppo-static -p "$GPU_PARTITION" -N 1 -c 32 -G "$GPU2_COUNT" -t 3-00:00:00 \
+submit pe_static_runs -J soppo-static -p "$GPU_PARTITION" -N 1 -c 32 -G "$FORMAL_GPU_COUNT" -t 3-00:00:00 \
     --array="0-3%$ARRAY_LIMIT" -d "afterok:$PRESELECT" -o "$PIPELINE_DIR/logs/static-%A_%a.out" \
-    --export="$COMMON_EXPORT,SOPPO_NPROC_PER_NODE=2,SOPPO_REQUIRE_A800=1" "$SCRIPT_DIR/04_lambda_search.sh"
+    --export="$COMMON_EXPORT,SOPPO_NPROC_PER_NODE=$FORMAL_GPU_COUNT,SOPPO_REQUIRE_A800=1" "$SCRIPT_DIR/04_lambda_search.sh"
 LAMBDA="$LAST_JOB_ID"
 submit static_select -J soppo-static-select -p "$CPU_PARTITION" -N 1 -c 4 -G "$AUX_GPU_COUNT" -t 01:00:00 \
     -d "afterok:$LAMBDA" -o "$PIPELINE_DIR/logs/static-select-%j.out" \
     --export="$COMMON_EXPORT" "$SCRIPT_DIR/04_select_lambda.sh"
 LAMBDA_SELECT="$LAST_JOB_ID"
-submit dynamic_runs -J soppo-dynamic -p "$GPU_PARTITION" -N 1 -c 32 -G "$GPU2_COUNT" -t 3-00:00:00 \
+submit dynamic_runs -J soppo-dynamic -p "$GPU_PARTITION" -N 1 -c 32 -G "$FORMAL_GPU_COUNT" -t 3-00:00:00 \
     --array="0-1%$ARRAY_LIMIT" -d "afterok:$LAMBDA_SELECT" -o "$PIPELINE_DIR/logs/dynamic-%A_%a.out" \
-    --export="$COMMON_EXPORT,SOPPO_NPROC_PER_NODE=2,SOPPO_REQUIRE_A800=1" "$SCRIPT_DIR/05_run_main.sh"
+    --export="$COMMON_EXPORT,SOPPO_NPROC_PER_NODE=$FORMAL_GPU_COUNT,SOPPO_REQUIRE_A800=1" "$SCRIPT_DIR/05_run_main.sh"
 MAIN="$LAST_JOB_ID"
 submit c_epsilon_prepare -J soppo-ceprep -p "$CPU_PARTITION" -N 1 -c 4 -G "$AUX_GPU_COUNT" -t 01:00:00 \
     -d "afterok:$MAIN" -o "$PIPELINE_DIR/logs/ceprep-%j.out" \
@@ -137,7 +153,7 @@ submit aggregate -J soppo-aggregate -p "$CPU_PARTITION" -N 1 -c 8 -G "$AUX_GPU_C
 AGG="$LAST_JOB_ID"
 
 python - "$REGISTRY" "$EXPERIMENT_ID" "$GIT_COMMIT" "$EXCLUDE_NODES" \
-    "$AUX_GPU_COUNT" "$GPU2_COUNT" "$GPU1_COUNT" \
+    "$AUX_GPU_COUNT" "$FORMAL_GPU_COUNT" "$GPU1_COUNT" \
     "tests=$TESTS" "smoke=$SMOKE" "reference_cache=$REFERENCE" \
     "dpo_headroom_runs=$PRE" "headroom_gate=$PRESELECT" "pe_static_runs=$LAMBDA" \
     "static_select=$LAMBDA_SELECT" "dynamic_runs=$MAIN" "c_epsilon_prepare=$CE_PREP" \

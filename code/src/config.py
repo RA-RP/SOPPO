@@ -10,6 +10,35 @@ from typing import Any, Dict, Iterable
 import yaml
 
 
+SUPPORTED_TRAINING_DEVICE_COUNTS = (1, 2, 4)
+
+
+def distributed_training_profile(num_devices: int) -> Dict[str, Any]:
+    """Return the device-dependent shape of the frozen global-64 optimizer batch."""
+    devices = int(num_devices)
+    if devices not in SUPPORTED_TRAINING_DEVICE_COUNTS:
+        raise ValueError(
+            "v0.6 supports exactly 1, 2, or 4 training devices; "
+            f"got {devices}"
+        )
+    accumulation = 16 // devices
+    return {
+        "num_devices": devices,
+        "gradient_accumulation_steps": accumulation,
+        "joint_labeled_microsteps": list(range(0, accumulation, 2)),
+        "joint_unlabeled_microbatch_pattern": [3, 4] * (accumulation // 2),
+    }
+
+
+def apply_distributed_training_profile(
+    config: Dict[str, Any], num_devices: int
+) -> Dict[str, Any]:
+    """Resolve only device-dependent execution fields; objectives and global batches stay frozen."""
+    result = copy.deepcopy(config)
+    result["training"].update(distributed_training_profile(num_devices))
+    return result
+
+
 def _deep_merge(base: Dict[str, Any], override: Dict[str, Any]) -> Dict[str, Any]:
     result = copy.deepcopy(base)
     for key, value in override.items():
@@ -101,7 +130,15 @@ def validate_config(config: Dict[str, Any], world_size: int | None = None) -> No
         raise ValueError("v0.6 output must refuse overwrite")
 
     training = config["training"]
-    devices = world_size if world_size is not None else int(training["num_devices"])
+    configured_devices = int(training["num_devices"])
+    devices = world_size if world_size is not None else configured_devices
+    if devices not in SUPPORTED_TRAINING_DEVICE_COUNTS:
+        raise ValueError("v0.6 supports exactly 1, 2, or 4 training devices")
+    if configured_devices != devices:
+        raise ValueError(
+            "training.num_devices does not match the actual world size: "
+            f"configured={configured_devices}, actual={devices}"
+        )
     expected_dpo = (
         int(training["dpo_batch_size_per_device"])
         * int(training["gradient_accumulation_steps"])
@@ -161,6 +198,7 @@ def validate_config(config: Dict[str, Any], world_size: int | None = None) -> No
             "max_grad_norm": float(training["max_grad_norm"]),
             "seed": int(training["seed"]),
         }
+        profile = distributed_training_profile(devices)
         common_expected = {
             "torch_dtype": "bfloat16",
             "attention_implementation": "sdpa",
@@ -168,9 +206,9 @@ def validate_config(config: Dict[str, Any], world_size: int | None = None) -> No
             "enable_thinking": False,
             "gradient_checkpointing": True,
             "use_cache": False,
-            "num_devices": 2,
+            "num_devices": devices,
             "global_batch_size": 64,
-            "gradient_accumulation_steps": 8,
+            "gradient_accumulation_steps": profile["gradient_accumulation_steps"],
             "backward_subbatch_size_per_device": 2,
             "optimizer": "adamw",
             "weight_decay": 0.0,
@@ -200,8 +238,8 @@ def validate_config(config: Dict[str, Any], world_size: int | None = None) -> No
                 or float(training["lr"]) != 1e-5
                 or float(training["simpo_beta"]) != 10.0
                 or float(training["simpo_margin"]) != 2.0
-                or labeled_steps != [0, 2, 4, 6]
-                or pattern != [3, 4, 3, 4, 3, 4, 3, 4]
+                or labeled_steps != profile["joint_labeled_microsteps"]
+                or pattern != profile["joint_unlabeled_microbatch_pattern"]
                 or float(config["method"]["gamma0"]) != 1.0
                 or abs(float(config["method"]["gamma_min"]) - expected_gamma_min) > 1e-10
                 or float(config["method"]["gamma_decay"]) != 0.01

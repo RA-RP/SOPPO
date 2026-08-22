@@ -49,6 +49,8 @@ training:
   epsilon: 0.00000001
   epochs: 2
   max_steps: null
+  # Runtime resolves this profile to 1, 2, or 4 devices while preserving
+  # global batch 64 and the exact global 8/56 joint population.
   num_devices: 2
   dpo_batch_size_per_device: 4
   gradient_accumulation_steps: 8
@@ -56,8 +58,8 @@ training:
   # Keep the frozen logical batch contract above, but cap every gradient
   # forward/backward at two pairs so max-length 2048 examples fit A800.
   backward_subbatch_size_per_device: 2
-  # Per rank and optimizer step: four labeled pairs and 28 unlabeled pairs.
-  # Across two ranks this is the frozen 8/56 joint split, still total batch 64.
+  # Two-device default. Runtime expands/contracts this [3,4] pattern and the
+  # even labeled microsteps for 1/2/4 devices, preserving global 8/56 exactly.
   joint_labeled_batch_size_per_device: 1
   joint_labeled_microsteps: [0, 2, 4, 6]
   joint_unlabeled_microbatch_pattern: [3, 4, 3, 4, 3, 4, 3, 4]

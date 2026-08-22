@@ -18,7 +18,14 @@ import torch.distributed as dist
 from torch.nn.parallel import DistributedDataParallel
 from torch.utils.data import DataLoader, DistributedSampler
 
-from ..config import apply_overrides, canonical_json, load_config, save_config, validate_config
+from ..config import (
+    apply_distributed_training_profile,
+    apply_overrides,
+    canonical_json,
+    load_config,
+    save_config,
+    validate_config,
+)
 from ..data.dataset import (
     PreferenceCollator,
     PreferenceDataset,
@@ -238,9 +245,15 @@ def patterned_loader(
     rank: int,
     world_size: int,
 ):
-    if world_size < 2:
-        raise ValueError("The v0.6 joint population contract requires two distributed ranks")
-    sampler = DistributedSampler(dataset, shuffle=True, drop_last=True)
+    if world_size not in {1, 2, 4}:
+        raise ValueError("The v0.6 joint population contract requires 1, 2, or 4 ranks")
+    sampler = DistributedSampler(
+        dataset,
+        num_replicas=world_size,
+        rank=rank,
+        shuffle=True,
+        drop_last=True,
+    )
     batch_sampler = PatternBatchSampler(
         sampler, config["training"]["joint_unlabeled_microbatch_pattern"]
     )
@@ -384,6 +397,8 @@ def main() -> None:
     args = parser.parse_args()
     rank, local_rank, world_size, device = distributed_initialize()
     config = apply_overrides(load_config(args.config), args.set)
+    if not bool(config["training"].get("smoke_mode", False)):
+        config = apply_distributed_training_profile(config, world_size)
     validate_config(config, world_size=world_size)
     seed_everything(int(config["training"]["seed"]), rank)
 

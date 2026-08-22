@@ -52,6 +52,7 @@ def main() -> None:
     parser.add_argument("--output", required=True)
     parser.add_argument("--model", required=True)
     parser.add_argument("--max-length", type=int, default=2048)
+    parser.add_argument("--world-size", type=int, choices=(1, 2, 4), default=2)
     args = parser.parse_args()
     data = Path(args.data_dir).resolve()
     output = Path(args.output).resolve()
@@ -61,19 +62,19 @@ def main() -> None:
     take(
         data / "labeled_train.jsonl",
         output / "labeled_train.jsonl",
-        16,
+        max(16, 4 * args.world_size),
         prefer_longest=True,
     )
     take(
         data / "labeled_val.jsonl",
         output / "labeled_val.jsonl",
-        4,
+        max(4, args.world_size),
         prefer_longest=True,
     )
     unlabeled = take(
         data / "unlabeled_train.jsonl",
         output / "unlabeled_train.jsonl",
-        16,
+        max(16, 7 * args.world_size),
         prefer_longest=True,
     )
     private = {}

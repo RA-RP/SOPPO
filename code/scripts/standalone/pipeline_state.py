@@ -32,6 +32,7 @@ def initialize(args: argparse.Namespace) -> None:
     if path.exists():
         raise FileExistsError(f"Refuse to overwrite registry: {path}")
     order = args.stages.split(",")
+    training_gpu_ids = args.training_gpus.split(",")
     payload = {
         "schema_version": 2,
         "cycle_id": "cycle-20260818-01",
@@ -46,7 +47,8 @@ def initialize(args: argparse.Namespace) -> None:
         "pid": int(args.pid),
         "process_group_id": int(args.pgid),
         "gpu_contract": {
-            "training_gpu_ids": args.training_gpus.split(","),
+            "training_gpu_ids": training_gpu_ids,
+            "training_gpu_count": len(training_gpu_ids),
             "postprocess_gpu_id": args.post_gpu,
             "minimum_memory_mib": int(args.minimum_memory_mib),
         },

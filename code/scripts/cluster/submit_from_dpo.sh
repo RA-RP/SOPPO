@@ -11,10 +11,15 @@ source "$SCRIPT_DIR/job_env.sh"
 soppo_job_init
 
 REUSE_REGISTRY=""
+FORMAL_GPU_COUNT="${SOPPO_FORMAL_GPU_COUNT:-${SOPPO_GPU2_COUNT:-2}}"
 while (( $# > 0 )); do
     case "$1" in
         --reuse-registry)
             REUSE_REGISTRY="${2:?--reuse-registry requires a path}"
+            shift 2
+            ;;
+        --formal-gpus)
+            FORMAL_GPU_COUNT="${2:?--formal-gpus requires 1, 2, or 4}"
             shift 2
             ;;
         *)
@@ -33,13 +38,15 @@ PIPELINE_DIR="$RUN_ROOT/$EXPERIMENT_ID/pipeline"
 REGISTRY="$PIPELINE_DIR/task_registry.json"
 GPU_PARTITION="${SOPPO_GPU_PARTITION:-gpu}"
 CPU_PARTITION="${SOPPO_CPU_PARTITION:-$GPU_PARTITION}"
-GPU2_COUNT="${SOPPO_GPU2_COUNT:-2}"
 GPU1_COUNT="${SOPPO_GPU1_COUNT:-1}"
 AUX_GPU_COUNT="${SOPPO_AUX_GPU_COUNT:-$GPU1_COUNT}"
 ARRAY_LIMIT="${SOPPO_ARRAY_PARALLELISM:-4}"
 EXCLUDE_NODES="${SOPPO_EXCLUDE_NODES-gn005,gn014,gn021}"
 
-[[ "$GPU2_COUNT" =~ ^[1-9][0-9]*$ ]] || { echo "ERROR: invalid SOPPO_GPU2_COUNT" >&2; exit 1; }
+case "$FORMAL_GPU_COUNT" in
+    1|2|4) ;;
+    *) echo "ERROR: --formal-gpus/SOPPO_FORMAL_GPU_COUNT must be 1, 2, or 4" >&2; exit 1 ;;
+esac
 [[ "$GPU1_COUNT" =~ ^[1-9][0-9]*$ ]] || { echo "ERROR: invalid SOPPO_GPU1_COUNT" >&2; exit 1; }
 [[ "$AUX_GPU_COUNT" =~ ^[1-9][0-9]*$ ]] || { echo "ERROR: invalid SOPPO_AUX_GPU_COUNT" >&2; exit 1; }
 [[ "$ARRAY_LIMIT" =~ ^[1-9][0-9]*$ ]] || { echo "ERROR: invalid SOPPO_ARRAY_PARALLELISM" >&2; exit 1; }
@@ -78,6 +85,11 @@ commit = str(registry.get("git_commit", ""))
 if not re.fullmatch(r"[0-9a-f]{40}", commit):
     raise SystemExit("reused registry has an invalid git_commit")
 jobs = registry.get("jobs", {})
+formal_gpus = registry.get("slurm", {}).get("gpu_counts", {}).get(
+    "smoke_and_formal_training"
+)
+if formal_gpus not in (1, 2, 4):
+    raise SystemExit("reused registry has no valid 1/2/4 formal GPU profile")
 required = ("tests", "smoke", "reference_cache")
 values = []
 for stage in required:
@@ -87,13 +99,20 @@ for stage in required:
     values.append(job_id)
 print(commit)
 print(*values, sep="\n")
+print(formal_gpus)
 PY
 )
-(( ${#REUSED[@]} == 4 )) || { echo "ERROR: could not parse reused gates" >&2; exit 1; }
+(( ${#REUSED[@]} == 5 )) || { echo "ERROR: could not parse reused gates" >&2; exit 1; }
 REUSED_COMMIT="${REUSED[0]}"
 TESTS="${REUSED[1]}"
 SMOKE="${REUSED[2]}"
 REFERENCE="${REUSED[3]}"
+REUSED_FORMAL_GPU_COUNT="${REUSED[4]}"
+if [[ "$REUSED_FORMAL_GPU_COUNT" != "$FORMAL_GPU_COUNT" ]]; then
+    echo "ERROR: reused smoke profile used $REUSED_FORMAL_GPU_COUNT GPUs, requested $FORMAL_GPU_COUNT" >&2
+    echo "Run a full submit_all.sh when changing the 1/2/4-GPU profile." >&2
+    exit 1
+fi
 
 git -C "$SOPPO_ROOT" cat-file -e "$REUSED_COMMIT^{commit}" 2>/dev/null || {
     echo "ERROR: reused commit is unavailable locally: $REUSED_COMMIT" >&2
@@ -135,7 +154,7 @@ GIT_COMMIT="$(git -C "$SOPPO_ROOT" rev-parse HEAD)"
 mkdir -p "$PIPELINE_DIR/logs" "$PIPELINE_DIR/hardware"
 
 echo "Reusing completed gates: tests=$TESTS, smoke=$SMOKE, reference_cache=$REFERENCE"
-echo "Slurm routing: auxiliary=$CPU_PARTITION/${AUX_GPU_COUNT}GPU, formal=$GPU_PARTITION/${GPU2_COUNT}GPU"
+echo "Slurm routing: auxiliary=$CPU_PARTITION/${AUX_GPU_COUNT}GPU, formal=$GPU_PARTITION/${FORMAL_GPU_COUNT}GPU"
 echo "Slurm node exclusions: ${EXCLUDE_NODES:-none}"
 
 declare -a NODE_ARGS=()
@@ -173,25 +192,25 @@ submit() {
 }
 
 COMMON_EXPORT="ALL,RUN_CONTEXT=cluster,EXPERIMENT_ID=$EXPERIMENT_ID,SOPPO_CLUSTER_SCRIPT_DIR=$SCRIPT_DIR,SOPPO_DATA_DIR=$DATA_DIR,SOPPO_MODEL_DIR=$MODEL_DIR,SOPPO_EXPECTED_GIT_COMMIT=$GIT_COMMIT"
-submit dpo_headroom_runs -J soppo-dpo -p "$GPU_PARTITION" -N 1 -c 32 -G "$GPU2_COUNT" -t 2-00:00:00 \
+submit dpo_headroom_runs -J soppo-dpo -p "$GPU_PARTITION" -N 1 -c 32 -G "$FORMAL_GPU_COUNT" -t 2-00:00:00 \
     --array="0-1%$ARRAY_LIMIT" -o "$PIPELINE_DIR/logs/dpo-%A_%a.out" \
-    --export="$COMMON_EXPORT,SOPPO_NPROC_PER_NODE=2,SOPPO_REQUIRE_A800=1" "$SCRIPT_DIR/03_preexperiment.sh"
+    --export="$COMMON_EXPORT,SOPPO_NPROC_PER_NODE=$FORMAL_GPU_COUNT,SOPPO_REQUIRE_A800=1" "$SCRIPT_DIR/03_preexperiment.sh"
 PRE="$LAST_JOB_ID"
 submit headroom_gate -J soppo-headroom -p "$CPU_PARTITION" -N 1 -c 4 -G "$AUX_GPU_COUNT" -t 01:00:00 \
     -d "afterok:$PRE" -o "$PIPELINE_DIR/logs/headroom-%j.out" \
     --export="$COMMON_EXPORT" "$SCRIPT_DIR/03_select_preexperiment.sh"
 PRESELECT="$LAST_JOB_ID"
-submit pe_static_runs -J soppo-static -p "$GPU_PARTITION" -N 1 -c 32 -G "$GPU2_COUNT" -t 3-00:00:00 \
+submit pe_static_runs -J soppo-static -p "$GPU_PARTITION" -N 1 -c 32 -G "$FORMAL_GPU_COUNT" -t 3-00:00:00 \
     --array="0-3%$ARRAY_LIMIT" -d "afterok:$PRESELECT" -o "$PIPELINE_DIR/logs/static-%A_%a.out" \
-    --export="$COMMON_EXPORT,SOPPO_NPROC_PER_NODE=2,SOPPO_REQUIRE_A800=1" "$SCRIPT_DIR/04_lambda_search.sh"
+    --export="$COMMON_EXPORT,SOPPO_NPROC_PER_NODE=$FORMAL_GPU_COUNT,SOPPO_REQUIRE_A800=1" "$SCRIPT_DIR/04_lambda_search.sh"
 LAMBDA="$LAST_JOB_ID"
 submit static_select -J soppo-static-select -p "$CPU_PARTITION" -N 1 -c 4 -G "$AUX_GPU_COUNT" -t 01:00:00 \
     -d "afterok:$LAMBDA" -o "$PIPELINE_DIR/logs/static-select-%j.out" \
     --export="$COMMON_EXPORT" "$SCRIPT_DIR/04_select_lambda.sh"
 LAMBDA_SELECT="$LAST_JOB_ID"
-submit dynamic_runs -J soppo-dynamic -p "$GPU_PARTITION" -N 1 -c 32 -G "$GPU2_COUNT" -t 3-00:00:00 \
+submit dynamic_runs -J soppo-dynamic -p "$GPU_PARTITION" -N 1 -c 32 -G "$FORMAL_GPU_COUNT" -t 3-00:00:00 \
     --array="0-1%$ARRAY_LIMIT" -d "afterok:$LAMBDA_SELECT" -o "$PIPELINE_DIR/logs/dynamic-%A_%a.out" \
-    --export="$COMMON_EXPORT,SOPPO_NPROC_PER_NODE=2,SOPPO_REQUIRE_A800=1" "$SCRIPT_DIR/05_run_main.sh"
+    --export="$COMMON_EXPORT,SOPPO_NPROC_PER_NODE=$FORMAL_GPU_COUNT,SOPPO_REQUIRE_A800=1" "$SCRIPT_DIR/05_run_main.sh"
 MAIN="$LAST_JOB_ID"
 submit c_epsilon_prepare -J soppo-ceprep -p "$CPU_PARTITION" -N 1 -c 4 -G "$AUX_GPU_COUNT" -t 01:00:00 \
     -d "afterok:$MAIN" -o "$PIPELINE_DIR/logs/ceprep-%j.out" \
@@ -215,7 +234,7 @@ submit aggregate -J soppo-aggregate -p "$CPU_PARTITION" -N 1 -c 8 -G "$AUX_GPU_C
 AGG="$LAST_JOB_ID"
 
 python - "$REGISTRY" "$EXPERIMENT_ID" "$GIT_COMMIT" "$EXCLUDE_NODES" \
-    "$AUX_GPU_COUNT" "$GPU2_COUNT" "$GPU1_COUNT" "$REUSE_REGISTRY" "$REUSED_COMMIT" \
+    "$AUX_GPU_COUNT" "$FORMAL_GPU_COUNT" "$GPU1_COUNT" "$REUSE_REGISTRY" "$REUSED_COMMIT" \
     "tests=$TESTS" "smoke=$SMOKE" "reference_cache=$REFERENCE" \
     "dpo_headroom_runs=$PRE" "headroom_gate=$PRESELECT" "pe_static_runs=$LAMBDA" \
     "static_select=$LAMBDA_SELECT" "dynamic_runs=$MAIN" "c_epsilon_prepare=$CE_PREP" \
@@ -237,7 +256,7 @@ payload = {
     "git_commit": commit,
     "submission_status": "resumed_from_dpo",
     "recovery": {
-        "reason": "gn014_driver_loss_before_training",
+        "reason": "restart_from_dpo_with_reused_gates",
         "reused_registry": os.path.abspath(reused_registry),
         "reused_git_commit": reused_commit,
         "reused_completed_stages": ["tests", "smoke", "reference_cache"],
