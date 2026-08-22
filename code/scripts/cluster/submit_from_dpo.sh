@@ -174,7 +174,7 @@ submit() {
 
 COMMON_EXPORT="ALL,RUN_CONTEXT=cluster,EXPERIMENT_ID=$EXPERIMENT_ID,SOPPO_CLUSTER_SCRIPT_DIR=$SCRIPT_DIR,SOPPO_DATA_DIR=$DATA_DIR,SOPPO_MODEL_DIR=$MODEL_DIR,SOPPO_EXPECTED_GIT_COMMIT=$GIT_COMMIT"
 submit dpo_headroom_runs -J soppo-dpo -p "$GPU_PARTITION" -N 1 -c 32 -G "$GPU2_COUNT" -t 2-00:00:00 \
-    --array="0-1%$ARRAY_LIMIT" -d "afterok:$REFERENCE" -o "$PIPELINE_DIR/logs/dpo-%A_%a.out" \
+    --array="0-1%$ARRAY_LIMIT" -o "$PIPELINE_DIR/logs/dpo-%A_%a.out" \
     --export="$COMMON_EXPORT,SOPPO_NPROC_PER_NODE=2,SOPPO_REQUIRE_A800=1" "$SCRIPT_DIR/03_preexperiment.sh"
 PRE="$LAST_JOB_ID"
 submit headroom_gate -J soppo-headroom -p "$CPU_PARTITION" -N 1 -c 4 -G "$AUX_GPU_COUNT" -t 01:00:00 \

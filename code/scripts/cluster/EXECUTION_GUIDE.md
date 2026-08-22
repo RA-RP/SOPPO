@@ -213,7 +213,7 @@ bash submit_from_dpo.sh \
   --reuse-registry <FAILED_ATTEMPT>/pipeline/task_registry.json
 ```
 
-恢复提交器会向 Slurm 复核三个旧 job 均为 `COMPLETED`，核对旧门禁之后只发生 Markdown/恢复提交器变更，重验模型、数据与 reference cache，并从 DPO 开始重建 `afterok` DAG。任一复核失败都会拒绝复用；恢复 registry 会显式记录复用来源，不把旧证据冒充新运行。
+恢复提交器会通过 `sacct` 复核三个旧 job 均为 `COMPLETED`，核对旧门禁之后只发生 Markdown/恢复提交器变更，并重验模型、数据与 reference cache。由于已完成 job 可能早于 Slurm controller 的 dependency 保留窗口，首个 DPO job 以这些显式检查作为 fail-closed 前置门禁，不再依赖旧 job ID；DPO 之后仍重建完整 `afterok` DAG。任一复核失败都会拒绝复用；恢复 registry 会显式记录复用来源，不把旧证据冒充新运行。
 
 ## 9. checkpoint 与重启策略
 
