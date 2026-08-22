@@ -119,8 +119,9 @@ export HF_ENDPOINT=https://huggingface.co
 默认设置是：
 
 ```text
-正式训练：物理 GPU 0,1；torchrun 两进程
-单卡后处理：物理 GPU 0
+正式训练默认：物理 GPU 0,1；torchrun 两进程
+允许档位：1 / 2 / 4 张卡
+单卡后处理默认：正式训练列表中的第一张卡
 最低显存：每卡 79000 MiB
 ```
 
@@ -131,14 +132,22 @@ nvidia-smi -L
 nvidia-smi --query-gpu=index,name,memory.total,memory.free --format=csv
 ```
 
-如果希望使用其他两张卡，在启动前设置，例如：
+卡数由 `SOPPO_TRAIN_GPU_IDS` 中不同 GPU ID 的数量决定，只需改这一行：
 
 ```bash
-export SOPPO_TRAIN_GPU_IDS=2,3
-export SOPPO_POST_GPU_ID=2
+# 单卡
+export SOPPO_TRAIN_GPU_IDS=0
+
+# 双卡（默认）
+export SOPPO_TRAIN_GPU_IDS=0,1
+
+# 四卡
+export SOPPO_TRAIN_GPU_IDS=0,1,2,3
+
+export SOPPO_POST_GPU_ID=0
 ```
 
-当前实验的 global batch 与 DDP 契约固定为两张卡，因此 `SOPPO_TRAIN_GPU_IDS` 必须正好包含两个不同编号。脚本不再限定型号必须叫 A800，但默认仍要求约 80GB 显存，以保护已经通过的 `backward_subbatch_size_per_device=2` 设置。不要仅为了绕过门禁而降低 `SOPPO_MIN_GPU_MEMORY_MIB`；若新卡显存不足，应先重新讨论 batch/显存配置。
+运行时分别使用16/8/4次梯度累积，使三种档位的 global batch 都是64，joint population 都是全局8 labeled +56 unlabeled。脚本拒绝重复ID、三卡或其他数量。不同实验臂必须使用同一个档位；切换卡数后必须重新运行对应档位的 strong smoke。脚本不再限定型号必须叫 A800，但默认仍要求约80GB显存，以保护已经通过的 `backward_subbatch_size_per_device=2` 设置。不要仅为了绕过门禁而降低 `SOPPO_MIN_GPU_MEMORY_MIB`；若新卡显存不足，应先重新讨论 batch/显存配置。
 
 ## 7. 一条命令启动完整长链
 
@@ -152,7 +161,7 @@ cd "$SERVER_BASE/SOPPO/code/scripts/standalone"
 bash start_pipeline.sh
 ```
 
-`start_pipeline.sh` 用独立进程组和 `nohup` 在后台启动，因此 SSH 断开后仍可继续。它不会调用 `sbatch`，也不存在排队或依赖等待。服务器同一时间只运行一个需要两卡的训练 arm；完整顺序为：
+`start_pipeline.sh` 用独立进程组和 `nohup` 在后台启动，因此 SSH 断开后仍可继续。它不会调用 `sbatch`，也不存在排队或依赖等待。服务器同一时间只运行一个使用所选1/2/4卡档位的训练 arm；完整顺序为：
 
 ```text
 GPU/输入预检

@@ -146,15 +146,29 @@ export SERVER_BASE=/home-ssd/Users/nsgm_jiangwh/youchang
 source "$SERVER_BASE/activate_env.sh"
 cd "$SERVER_BASE/SOPPO/code/scripts/cluster"
 export RUN_CONTEXT=cluster
-bash submit_all.sh
+bash submit_all.sh --formal-gpus 1
 ```
 
-不要再逐个手工运行 `01`、`03`、`04`……。实测当前账户只有 `nsgm_jiangwh|gpu|normal` 关联，集群拒绝普通用户的 `sbatch --hold` 和 typed `--gres=gpu:tesla:N`，但已实测接受 `sbatch -G 1` 与 `sbatch -G 2`。因此提交器将所有阶段路由到 `gpu` partition，并统一使用 `-G N`：辅助阶段申请1张卡，smoke与正式训练申请2张卡；所有 job 直接按 `afterok` 依赖提交。若中途某个 `sbatch` 被拒绝，提交器会自动取消本次已经提交的 job。完整任务图为：
+最后一行只需切换一个值：`--formal-gpus 1` 是单卡，`--formal-gpus 2` 是双卡，`--formal-gpus 4` 是四卡；不写参数时默认双卡。也可在脚本外设置 `SOPPO_FORMAL_GPU_COUNT=1|2|4`，命令行参数优先。一次 DAG 的所有 smoke/reference/formal arm 必须使用同一个档位，不能在中途混用。
+
+三种档位保持相同科学合同：
+
+| 正式训练卡数 | 梯度累积 | DPO全局batch | joint每卡L/U | joint全局L/U |
+| ---: | ---: | ---: | ---: | ---: |
+| 1 | 16 | 64 | 8 / 56 | 8 / 56 |
+| 2 | 8 | 64 | 4 / 28 | 8 / 56 |
+| 4 | 4 | 64 | 2 / 14 | 8 / 56 |
+
+三卡会被明确拒绝。卡数改变会改变数据分片、归约顺序和浮点轨迹，所以不同方法臂不能来自不同档位；但 loss、global batch、epoch、lr、8/56 population和 optimizer-step 数量保持一致。
+
+已经提交的 DAG 在 registry 中冻结了卡数，不能靠修改当前 shell 环境把排队中的双卡 job 热切成单卡。若要切换，必须用该 DAG 自己的 registry 运行 `cancel_pipeline.sh --execute`，保留并归档旧 pipeline 证据，再以新档位运行完整 `submit_all.sh`；不得使用 `scancel -u`，以免取消同账户的同事任务。
+
+不要再逐个手工运行 `01`、`03`、`04`……。实测当前账户只有 `nsgm_jiangwh|gpu|normal` 关联，集群拒绝普通用户的 `sbatch --hold` 和 typed `--gres=gpu:tesla:N`，但已实测接受 `sbatch -G 1` 与 `sbatch -G 2`；四卡仍须由本次提交在 controller 上验证。因此提交器将所有阶段路由到 `gpu` partition，并统一使用 `-G N`：辅助阶段申请1张卡，smoke与正式训练申请所选1/2/4张卡；所有 job 直接按 `afterok` 依赖提交。若中途某个 `sbatch` 被拒绝，提交器会自动取消本次已经提交的 job。完整任务图为：
 
 ```text
 CPU tests
-  → gpu strong smoke (2×A800, bf16/2048 training-split length gate, 90m)
-  → formal reference/oracle (2×A800)
+  → gpu strong smoke (selected 1/2/4×A800, bf16/2048 training-split length gate, 90m)
+  → formal reference/oracle (selected 1/2/4×A800)
   → DPO-10 + DPO-100 final array
   → DPO-10 vs frozen-base headroom gate
   → four normalized fixed-lambda PE final runs → validation selection
@@ -164,7 +178,7 @@ CPU tests
   → aggregate/export
 ```
 
-所有依赖为 `afterok`；任何上游失败都会阻止下游，不要求 SSH 会话持续在线。现在没有双卡资源不影响提交，2-GPU job 会以 `PD (Resources/Priority)` 等待。默认最多同时运行 4 个 array 单元，仍取决于集群调度和用户额度。
+所有依赖为 `afterok`；任何上游失败都会阻止下游，不要求 SSH 会话持续在线。所选卡数暂时不可用时，job 会以 `PD (Resources/Priority)` 等待。默认最多同时运行 4 个 array 单元，仍取决于集群调度和用户额度。
 
 提交器默认加 `--exclude=gn005,gn021`：`gn005` 已在本轮出现 DDP/NCCL timeout且处于 draining，`gn021` 延续此前已验证的人工排除。若管理员确认节点已恢复，可显式设置 `export SOPPO_EXCLUDE_NODES=` 清空；也可提供逗号分隔的新名单。
 
@@ -210,10 +224,11 @@ stage03/04/05 合计正好八条 final trajectories，不会把预实验重新�
 
 ```bash
 bash submit_from_dpo.sh \
-  --reuse-registry <FAILED_ATTEMPT>/pipeline/task_registry.json
+  --reuse-registry <FAILED_ATTEMPT>/pipeline/task_registry.json \
+  --formal-gpus 2
 ```
 
-恢复提交器会通过 `sacct` 复核三个旧 job 均为 `COMPLETED`，核对旧门禁之后只发生 Markdown/恢复提交器变更，并重验模型、数据与 reference cache。由于已完成 job 可能早于 Slurm controller 的 dependency 保留窗口，首个 DPO job 以这些显式检查作为 fail-closed 前置门禁，不再依赖旧 job ID；DPO 之后仍重建完整 `afterok` DAG。任一复核失败都会拒绝复用；恢复 registry 会显式记录复用来源，不把旧证据冒充新运行。
+恢复时 `--formal-gpus` 必须与旧 registry 中通过 smoke 的档位相同。恢复提交器会通过 `sacct` 复核三个旧 job 均为 `COMPLETED`，核对旧门禁之后只发生允许的非运行时变更，并重验模型、数据与 reference cache。由于已完成 job 可能早于 Slurm controller 的 dependency 保留窗口，首个 DPO job 以这些显式检查作为 fail-closed 前置门禁，不再依赖旧 job ID；DPO 之后仍重建完整 `afterok` DAG。任一复核失败都会拒绝复用；恢复 registry 会显式记录复用来源，不把旧证据冒充新运行。切换卡数档位时必须重新运行完整 `submit_all.sh`，不能复用另一档位的 smoke。
 
 ## 9. checkpoint 与重启策略
 

@@ -6,7 +6,7 @@
 - Experiment：`exp-20260819-01-mvp`
 - 设计依据：`../human_read/exp/current_experiment.md` v0.6，用户已于 2026-08-21 明确要求开始编码
 - 当前阶段：`SERVER_EXECUTION`
-- 代码交接：训练实现基线 `e047ce7`；无 Slurm standalone 平台适配基线 `e4eb95d`（2026-08-22，本地静态复核完成、服务器待验证）
+- 代码交接：训练实现基线 `e047ce7`；无 Slurm standalone 平台适配基线 `e4eb95d`；1/2/4卡等价执行档位基线 `cf6bb99`（2026-08-22，本地静态复核完成、服务器待验证）
 - 服务器执行：`AUTHORIZED`（2026-08-21）；只允许从 clean、commit-locked checkout 运行执行指南中的 fail-closed pipeline。2026-08-22 新增无 Slurm 独占服务器适配，服务器待验证
 
 本轮本地只编辑纯文本源码、配置和说明。没有在本地安装/import 项目依赖，没有运行 pytest、数据、模型、训练、评价或 GPU 任务。运行正确性必须由获批后的服务器 tests/strong smoke 证明。
@@ -33,7 +33,7 @@ SOPPO-PE-static lambda = 0.1 / 0.3 / 0.5 / 1.0
 
 - 方法名只能是五类配置接口；static lambda 只能取四个预注册值；
 - formal 模型必须 bf16/2048，LoRA 必须 r8/alpha16/dropout0/all projections；
-- formal logical global batch 必须64，DPO为4×8×2，joint为全局8/56；梯度 backward subbatch 限制为每 rank 最多2 pair；
+- formal logical global batch 必须64；运行时只允许1/2/4卡并分别使用16/8/4次梯度累积，joint始终为全局8/56；梯度 backward subbatch 限制为每 rank 最多2 pair；
 - DPO 固定1 epoch/lr1e-6/beta.1；SSPO/PE固定2 epochs/lr1e-5/beta10/margin2；
 - AdamW/wd0/cosine/warmup.1/clip1/seed42；
 - paper gamma、30k counts/ratios、reference cache与 label isolation 约束。
@@ -47,7 +47,7 @@ smoke 明确设置 `training.smoke_mode=true`，只缩小数据量和 optimizer 
 - 每次从冻结绝对路径、manifest 校验后的 Qwen3 base 离线加载；
 - `peft.LoraConfig` 注入 q/k/v/o/gate/up/down；base 参数冻结；
 - 启动时逐名验证只有预注册 target 的 `lora_A/lora_B` 可训练；adapter 重载还核对 rank/alpha/dropout/targets、base 与 manifest；
-- 两 rank 使用 DDP，不再做 full-state FSDP gather；
+- 多卡档位使用 DDP，单卡档位不包 DDP；不再做 full-state FSDP gather；
 - checkpoint 写 `adapter_model.safetensors`、`adapter_config.json`、tokenizer、`run_config.yaml` 和 `checkpoint_meta.json`；
 - evaluator 可重新加载 adapter；GetSlice loader 识别 adapter 并在内存中 `safe_merge`。
 
@@ -64,15 +64,17 @@ SSPO-hard 对 unlabeled pair 的 A/B 独立打 hard label；PE 对 A/B 形成一
 
 ### 2.4 Trainer 与 batch
 
-`src/training/trainer.py` 提供统一 CLI。DPO 使用 reference cache与标准 8 logical microstep accumulation。joint 路径的每 rank pattern 为：
+`src/training/trainer.py` 提供统一 CLI。它从实际 `torchrun` world size 解析1/2/4卡执行档位，并在写出 resolved config 前重新冻结设备相关字段。三种档位为：
 
 `src/data/dataset.py` 将 Qwen3 chat prompt 与 response+EOS 分别 tokenize 后拼接 token IDs，从构造上固定 response-only mask；不再假设 tokenizer 对“prompt”和“prompt+response”两次编码具有前缀稳定性。
 
-```text
-unlabeled microbatch: 3,4,3,4,3,4,3,4  -> 28 pairs/rank
-labeled microsteps:   0,2,4,6, each 1   -> 4 pairs/rank
-two ranks                              -> 56 U + 8 L
-```
+| GPU数 | 梯度累积 | DPO每卡logical batch | joint每卡labeled | joint每卡unlabeled | 全局组成 |
+| ---: | ---: | ---: | ---: | ---: | ---: |
+| 1 | 16 | 4 | 8 | 56 | 8 L + 56 U |
+| 2（YAML默认） | 8 | 4 | 4 | 28 | 8 L + 56 U |
+| 4 | 4 | 4 | 2 | 14 | 8 L + 56 U |
+
+joint 的 unlabeled pattern 分别为 `[3,4]×8`、`[3,4]×4`、`[3,4]×2`；每个档位都在偶数 microstep 另取一个 labeled pair。三卡因不能精确保持 global64 与8/56而 fail-closed 拒绝。
 
 hard 第一遍收集全局 labeled winning/losing 与全部 response reward并更新 KDE/EMA，第二遍回传。PE 第一遍只收集56个全局 pair probability并求 exact coefficient，第二遍回传。DDP `no_sync` 只延迟通信到该 optimizer step 的最后一次 backward，不改变归一化。
 
@@ -97,7 +99,7 @@ validation：DPO 用 reference delta；SSPO/PE 用 margin-free SimPO mean-logp d
 | lr | 1e-6 | 1e-5 |
 | loss beta | DPO 0.1 | SimPO 10 |
 | margin | — | 2 |
-| logical global batch | 64（4×8×2；backward subbatch≤2） | 64 = 8 L + 56 U（backward subbatch≤2） |
+| logical global batch | 64（每卡4×累积16/8/4×卡数1/2/4；backward subbatch≤2） | 64 = 8 L + 56 U（backward subbatch≤2） |
 | max seq len | 2048 | 2048 |
 | LoRA | r8/alpha16/dropout0 | 同左 |
 | optimizer | AdamW, wd0 | 同左 |
@@ -115,7 +117,7 @@ SSPO/PE exp：`gamma0=1`、`gamma_min=2700/26700`、`decay=.01`。PE static使�
 1. `standalone/00_server_setup.sh`：使用可配置 conda 或 Python 3.10 venv 建立路径环境，不读取旧集群 module；
 2. `standalone/02_download_model.sh` 与 `02_prepare_data.sh`：完整产物存在时只按 manifest/audit 复核，否则下载并生成；
 3. `standalone/start_pipeline.sh`：用 `nohup + setsid` 启动后台顺序控制器；`status_pipeline.sh` 读取原子 registry 与日志，`stop_pipeline.sh` 只操作 registry 核验过的进程组；
-4. `standalone/run_pipeline.sh`：固定两卡训练、单卡后处理，一次只运行一个 arm；每一步成功才进入下一步，任一步失败立即停止；
+4. `standalone/run_pipeline.sh`：从 `SOPPO_TRAIN_GPU_IDS` 选择1/2/4卡训练、单卡后处理，一次只运行一个 arm；每一步成功才进入下一步，任一步失败立即停止；
 5. standalone controller 仍通过 legacy `SOPPO_CLUSTER_SCRIPT_DIR` 注入新的 runtime helper，从而直接复用 `cluster/01_server_tests.sh`、`03_smoke.sh` 以及 `02_finalize_inputs.sh` 到 `08_aggregate.sh` 的 stage body；它不调用 `sbatch/squeue/scancel`。
 
 两种平台都会在开始前重验模型 manifest、30k 数据、clean Git checkout，并锁定完整 commit。旧服务器仍在排队的同一实验必须先按旧 registry 精确取消，避免新旧服务器产生两个同名运行。
@@ -143,11 +145,11 @@ stage03/04/05 合计正好八条 final trajectories，都写在 `runs/<experimen
 
 ## 6. strong smoke
 
-`03_smoke.sh` 从正式 split 中选取字符长度最大的真实样本，以正式 bf16/2048 压测；旧集群由 Slurm 请求2×A800，standalone 入口固定映射两张卡并默认要求每卡至少79000 MiB。tokenization gate 要求 labeled-train 与 unlabeled-train 都至少有一个序列实际达到2048截断上限，validation只记录长度而不强制截断：
+`03_smoke.sh` 从正式 split 中选取字符长度最大的真实样本，以正式 bf16/2048 压测；它使用与正式训练相同的1/2/4进程档位，并随 world size 扩展 fixture。旧集群要求所选数量的A800，standalone 默认要求每卡至少79000 MiB。tokenization gate 要求 labeled-train 与 unlabeled-train 都至少有一个序列实际达到2048截断上限，validation只记录长度而不强制截断：
 
 - 真实 Qwen3 offline/manifest 与 response mask；
 - reference cache；
-- LoRA base-frozen、两 rank DDP；
+- LoRA base-frozen、所选1/2/4卡执行路径；
 - DPO-10、DPO-100、hard-exp、PE-exp、PE-static各一步；
 - hard KDE/EMA、exact-global PE、finite gradient；
 - PE adapter保存后重载再训练一步。
@@ -161,11 +163,11 @@ stage03/04/05 合计正好八条 final trajectories，都写在 `runs/<experimen
 已知风险：
 
 - 2048长度和 hard/PE两次前向会增加 wall time；实际耗时以 strong smoke和首个formal日志校准。
-- 当前账户没有 `cpu`/`gpu_test` 关联，且集群只接受 `-G N` 而拒绝 typed `--gres`；辅助阶段在 `gpu` partition 申请1卡，smoke/正式训练申请2卡，卡不足时由 Slurm 排队。
+- 当前账户没有 `cpu`/`gpu_test` 关联，且集群只接受 `-G N` 而拒绝 typed `--gres`；辅助阶段在 `gpu` partition 申请1卡，smoke/正式训练由 `--formal-gpus 1|2|4` 选择，卡不足时由 Slurm 排队。
 - Slurm 会把 batch script 复制到 `/var/spool/slurmd`；提交器通过 `SOPPO_CLUSTER_SCRIPT_DIR` 显式传递仓库中的真实脚本目录，worker 不再从 spool 路径寻找 `job_env.sh`。
 - Slurm worker 还会核对提交时冻结的完整 Git commit 和 clean worktree；排队期间若服务器 checkout 被更新，旧 DAG 会 fail-closed，而不会混用代码版本。
 - standalone 由普通后台进程而非调度器托管；`nohup + setsid` 可跨 SSH 断开，但服务器重启不会自动恢复。registry 记录 PID/PGID与逐阶段状态，当前 checkpoint 仍不支持 exact resume。
-- standalone 默认只使用两张约80GB卡并串行运行所有 arm；GPU编号可配置，global batch/DDP world size不可改。实际新服务器环境、driver、两卡互联和完整 strong smoke 尚待服务器验证。
+- standalone 默认使用两张约80GB卡并串行运行所有 arm，也可把 GPU ID 列表切到1张或4张；global batch与8/56不变。实际新服务器环境、driver、所选卡间通信和完整 strong smoke 尚待服务器验证。
 - 2026-08-21 两条 DPO array arm 分别在 `gn014` 发生 backward OOM、在 draining 的 `gn005` 发生 DDP/NCCL timeout。修复后默认排除 `gn005,gn021`，启用 expandable-segments allocator，并由 full-length smoke 验证 backward subbatch。
 - SSPO论文未给KDE bandwidth，Scott rule是明确记录的复现决定。
 - v0.6将已有pair拆成两个SSPO unpaired response，是数据形态适配，不等同于论文使用UltraChat single-response corpus。

@@ -128,16 +128,16 @@ lambda in {0.1, 0.3, 0.5, 1.0}
 
 ## 5. 优化与 batch
 
-所有正式训练使用单节点两张约80GB GPU、DDP LoRA、seed 42。旧集群实证卡为 A800；standalone 迁移保持两 rank 与显存下限，并单独记录实际 SKU：
+所有正式训练使用单节点1/2/4张约80GB GPU、LoRA、seed 42；多卡使用DDP，单卡不包DDP。旧集群实证卡为A800；standalone保持同一设备档位与显存下限，并单独记录实际SKU。卡数只是执行档位，不是实验变量；一次实验的八条轨迹必须全部使用同一个档位：
 
 | 路径 | epoch | lr | global batch | 组成 |
 | --- | ---: | ---: | ---: | --- |
-| DPO-10 | 1 | 1e-6 | 64 | per-device 4 × accumulation 8 × 2 |
+| DPO-10 | 1 | 1e-6 | 64 | per-device 4 × accumulation 16/8/4 × devices 1/2/4 |
 | DPO-100 | 1 | 1e-6 | 64 | 同上 |
 | SSPO-hard-exp | 2 | 1e-5 | 64 | 每 step 8 labeled pairs + 56 unlabeled pairs |
 | PE-exp/static | 2 | 1e-5 | 64 | 与 hard 完全相同 |
 
-8/56 的实现为每 rank 每 step 8 个 microstep：unlabeled size pattern `[3,4,3,4,3,4,3,4]`，在 microstep `[0,2,4,6]` 另取 1 个 labeled pair；两 rank 合计 8 labeled + 56 unlabeled。optimizer 为 AdamW，weight decay 0，cosine schedule，warmup ratio 0.1，max grad norm 1.0。
+1/2/4卡的梯度累积分别为16/8/4。joint 的每rank unlabeled pattern分别为`[3,4]×8`、`[3,4]×4`、`[3,4]×2`，在每个偶数microstep另取1个labeled pair；三种档位都合计8 labeled +56 unlabeled。三卡不能精确保持该合同，因此不支持。optimizer为AdamW，weight decay 0，cosine schedule，warmup ratio 0.1，max grad norm 1.0。
 
 显存执行合同：上述 logical batch、optimizer step 和损失归一化全部不变；2048 长度的梯度前向/反向按每 rank 最多 2 pair 的 backward subbatch 顺序累积，只有完整 logical optimizer batch 的最后一次 backward 触发 DDP 同步。DPO 的 logical 4 拆为 `2+2`，joint 的 logical `3/4` 拆为 `2+1`/`2+2`。PE 第一遍仍在完整 56-pair global unlabeled population 上求精确系数，第二遍只是用同一组系数分块回传，因此不构成 PE microbatch 近似。
 
@@ -152,11 +152,11 @@ lambda in {0.1, 0.3, 0.5, 1.0}
 
 ## 7. 强 smoke 与一次启动的任务图
 
-strong smoke 在账户获批的 `gpu` partition 请求 2×A800、90 分钟，并从各 split 选择字符长度最大的真实样本，以 bf16/2048 运行。它覆盖：
+strong smoke 在账户获批的 `gpu` partition 请求与正式训练相同档位的1/2/4×A800、90分钟，并从各 split 选择字符长度最大的真实样本，以bf16/2048运行。它覆盖：
 
 - 冻结 Qwen3 manifest、离线加载和 chat mask；
 - LoRA trainable/base-frozen 合同；
-- 两 rank DDP 和真实前反向；
+- 所选1/2/4卡路径和真实前反向；
 - DPO-10、DPO-100、SSPO-hard-exp、PE-exp、PE-static 各一步；
 - KDE/EMA/threshold、exact-global PE、finite loss/gradient；
 - adapter 保存后重新加载并再训练一步。
@@ -177,7 +177,7 @@ CPU tests
   -> aggregate + whitelist export
 ```
 
-standalone 运行不依赖 SSH 会话，也不产生排队任务；默认固定两张GPU用于 DDP 训练、其中一张用于串行后处理，并要求每张卡至少79000 MiB。实际 GPU SKU、显存与 torch CUDA 版本必须写入 registry 邻接的 hardware CSV；如果新服务器并非原计划的 A800，结果交接必须把它列为执行环境差异。训练目标、global batch、两 rank DDP 和八条轨迹不因平台迁移而变化。
+standalone运行不依赖SSH会话，也不产生排队任务；默认两张GPU，也可由GPU ID列表选择1张或4张，其中一张用于串行后处理，并要求每张卡至少79000 MiB。实际GPU SKU、显存、torch CUDA版本和所选卡数必须写入registry邻接的hardware CSV；如果新服务器并非原计划的A800，结果交接必须把它列为执行环境差异。训练目标、global batch、8/56和八条轨迹不因平台或卡数档位变化。
 
 ## 8. 评价与解释边界
 
@@ -195,12 +195,13 @@ standalone 运行不依赖 SSH 会话，也不产生排队任务；默认固定�
 
 ## 9. 失败关闭与批准记录
 
-模型/数据/cache manifest 不符、Git checkout 不干净、卡数/型号不符、标签泄漏、batch 不是 64 或 joint 不是 8/56、非有限 loss/gradient、PE population 不完整、headroom 失败、adapter/best checkpoint 缺失、`C_epsilon` cell 不完整或导出含样本字段，均非零退出并阻断下游。
+模型/数据/cache manifest 不符、Git checkout 不干净、卡数不是1/2/4或与registry/smoke档位不符、型号不符、标签泄漏、batch不是64或joint不是8/56、非有限loss/gradient、PE population不完整、headroom失败、adapter/best checkpoint缺失、`C_epsilon` cell不完整或导出含样本字段，均非零退出并阻断下游。
 
 - 2026-08-21：用户明确删除 SFT headroom，并进一步纠正：headroom 应检验 DPO-10 是否确实强于训练前 base；DPO-100 只作为 oracle。
 - 2026-08-21：用户明确 `max_seq_len=2048`，并要求解释和冻结 LoRA。
 - 2026-08-21：用户要求训练损失、epoch、lr 与 SSPO 论文对齐。
 - 2026-08-21：用户明确核心比较同时包含 paper exponential `gamma_t` 与 normalized fixed lambda PE。
 - 2026-08-21：用户确认上述内容无问题并要求开始正式编码。
+- 2026-08-22：服务器执行阶段中，用户明确要求在不改变训练目标与全局batch的前提下支持1/2/4卡，并可通过少量shell配置快速切换；该项作为等价执行适配实现，不新增方法臂或科学比较。
 
 这些批准只解锁 v0.6 `CODE_IMPLEMENTATION`；不自动授权 SFTP 上传、模型/数据操作或 Slurm 提交。
