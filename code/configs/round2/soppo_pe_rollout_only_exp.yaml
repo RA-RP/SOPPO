@@ -1,0 +1,9 @@
+_base_: base.yaml
+
+method:
+  name: "soppo_pe_rollout_only_exp"
+  use_unlabeled: true
+  weighting: "exponential_gamma"
+
+rollout:
+  source: "rollout_only"

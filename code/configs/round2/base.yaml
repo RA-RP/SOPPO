@@ -1,0 +1,50 @@
+# Round2 defaults inherit the frozen model/data/training contract.
+_base_: ../mvp/base.yaml
+
+model:
+  name_or_path: null
+  manifest_path: null
+  max_seq_len: 2048
+  torch_dtype: "bfloat16"
+  enable_thinking: false
+  use_cache: false
+  gradient_checkpointing: true
+
+training:
+  lr: 0.00001
+  learning_rate: 0.00001
+  global_batch_size: 64
+  joint_labeled_global_batch_size: 8
+  joint_unlabeled_global_batch_size: 56
+  backward_subbatch_size_per_device: 2
+  seed: 42
+  distributed_backend: "megatron"
+
+megatron:
+  entrypoint: null
+  working_dir: null
+  gpu_ids: "0,1"
+  tensor_model_parallel_size: 1
+  pipeline_model_parallel_size: 1
+  data_parallel_size: 2
+  micro_batch_size: 1
+  backend: "megatron-core"
+  require_external_install: true
+
+rollout:
+  engine: "vllm"
+  gpu_ids: "2"
+  artifact_dir: null
+  artifact_path: null
+  policy_checkpoint: null
+  source: null
+  tensor_parallel_size: 1
+  max_model_len: 2048
+  max_new_tokens: 512
+  gpu_memory_utilization: 0.80
+  command: null
+
+output:
+  run_dir: null
+  refuse_overwrite: true
+  save_checkpoints: true

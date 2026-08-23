@@ -37,6 +37,23 @@ SOPPO-PE-rollout-only-exp
 
 DPO-10、DPO-100、SSPO-hard-exp、第一轮静态 PE 与第一轮 `SOPPO-PE-exp` 均作为冻结基线只读引用。第二轮必须使用独立 experiment_id、独立输出根目录和独立命令入口，最终合并阶段只读取两轮各自导出的聚合结果。
 
+## 1.2 round2 Megatron 训练与独立 rollout 边界
+
+round2 新增 Megatron 训练 adapter，不扩大第一轮 `src/config.py` 的方法集合，也不把第一轮 DDP trainer 作为 round2 的隐式 fallback：
+
+- `src/round2/megatron_backend.py` 将 round2 配置转换为明确的 Megatron 启动命令；`src/round2/run_megatron.py` 设置训练 GPU、写入启动记录并调用目标服务器上的 Megatron entrypoint；
+- 当前仓库不内置 Megatron 安装，缺失 entrypoint 时必须 fail closed，不能静默退回第一轮 DDP；
+- round2 训练配置、checkpoint 和输出根目录均与第一轮分离。
+
+rollout 使用独立的 vLLM worker：
+
+- `src/round2/rollout_backend.py` 与 `src/round2/run_rollout.py` 负责独立 rollout 命令和 GPU 边界；
+- 训练 GPU 集合与 rollout GPU 集合必须显式配置且不重叠；
+- 同一个正在生成的 checkpoint 不能被 rollout 同时读取；只有对已经完成且不可变 checkpoint 做 rollout 时，才允许与另一项训练任务并发；
+- rollout artifact 使用 `round2.rollout.v1` schema，由 `src/round2/rollout_schema.py` 校验；不读取 hidden test label，也不承担 PE loss 或最终评价。
+
+round2 的执行入口位于 `scripts/round2/`，配置位于 `configs/round2/`。`dry_run.sh` 只构造并打印 Megatron/vLLM 命令，不启动训练或 rollout；正式服务器执行前必须确认 Megatron/Megatron-Core、PyTorch、CUDA、Transformer Engine 和 vLLM 版本兼容性。
+
 ## 2. 关键实现
 
 ### 2.1 配置合同
