@@ -1,19 +1,20 @@
-# SOPPO v0.6 SSPO-aligned 30k MVP：代码总览与交接
+# SOPPO 第一轮 MVP 代码总览与第二轮 rollout 边界
 
 ## 0. 状态
 
 - Cycle：`cycle-20260818-01`
-- Experiment：`exp-20260819-01-mvp`
-- 设计依据：`../human_read/exp/current_experiment.md` v0.6，用户已于 2026-08-21 明确要求开始编码
+- 第一轮 Experiment：`exp-20260819-01-mvp`（冻结基线，只读引用）
+- 第二轮 Experiment：待定，必须使用独立 experiment_id 和独立输出根目录
+- 设计依据：`../human_read/exp/current_experiment.md` v0.6；当前文档将第一轮 MVP 代码说明与第二轮 rollout 新增边界分开记录
 - 当前阶段：`SERVER_EXECUTION`
 - 代码交接：训练实现基线 `e047ce7`；无 Slurm standalone 平台适配基线 `e4eb95d`；1/2/4卡等价执行档位基线 `cf6bb99`（2026-08-22，本地静态复核完成、服务器待验证）
 - 服务器执行：`AUTHORIZED`（2026-08-21）；只允许从 clean、commit-locked checkout 运行执行指南中的 fail-closed pipeline。2026-08-22 新增无 Slurm 独占服务器适配，服务器待验证
 
-本轮本地只编辑纯文本源码、配置和说明。没有在本地安装/import 项目依赖，没有运行 pytest、数据、模型、训练、评价或 GPU 任务。运行正确性必须由获批后的服务器 tests/strong smoke 证明。
+第一轮本地只编辑纯文本源码、配置和说明。没有在本地安装/import 项目依赖，没有运行 pytest、数据、模型、训练、评价或 GPU 任务。第一轮运行正确性必须由获批后的服务器 tests/strong smoke 证明。第二轮不得改写第一轮 MVP 代码语义，只能复用公共模块并新增 rollout 相关入口、配置和脚本。
 
-## 1. 实现范围
+## 1. 第一轮冻结实现范围
 
-实现 Qwen3-4B、30k UltraFeedback、seed42 的八条最终 LoRA 轨迹：
+第一轮已实现 Qwen3-4B、30k UltraFeedback、seed42 的八条最终 LoRA 轨迹；这些轨迹属于冻结基线，第二轮只读引用，不重跑、不覆盖：
 
 ```text
 DPO-10
@@ -24,6 +25,17 @@ SOPPO-PE-static lambda = 0.1 / 0.3 / 0.5 / 1.0
 ```
 
 旧 SFT、hard-static、Pseudo-target、DPO-style PE、linear/exp-warmup lambda 和全参 FSDP 路径已删除。保留数据隔离、Qwen manifest、DPO reference cache、独立 test、L18 `C_epsilon` 和 fail-closed 顺序任务图。`scripts/cluster/` 保留旧 Slurm 适配；`scripts/standalone/` 只替换平台层并复用同一批 stage worker、Python 入口和冻结配置。
+
+## 1.1 第二轮新增范围
+
+第二轮只新增两条 rollout 相关 PE 实验：
+
+```text
+SOPPO-PE-sft-rollout-exp
+SOPPO-PE-rollout-only-exp
+```
+
+DPO-10、DPO-100、SSPO-hard-exp、第一轮静态 PE 与第一轮 `SOPPO-PE-exp` 均作为冻结基线只读引用。第二轮必须使用独立 experiment_id、独立输出根目录和独立命令入口，最终合并阶段只读取两轮各自导出的聚合结果。
 
 ## 2. 关键实现
 
@@ -53,14 +65,14 @@ smoke 明确设置 `training.smoke_mode=true`，只缩小数据量和 optimizer 
 
 adapter 不含 optimizer/scheduler state，`--init-checkpoint` 可继续微调参数，但不是 bit-exact resume；hard threshold EMA 也会重新初始化。
 
-### 2.3 损失
+### 2.3 第一轮损失实现
 
 - `src/model/dpo_loss.py`：response-only token-sum logp、response-token mean logp、任意 A/B label DPO。
 - `src/model/sspo_loss.py`：SimPO labeled loss、margin-free PE pair probability、paper gamma、normalized fixed lambda、Gaussian KDE Bayes threshold、mean/std/threshold EMA 和 single-response hard logistic risk。
 - KDE 使用论文的 200 grid；论文未给 bandwidth，代码冻结 per-class Scott rule并记录 bandwidth/risk/threshold。
 - `src/model/pe_loss.py`：dense PE，加跨 rank完整 optimizer population 的精确一阶系数和第二次前向 surrogate。
 
-SSPO-hard 对 unlabeled pair 的 A/B 独立打 hard label；PE 对 A/B 形成一个 direction-unknown pair probability。两者都看不到 hidden label。
+SSPO-hard 对 unlabeled pair 的 A/B 独立打 hard label；PE 对 A/B 形成一个 direction-unknown pair probability。两者都看不到 hidden label。第二轮可复用 `pe_loss.py` 的 PE 公共实现，但必须新增 rollout candidate construction，不得改变第一轮静态 pair 语义。
 
 ### 2.4 Trainer 与 batch
 
@@ -86,12 +98,12 @@ validation：DPO 用 reference delta；SSPO/PE 用 margin-free SimPO mean-logp d
 
 - `src/training/selectors.py`：共同 raw mean-logp score 下 DPO-10 对训练前显式禁用 adapter 的冻结 base 的 .05 headroom gate，并核对前后 score type/样本数；四条 static lambda validation-only selector。DPO-100只作为 oracle。
 - `src/evaluation/evaluator.py`：独立 adapter 加载；只有 DPO 读取 reference cache，只有此入口读取 test private labels。
-- `src/evaluation/aggregate.py`：要求八个评价完整，报告 dynamic controlled 与 validation-selected static 差值，不在 test 上挑最好方法。
+- `src/evaluation/aggregate.py`：第一轮要求八个评价完整，报告 dynamic controlled 与 validation-selected static 差值，不在 test 上挑最好方法。第二轮需要新增独立聚合入口，只读取两条 rollout 实验及第一轮冻结基线摘要。
 - `src/evaluation/c_epsilon.py`：Qwen L18，epsilon `{.01,.025,.05,.10}`，module-first equal5/equal7。
 - `src/data/audit_prepared_data.py`：提交前重验30k行数、SHA-256、跨 split ID、公开隐藏标签和私有标签精确连接；审计摘要进入回传白名单。
 - `observe/.../GetSlice/utils/model_utils.py`：相对原工具唯一的当前项目兼容改动是 adapter-aware offline load + in-memory safe merge。
 
-## 3. 冻结超参
+## 3. 第一轮冻结超参
 
 | 项 | DPO-10 / DPO-100 | SSPO-hard / SOPPO-PE |
 | --- | ---: | ---: |
@@ -108,7 +120,7 @@ validation：DPO 用 reference delta；SSPO/PE 用 margin-free SimPO mean-logp d
 
 SSPO/PE exp：`gamma0=1`、`gamma_min=2700/26700`、`decay=.01`。PE static使用 normalized lambda `{.1,.3,.5,1.0}`。hard：prior.5、EMA.95、KDE grid200、Scott bandwidth。PE：epsilon1e-8、L1、denominator不detach。
 
-## 4. 两类服务器入口与不重复的八条训练
+## 4. 第一轮服务器入口与不重复的八条训练
 
 旧共享集群入口保留在 `scripts/cluster/EXECUTION_GUIDE.md`：环境、模型、数据准备后由 `submit_all.sh` 提交 Slurm `afterok` DAG；每次提交从指定Git commit导出一个不含`.git`的源码快照并记录全文件SHA-256 manifest，worker只运行该快照，因此不同commit的DAG可以并存而不共享可变checkout。节点级故障恢复继续使用registry-scoped `cancel_pipeline.sh`与`submit_from_dpo.sh`，不得按共享账户整批取消任务。
 
@@ -122,7 +134,7 @@ SSPO/PE exp：`gamma0=1`、`gamma_min=2700/26700`、`decay=.01`。PE static使�
 
 两种平台都会在开始前重验模型 manifest、30k 数据、clean Git checkout，并锁定完整 commit。旧服务器仍在排队的同一实验必须先按旧 registry 精确取消，避免新旧服务器产生两个同名运行。
 
-共同逻辑任务图：
+第一轮共同逻辑任务图：
 
 ```text
 tests -> strong smoke -> oracle/reference
@@ -133,7 +145,7 @@ tests -> strong smoke -> oracle/reference
       -> evaluation [8] -> aggregate/export
 ```
 
-stage03/04/05 合计正好八条 final trajectories，都写在 `runs/<experiment>/main/`，不存在预实验后重复训练。
+stage03/04/05 合计正好八条 first-round final trajectories，都写在 `runs/<experiment>/main/`，不存在预实验后重复训练。第二轮不得复用该 experiment_id 或输出目录。
 
 ## 5. checkpoint、产物与空间
 
@@ -158,7 +170,7 @@ stage03/04/05 合计正好八条 final trajectories，都写在 `runs/<experimen
 
 ## 7. 静态复核与服务器待验证
 
-本地复核范围：cluster/standalone shell `bash -n`、`git diff --check`、旧接口/方法/路径静态搜索、八方法名称和配置入口交叉核对。依赖 import、pytest、Qwen3/PEFT兼容、DDP、显存、数值、adapter round-trip、GetSlice与两类 pipeline 均必须在服务器验证。
+本地复核范围：cluster/standalone shell `bash -n`、`git diff --check`、旧接口/方法/路径静态搜索、第一轮八方法名称和配置入口交叉核对。第二轮新增时还必须核对只新增两条 rollout 实验，且不改写第一轮入口。依赖 import、pytest、Qwen3/PEFT兼容、DDP、显存、数值、adapter round-trip、GetSlice与两类 pipeline 均必须在服务器验证。
 
 已知风险：
 

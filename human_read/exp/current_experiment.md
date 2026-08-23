@@ -16,24 +16,18 @@ v0.6 替代 v0.5 的 SFT/Pseudo/DPO+PE 方案。第一轮静态 PE 已完成并�
 
 ## 1. 问题与最终对照
 
-核心问题：第一轮静态 PE 已完成后，第二轮 rollout 相关实验中，population-level PE 在 SFT+rollout 与 rollout-only 之间能否保持优势，并进一步向 DPO-100 oracle 靠近。
+核心问题：第一轮 MVP 已经完成并冻结 DPO-10、DPO-100、静态 PE 与已有伪标签/SSPO 类对照后，第二轮只新增 rollout 相关 PE 实验：SFT+rollout 是否优于 rollout-only，并相对第一轮冻结基线提供增量。
 
-第二轮最终轨迹为：
+第二轮新增轨迹只有两条：
 
-1. `DPO-10`；
-2. `DPO-100`；
-3. `SOPPO-PE-exp`；
-4. `SOPPO-PE-rollout-only-exp`；
-5. `SOPPO-PE-static-0.1`；
-6. `SOPPO-PE-static-0.3`；
-7. `SOPPO-PE-static-0.5`；
-8. `SOPPO-PE-static-1.0`。
+1. `SOPPO-PE-sft-rollout-exp`；
+2. `SOPPO-PE-rollout-only-exp`。
 
-第一轮静态 PE 结果不再重复作为主项，而是作为已冻结基线单独存储。第二轮只比较动态 rollout 相关主线与其消融；`SOPPO-PE-exp` 与 `SOPPO-PE-rollout-only-exp` 共享 labeled loss、优化超参、batch 和同一 `gamma_t`，只替换 unlabeled objective。四条 static PE 仅作为固定混合的补充消融与已完成基线对照。
+DPO-10、DPO-100、静态 PE 与已有伪标签/SSPO 类对照均属于第一轮 MVP 冻结结果，只读引用，不在第二轮重跑。第二轮只比较动态 rollout 相关主线与其消融；`SOPPO-PE-sft-rollout-exp` 与 `SOPPO-PE-rollout-only-exp` 共享 labeled loss、优化超参、batch 和同一 `gamma_t`，只替换 unlabeled objective。
 
 ## 2. 数据合同
 
-第一轮静态 PE 的结果目录与第二轮 rollout 扩展的结果目录必须分离存储，不得互相覆盖；后续最终合并只读取两边导出的聚合结果，不回写原始实验产物。
+第一轮 MVP 的结果目录与第二轮 rollout 扩展的结果目录必须分离存储，不得互相覆盖；第二轮不得重跑或覆盖 DPO-10、DPO-100、静态 PE 与已有伪标签/SSPO 类对照。后续最终合并只读取两边导出的聚合结果，不回写原始实验产物。
 
 继续复用已经冻结的 `<SERVER_BASE>/data/ultrafeedback/mvp-v0.5-30k/`，不复制或覆盖数据：
 

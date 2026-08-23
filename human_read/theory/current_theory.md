@@ -196,15 +196,12 @@ $$
 
 ### 6.1 对照组
 
-第一轮 MVP 已完成静态 PE。第二轮在同一实验谱系里比较三类 rollout 相关方法：
+第一轮 MVP 已经包含 DPO-10%、Pseudo-target/SSPO 类基线、静态 PE 与 DPO-100% 等参照。第二轮**不重跑这些已有臂**，只新增两条 rollout 相关 PE 实验：
 
-1. **DPO-10%**：仅使用 $D_L$，作为有限标签下界基线。
-2. **Pseudo-target**：先在 $D_L$ 上训练，再为 $D_U$ 生成硬或软的 instance-level target，并继续训练。
-3. **DPO + PE（SFT+rollout）**：对每个 SFT prompt 由当前策略在线生成 $y_j^o$，构造 $D_U(\theta)=\{(x_j,y_j^s,y_j^o)\}$，并在该动态候选集合上计算同样的 $L_{\mathrm{PE}}$。
-4. **DPO + PE（rollout-only）**：进一步去掉 $y_j^s$，只保留 rollout 生成的候选回复，用来检验 SFT 参考锚点是否必要。
-5. **DPO-100%**：恢复 $D_U$ 的真实标签，作为 oracle upper bound，不作为同等监督预算下的竞争方法。
+1. **DPO + PE（SFT+rollout）**：对每个 SFT prompt 由当前策略在线生成 $y_j^o$，构造 $D_U(\theta)=\{(x_j,y_j^s,y_j^o)\}$，并在该动态候选集合上计算同样的 $L_{\mathrm{PE}}$。
+2. **DPO + PE（rollout-only）**：进一步去掉 $y_j^s$，只保留 rollout 生成的候选回复，用来检验 SFT 参考锚点是否必要。
 
-这一轮的目的不是再验证静态 PE，而是把“rollout 是否提供关键增量”“SFT 参考是否必要”放在同一条主线里比较，并与第一轮静态 PE 结果分离存储、分离命名。
+DPO-10%、DPO-100%、静态 PE 与 Pseudo-target/SSPO 等均作为第一轮冻结基线只读引用，不作为第二轮新任务。第二轮的目的不是再验证静态 PE 或重新建立上下界，而是把“rollout 是否提供关键增量”“SFT 参考是否必要”放在同一条主线里比较，并与第一轮结果分离存储、分离命名。
 
 第一轮可使用一个完整标注的 preference dataset，例如附件提出的 UltraFeedback。具体数据版本、过滤、划分和模型选择属于实验设计，必须在运行前固定。
 
@@ -308,7 +305,7 @@ $$
 | --- | --- | --- | --- |
 | H1 | 少量真实偏好对足以锚定共享的偏好方向 | 第一轮静态 PE 的测试集 Acc 高于 DPO-10%，且 Brier 不恶化 | 多切分、多随机种子下无稳定提升 |
 | H2 | 群体级结构约束比逐样本伪目标更能抑制早期错误累积 | 第一轮静态 PE 优于公平实现的硬/软 Pseudo-target | Pseudo-target 持续持平或更优 |
-| H3 | rollout 引入后，SFT 参考锚点仍可能提供额外信息 | 第二轮 SFT+rollout 在受控增量实验中优于 rollout-only 或静态 PE | rollout-only 持平或更优，说明 SFT 锚点不必要 |
+| H3 | rollout 引入后，SFT 参考锚点仍可能提供额外信息 | 第二轮 SFT+rollout 在受控增量实验中优于 rollout-only，并相对第一轮冻结基线有增量 | rollout-only 持平或更优，说明 SFT 锚点不必要 |
 | H4 | 第一轮静态 PE 与第二轮 rollout 实验可分离存储、独立复现 | 两轮实验目录、命令和产物彼此隔离，且 MVP 代码冻结不被改写 | 两轮结果混写、命令复用不独立或覆盖既有产物 |
 
 ## 9. 与相关工作的暂定关系
@@ -345,22 +342,20 @@ $$
 - **预注册**：避免实验后调优
 
 ### 10.4 Baseline 设置
-- **DPO-10%**：仅使用 $D_L$（有限标签下界）
-- **Pseudo-target**：硬标签 $\widetilde{z}_i = \mathbb{1}[p_i > 0.5]$，实时采样与 DPO+PE 对齐
-- **DPO+PE**：本方法
-- **DPO-100%**：oracle upper bound（非竞争 baseline）
+- **第一轮冻结基线（只读引用，不重跑）**：DPO-10%、Pseudo-target/SSPO 类基线、静态 DPO+PE、DPO-100%
+- **第二轮新增实验**：DPO+PE（SFT+rollout）与 DPO+PE（rollout-only）
 
 ### 10.5 成功标准
 - **第一轮 MVP**：静态 PE，3 个随机种子，统计显著性 p < 0.05
 - **第二轮 rollout 实验**：独立命名、独立存储、独立命令；不改写 MVP 代码，只复用公共模块并新增实现
 - **第一轮最低有效性**：DPO+PE 优于 DPO-10%
 - **第一轮核心贡献**：DPO+PE 优于 Pseudo-target
-- **第二轮核心比较**：SFT+rollout vs rollout-only；静态 PE 结果只作已完成基线，不再重复作为主项
+- **第二轮核心比较**：SFT+rollout vs rollout-only；DPO-10%、DPO-100%、静态 PE 与 Pseudo-target/SSPO 等第一轮结果只作冻结基线，不重跑
 - **度量**：Acc 和 Brier 分别报告，差异 ≤1% 视为无实质差异
 
 ### 10.6 撤退标准
 - **时间盒**：1-2 周诊断分析
-- **触发条件**：DPO+PE 与 DPO-10% 无显著差异或更差（3 种子一致）
+- **第一轮触发条件**：静态 DPO+PE 与 DPO-10% 无显著差异或更差（3 种子一致）
 - **第一轮撤退动作**：静态 PE 不成立时先暂停，不自动把 rollout 当作补救；第二轮只在第一轮结论清楚后单独推进
 
 ### 10.7 `C_{\gamma}` 状态
