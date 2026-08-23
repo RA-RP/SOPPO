@@ -1,4 +1,5 @@
 import copy
+import hashlib
 import json
 import sys
 from pathlib import Path
@@ -13,6 +14,7 @@ from src.round2.queue_protocol import (
     validate_request,
     validate_response,
 )
+from src.round2.prepare_sft_anchor import SELECTION_RULE, prepare_sft_anchor
 from src.round2.run_rollout import _build_pairs
 from src.round2.sft_schema import SFT_SCHEMA_VERSION, validate_sft_corpus
 from src.round2.tp_backend import build_tp_command, launch_spec_from_config
@@ -34,8 +36,6 @@ def round2_config(method="soppo_pe_sft_rollout_exp"):
             f"output.run_dir=/server/runs/{method}",
             f"rollout.artifact_dir=/server/runs/{method}/rollouts",
             "rollout.sft_data_file=/server/data/round2/sft.jsonl",
-            "rollout.temperature=0.7",
-            "rollout.top_p=0.9",
             f"rollout.source={source}",
         ],
     )
@@ -60,6 +60,11 @@ def test_round2_config_requires_tp2_lora_and_separate_rollout_gpu():
     with pytest.raises(ValueError, match="save_steps=1"):
         validate_round2_config(invalid)
 
+    invalid = copy.deepcopy(config)
+    invalid["rollout"]["top_p"] = 0.9
+    with pytest.raises(ValueError, match="top_p=0.8"):
+        validate_round2_config(invalid)
+
 
 def test_round2_strong_smoke_contract_is_not_a_small_batch():
     config = round2_config()
@@ -81,7 +86,9 @@ def test_round2_strong_smoke_contract_is_not_a_small_batch():
 def _request(checkpoint: Path, method: str):
     generation = {
         "temperature": 0.7,
-        "top_p": 0.9,
+        "top_p": 0.8,
+        "top_k": 20,
+        "min_p": 0.0,
         "max_new_tokens": 512,
         "min_new_tokens": 0,
         "max_model_len": 2048,
@@ -163,8 +170,18 @@ def test_round2_sft_corpus_matches_every_unlabeled_prompt(tmp_path):
     unlabeled = tmp_path / "unlabeled.jsonl"
     sft = tmp_path / "sft.jsonl"
     rows = [
-        {"sample_id": "one", "prompt": "p1"},
-        {"sample_id": "two", "prompt": "p2"},
+        {
+            "sample_id": "one",
+            "prompt": "p1",
+            "response_a": "response-one",
+            "response_b": "other-one",
+        },
+        {
+            "sample_id": "two",
+            "prompt": "p2",
+            "response_a": "response-two",
+            "response_b": "other-two",
+        },
     ]
     unlabeled.write_text("".join(json.dumps(row) + "\n" for row in rows))
     sft.write_text(
@@ -184,12 +201,61 @@ def test_round2_sft_corpus_matches_every_unlabeled_prompt(tmp_path):
     summary = validate_sft_corpus(sft, unlabeled, expected_rows=2)
     assert summary["rows"] == 2
     assert summary["matches_unlabeled_split"] is True
+    assert summary["matches_public_response_a"] is True
 
     leaked = json.loads(sft.read_text().splitlines()[0])
     leaked["metadata"] = "not-preregistered"
     sft.write_text(json.dumps(leaked) + "\n")
     with pytest.raises(ValueError, match="unregistered fields"):
         validate_sft_corpus(sft, unlabeled, expected_rows=2)
+
+
+def test_round2_sft_anchor_is_deterministically_derived_and_reused(tmp_path):
+    unlabeled = tmp_path / "unlabeled.jsonl"
+    output_dir = tmp_path / "anchor"
+    rows = [
+        {
+            "sample_id": "one",
+            "prompt": "p1",
+            "response_a": "a1",
+            "response_b": "b1",
+            "is_truncated": False,
+        },
+        {
+            "sample_id": "two",
+            "prompt": "p2",
+            "response_a": "a2",
+            "response_b": "b2",
+            "is_truncated": True,
+        },
+    ]
+    unlabeled.write_text("".join(json.dumps(row) + "\n" for row in rows))
+    (tmp_path / "manifest_public.json").write_text(
+        json.dumps(
+            {
+                "dataset": "openbmb/UltraFeedback",
+                "unlabeled_train": 2,
+                "split_ratios": {"unlabeled_train": 0.8},
+                "position_randomization_ratio": {"unlabeled": 0.5},
+                "checksums": {
+                    "unlabeled.jsonl": hashlib.sha256(
+                        unlabeled.read_bytes()
+                    ).hexdigest()
+                },
+            }
+        )
+    )
+    anchor, evidence = prepare_sft_anchor(unlabeled, output_dir, expected_rows=2)
+    actual = [json.loads(line) for line in anchor.read_text().splitlines()]
+    assert [row["response"] for row in actual] == ["a1", "a2"]
+    assert evidence["selection_rule"] == SELECTION_RULE
+    assert evidence["reused"] is False
+
+    reused_anchor, reused = prepare_sft_anchor(
+        unlabeled, output_dir, expected_rows=2
+    )
+    assert reused_anchor == anchor
+    assert reused["reused"] is True
 
 
 def test_round2_queue_refuses_overwrite(tmp_path):

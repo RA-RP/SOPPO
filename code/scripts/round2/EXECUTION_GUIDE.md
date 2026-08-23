@@ -1,6 +1,6 @@
 # Round2 3×4090 执行指南
 
-> 当前状态：`LOCKED / CODE REVIEW`。本指南对应尚未提交、尚未服务器验证的 TP2/vLLM 实现。用户确认本次代码交接、SFT corpus、temperature 和 top-p 以前，只阅读命令，不上传或启动。
+> 当前状态：`LOCKED / CODE REVIEW`。本指南对应尚未提交、尚未服务器验证的 TP2/vLLM 实现。24k固定单回复锚点与采样参数已确认；用户明确确认完整代码交接并手工形成 clean commit 以前，只阅读命令，不上传或启动。
 
 ## 1. 固定资源和目录
 
@@ -27,17 +27,29 @@ Round2 使用仓库外的两个隔离环境：
 
 第一轮的 `envs/youc`、`scripts/cluster/` 和 `scripts/standalone/` 不被修改，也不能和本入口混用。
 
-## 2. 正式运行前必须先确定的三项
+## 2. 已冻结的数据和采样合同
 
-必须由用户预先确认：
+源数据固定为：
 
-```bash
-export SOPPO_ROUND2_SFT_DATA_FILE='<24k单回复SFT JSONL绝对路径>'
-export SOPPO_ROUND2_TEMPERATURE='<获批temperature>'
-export SOPPO_ROUND2_TOP_P='<获批top-p>'
+```text
+/data/youchang/youchang/data/ultrafeedback/mvp-v0.5-30k/unlabeled_train.jsonl
 ```
 
-SFT JSONL 每行只能含 `sample_id,prompt,response`（可含值为 `round2.sft.v1` 的 `schema_version`）。它必须与 frozen `unlabeled_train.jsonl` 的24,000个 ID/prompt 精确连接，且不能含 label、chosen/rejected 或 response pair。
+`00_prepare_sft_anchor.sh` 不读取 private label，只逐行取已经随机换位的公开 `response_a`，生成：
+
+```text
+/data/youchang/youchang/data/round2/mvp-v0.5-30k/sft_anchor_response_a/sft_anchor.jsonl
+```
+
+派生 JSONL 每行只含 `schema_version,sample_id,prompt,response`；预检要求24,000条 response、ID和prompt都与公开源精确一致。冻结源文件不会被覆盖，已有派生目录只有完全通过 manifest/SHA/逐行验证才能复用。
+
+两条方法统一使用 Qwen3 non-thinking 官方采样配置：
+
+```text
+temperature=0.7, top_p=0.8, top_k=20, min_p=0
+```
+
+这些值已写入配置并由 validator 锁定，不需要在 shell 中重复填写。
 
 配置缺少上述任一项都会立即失败。这是研究门禁，不是环境故障。
 
@@ -64,6 +76,14 @@ bash 00_setup_envs.sh
 
 该步骤安装依赖并运行 `pip check`，但不启动 GPU 训练。不要把 Round2 包覆盖安装进第一轮 `envs/youc`。
 
+随后显式生成或复核一次固定锚点：
+
+```bash
+bash 00_prepare_sft_anchor.sh
+```
+
+`start_all.sh` 内还会再执行同一验证，因此手工执行这一步是为了在占用 GPU 前更早发现数据错误，不会重复生成或覆盖有效文件。
+
 ## 5. 启动前实时检查三张卡
 
 ```bash
@@ -83,9 +103,6 @@ preflight 要求三张卡均为 RTX 4090、物理显存至少23GiB，并且没�
 export ROUND2_EXPERIMENT_ID='exp-YYYYMMDD-NN-round2-tp2'
 export SOPPO_ROUND2_TRAIN_GPU_IDS='0,1'
 export SOPPO_ROUND2_ROLLOUT_GPU_IDS='2'
-export SOPPO_ROUND2_SFT_DATA_FILE='<已确认绝对路径>'
-export SOPPO_ROUND2_TEMPERATURE='<已确认值>'
-export SOPPO_ROUND2_TOP_P='<已确认值>'
 
 cd "$SERVER_BASE/SOPPO/code/scripts/round2"
 bash start_all.sh
@@ -94,7 +111,8 @@ bash start_all.sh
 后台控制器按顺序执行：
 
 ```text
-resolve 两条 formal config
+生成/复核24k固定单回复锚点
+  → resolve 两条 formal config
   → 全量 server pytest
   → 两条方法各一个 production-path strong smoke
   → SOPPO-PE-sft-rollout-exp formal

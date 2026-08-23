@@ -62,8 +62,11 @@ rollout:
   max_num_seqs: 8
   enforce_eager: true
   minimum_vllm_version: "0.9.2"
-  temperature: null
-  top_p: null
+  # Qwen3 official non-thinking sampling profile, preregistered for both arms.
+  temperature: 0.7
+  top_p: 0.8
+  top_k: 20
+  min_p: 0.0
   sync_interval_steps: 1
   poll_interval_seconds: 1.0
   request_timeout_seconds: 3600

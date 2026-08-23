@@ -37,7 +37,7 @@
 - 当前入口：`human_read/exp/current_experiment.md` v0.6 的第二轮 rollout 扩展；当前实现目标为3×4090上 GPU0–1 native TP-LoRA、GPU2独立vLLM
 - 已完成门禁：第一轮既有理论/实验/代码与执行记录保持冻结；用户已明确批准第二轮 TP=2 + 单卡 rollout 的代码修改方向。本次修改仍未提交、未完成代码交接确认。
 - 锁定阶段：`SERVER_EXECUTION`、`RESULT_HANDOFF`、`NEXTCYCLE_DISCUSSION`
-- 下一解锁条件：用户先确认 SFT 单回复 corpus、rollout temperature/top-p，再审阅本次未提交 diff；完成静态交接并形成 clean commit 后，方可请求在3×4090服务器运行 tests/strong smoke。
+- 下一解锁条件：24k固定单回复锚点及 `temperature=0.7/top_p=0.8/top_k=20/min_p=0` 已于2026-08-23获用户确认；用户仍需审阅本次未提交 diff，并在明确确认代码交接后手工形成 clean commit，方可请求在3×4090服务器运行环境安装、tests/strong smoke。
 
 ## 标识与交叉引用
 

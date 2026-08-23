@@ -22,7 +22,7 @@ GPU 2 ─── vLLM rollout worker（独立的一份冻结 base + 当前 LoRA�
 - `src/round2/tp_backend.py` / `run_tp.py`：TP 命令、版本和真实分片证据；
 - `src/round2/run_rollout.py`：常驻 vLLM worker；
 - `src/round2/queue_protocol.py`：训练与 rollout 的原子文件队列；
-- `src/round2/sft_schema.py`：单回复 SFT corpus 的隔离门禁。
+- `src/round2/prepare_sft_anchor.py` / `sft_schema.py`：从公开 MVP unlabeled `response_a` 确定性派生单回复锚点，并逐条执行隔离门禁。
 
 ## 2. 一个 optimizer step 怎么流动
 
@@ -55,7 +55,7 @@ clip → 一个 optimizer step → 发布 step t+1 adapter
 
 ## 3. 为什么两种方法生成数不同
 
-两条方法共享相同的 24,000 prompt、SFT corpus、采样配置和 current-policy 定义，只替换候选构造：
+两条方法共享相同的 24,000 prompt、固定单回复锚点、采样配置和 current-policy 定义，只替换候选构造：
 
 | 方法 | GPU 2 每 prompt 生成 | PE pair |
 | --- | ---: | --- |
@@ -82,21 +82,15 @@ resolved config 是运行时唯一真源。它冻结：
 - 完整 Git commit；
 - Qwen3 路径和 manifest；
 - 30k 数据路径；
-- SFT corpus 路径和 SHA；
+- 固定单回复锚点的源/目标路径、SHA和 `public response_a` 逐条一致性；
 - GPU `0,1` / `2`；
 - TP=2、LoRA r8/alpha16、bf16/2048；
 - 8+56、2 epochs、lr1e-5、paper `gamma_t`；
-- temperature、top-p、512 max new tokens。
+- Qwen3 non-thinking `temperature=0.7`、`top_p=0.8`、`top_k=20`、`min_p=0` 与512 max new tokens。
 
-SFT corpus 必须是 24,000 行 `sample_id,prompt,response`，与冻结 unlabeled split 的 ID 和 prompt 精确一一对应；任何 label、chosen/rejected 或 pair 字段都会被拒绝。
+固定锚点由 `00_prepare_sft_anchor.sh` 从冻结 `unlabeled_train.jsonl` 逐行取已经随机换位的公开 `response_a`，写到仓库外新的 Round2 数据目录。目标必须是24,000行 `sample_id,prompt,response`；预检逐条验证 response、ID和prompt，任何 label、chosen/rejected 或 pair 字段都会被拒绝。既有有效派生目录只验证复用，绝不覆盖。
 
-当前尚未由用户确认的正式参数是：
-
-1. 单回复 SFT corpus 的来源与绝对路径；
-2. rollout `temperature`；
-3. rollout `top_p`。
-
-因此代码保持 null / 环境变量必填，不自行选择经验默认值。
+上述数据规则及四项采样参数已于2026-08-23获用户确认。这里的“固定锚点”不是独立高质量 SFT 语料；结果只能解释为固定历史回复锚点与纯在线 rollout 的比较。
 
 ## 6. strong smoke 与正式长链
 
@@ -113,7 +107,8 @@ SFT corpus 必须是 24,000 行 `sample_id,prompt,response`，与冻结 unlabele
 `run_all.sh` 前台依次执行：
 
 ```text
-resolve 两条 formal config
+确定性生成/复核24k固定单回复锚点
+  → resolve 两条 formal config
   → 全量 server pytest
   → SFT+rollout strong smoke
   → rollout-only strong smoke

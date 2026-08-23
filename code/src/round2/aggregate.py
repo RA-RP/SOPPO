@@ -113,7 +113,16 @@ def main() -> None:
         "comparisons": {
             "sft_rollout_minus_rollout_only_accuracy": delta,
         },
-        "interpretation_limit": "single-seed round2 trend; no significance claim",
+        "candidate_anchor": {
+            "selection_rule": (
+                "mvp_unlabeled_public_response_a_after_seed42_position_randomization"
+            ),
+            "interpretation": "fixed historical response anchor, not independent SFT",
+        },
+        "interpretation_limit": (
+            "single-seed round2 fixed-anchor versus rollout-only trend; "
+            "no significance or general SFT-corpus claim"
+        ),
         "first_round_merge": "separate read-only downstream handoff",
     }
     (export / "summary.json").write_text(
@@ -150,7 +159,8 @@ def main() -> None:
     lines.extend(
         [
             "",
-            f"- SFT+rollout minus rollout-only accuracy: `{delta:.4f}`",
+            f"- Fixed-anchor+rollout minus rollout-only accuracy: `{delta:.4f}`",
+            "- Fixed anchor is the public randomized `response_a`; it is not an independent high-quality SFT corpus.",
             "- 第一轮冻结基线在后续结果交接中只读合并，本导出不回写第一轮产物。",
         ]
     )

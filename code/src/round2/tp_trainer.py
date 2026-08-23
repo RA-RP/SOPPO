@@ -438,6 +438,8 @@ def _request_dynamic_pairs(
     generation = {
         "temperature": float(rollout["temperature"]),
         "top_p": float(rollout["top_p"]),
+        "top_k": int(rollout["top_k"]),
+        "min_p": float(rollout["min_p"]),
         "max_new_tokens": int(rollout["max_new_tokens"]),
         "min_new_tokens": int(rollout["min_new_tokens"]),
         "max_model_len": int(rollout["max_model_len"]),

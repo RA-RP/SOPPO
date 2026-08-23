@@ -21,6 +21,14 @@
 
 ## 归档记录
 
+### `cycle-20260818-01` / Round2 rollout addendum / 设计版本 v0.6 — 2026-08-23
+
+- 状态：数据与采样补充已获用户明确批准；仍处于 `CODE_IMPLEMENTATION`，尚未完成代码交接或服务器授权。
+- 固定锚点：从第一轮 `mvp-v0.5-30k/unlabeled_train.jsonl` 的24,000条公开记录逐行取已随机换位的 `response_a`，生成独立的 `sample_id,prompt,response` JSONL；不读取 private label、不选择 chosen、不覆盖冻结源文件。
+- 采样合同：两条 Round2 方法均使用 Qwen3 non-thinking `temperature=0.7`、`top_p=0.8`、`top_k=20`、`min_p=0`。
+- 解释边界：该 response 是冻结无标签 pair 中的固定历史回复锚点，不是独立高质量 SFT 语料；核心比较解释为固定锚点+rollout 对 rollout-only。
+- 实现要求：派生文件记录源/目标 SHA，重复执行只允许验证后复用；预检必须逐条证明 response 等于公开 response_a，采样四元组必须进入 resolved config 和每步队列证据。
+
 ### `cycle-20260818-01` / `exp-20260818-01-standard-mvp` / 设计版本 v0.1 — 2026-08-18
 
 - 状态：设计中；已选择标准数据集路线，待实现代码并冻结数据 revision 与正式配置。

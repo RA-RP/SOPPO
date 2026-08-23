@@ -266,14 +266,27 @@ def validate_round2_config(config: Dict[str, Any]) -> None:
         raise ValueError("Round2 current-policy rollout requires sync_interval_steps=1")
     temperature = rollout.get("temperature")
     top_p = rollout.get("top_p")
+    top_k = rollout.get("top_k")
+    min_p = rollout.get("min_p")
     if isinstance(temperature, bool) or not isinstance(temperature, (int, float)):
         raise ValueError("rollout.temperature must be an explicit numeric value")
     if isinstance(top_p, bool) or not isinstance(top_p, (int, float)):
         raise ValueError("rollout.top_p must be an explicit numeric value")
-    if float(temperature) <= 0:
-        raise ValueError("rollout.temperature must be explicitly preregistered and > 0")
-    if not 0 < float(top_p) <= 1:
-        raise ValueError("rollout.top_p must be explicitly preregistered in (0, 1]")
+    if isinstance(top_k, bool) or not isinstance(top_k, int):
+        raise ValueError("rollout.top_k must be an explicit integer value")
+    if isinstance(min_p, bool) or not isinstance(min_p, (int, float)):
+        raise ValueError("rollout.min_p must be an explicit numeric value")
+    sampling_contract = {
+        "temperature": 0.7,
+        "top_p": 0.8,
+        "top_k": 20,
+        "min_p": 0.0,
+    }
+    for key, expected in sampling_contract.items():
+        if rollout.get(key) != expected:
+            raise ValueError(
+                f"Round2 requires the preregistered Qwen3 non-thinking {key}={expected}"
+            )
     if float(rollout.get("poll_interval_seconds", 0)) <= 0 or float(
         rollout.get("request_timeout_seconds", 0)
     ) <= 0:

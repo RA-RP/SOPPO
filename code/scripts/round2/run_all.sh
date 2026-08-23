@@ -55,6 +55,10 @@ handle_signal() {
 trap handle_failure ERR
 trap handle_signal INT TERM
 
+failed_stage="prepare_sft_anchor"
+update_status "running" "$failed_stage"
+bash "$SCRIPT_DIR/00_prepare_sft_anchor.sh"
+
 failed_stage="resolve_configs"
 update_status "running" "$failed_stage"
 bash "$SCRIPT_DIR/01_resolve_all.sh"

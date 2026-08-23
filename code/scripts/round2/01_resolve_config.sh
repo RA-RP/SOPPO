@@ -19,23 +19,10 @@ GIT_COMMIT="$(git -C "$SOPPO_ROOT" rev-parse HEAD)"
 
 MODEL_DIR="${SOPPO_MODEL_DIR:-$MODEL_ROOT/Qwen3-4B}"
 DATA_DIR="${SOPPO_DATA_DIR:-$DATA_ROOT/ultrafeedback/mvp-v0.5-30k}"
-SFT_DATA_FILE="${SOPPO_ROUND2_SFT_DATA_FILE:-}"
-TEMPERATURE="${SOPPO_ROUND2_TEMPERATURE:-}"
-TOP_P="${SOPPO_ROUND2_TOP_P:-}"
+SFT_DATA_FILE="${SOPPO_ROUND2_SFT_DATA_FILE:-$DATA_ROOT/round2/mvp-v0.5-30k/sft_anchor_response_a/sft_anchor.jsonl}"
 TRAIN_GPU_IDS="${SOPPO_ROUND2_TRAIN_GPU_IDS:-0,1}"
 ROLLOUT_GPU_IDS="${SOPPO_ROUND2_ROLLOUT_GPU_IDS:-2}"
 
-for pair in \
-    "SOPPO_ROUND2_SFT_DATA_FILE:$SFT_DATA_FILE" \
-    "SOPPO_ROUND2_TEMPERATURE:$TEMPERATURE" \
-    "SOPPO_ROUND2_TOP_P:$TOP_P"; do
-    name="${pair%%:*}"
-    value="${pair#*:}"
-    if [[ -z "$value" ]]; then
-        echo "ERROR: set $name before resolving formal round2 config" >&2
-        exit 1
-    fi
-done
 [[ "$SFT_DATA_FILE" = /* ]] || {
     echo "ERROR: SOPPO_ROUND2_SFT_DATA_FILE must be an absolute server path" >&2
     exit 1
@@ -64,8 +51,6 @@ OVERRIDES=(
     --override "rollout.gpu_ids=$ROLLOUT_GPU_IDS"
     --override "rollout.artifact_dir=$ARTIFACT_DIR"
     --override "rollout.sft_data_file=$SFT_DATA_FILE"
-    --override "rollout.temperature=$TEMPERATURE"
-    --override "rollout.top_p=$TOP_P"
 )
 if [[ -n "${SOPPO_ROUND2_MAX_STEPS:-}" ]]; then
     OVERRIDES+=(--override "training.max_steps=$SOPPO_ROUND2_MAX_STEPS")

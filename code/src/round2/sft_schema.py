@@ -72,8 +72,8 @@ def load_sft_jsonl(path: str | Path) -> List[Dict[str, str]]:
     return rows
 
 
-def _load_unlabeled_prompts(path: Path) -> Dict[str, str]:
-    prompts: Dict[str, str] = {}
+def _load_unlabeled_anchors(path: Path) -> Dict[str, tuple[str, str]]:
+    anchors: Dict[str, tuple[str, str]] = {}
     with path.open("r", encoding="utf-8") as handle:
         for line_number, line in enumerate(handle, 1):
             if not line.strip():
@@ -86,14 +86,29 @@ def _load_unlabeled_prompts(path: Path) -> Dict[str, str]:
                 ) from exc
             sample_id = row.get("sample_id")
             prompt = row.get("prompt")
+            response_a = row.get("response_a")
             if not isinstance(sample_id, str) or not sample_id:
                 raise ValueError(f"Malformed unlabeled sample_id at line {line_number}")
             if not isinstance(prompt, str) or not prompt:
                 raise ValueError(f"Malformed unlabeled prompt at line {line_number}")
-            if sample_id in prompts:
+            if not isinstance(response_a, str) or not response_a:
+                raise ValueError(f"Malformed unlabeled response_a at line {line_number}")
+            leaked = {
+                "label",
+                "chosen",
+                "rejected",
+                "original_chosen",
+                "original_rejected",
+            } & set(row)
+            if leaked:
+                raise ValueError(
+                    "Public unlabeled source exposes forbidden preference fields: "
+                    f"line={line_number}, fields={sorted(leaked)}"
+                )
+            if sample_id in anchors:
                 raise ValueError(f"Duplicate unlabeled sample_id: {sample_id}")
-            prompts[sample_id] = prompt
-    return prompts
+            anchors[sample_id] = (prompt, response_a)
+    return anchors
 
 
 def validate_sft_corpus(
@@ -105,26 +120,32 @@ def validate_sft_corpus(
     sft_file = Path(sft_path).resolve()
     unlabeled_file = Path(unlabeled_path).resolve()
     rows = load_sft_jsonl(sft_file)
-    prompts = _load_unlabeled_prompts(unlabeled_file)
+    anchors = _load_unlabeled_anchors(unlabeled_file)
     if len(rows) != int(expected_rows):
         raise ValueError(
             f"Round2 SFT row count mismatch: actual={len(rows)}, expected={expected_rows}"
         )
-    if len(prompts) != int(expected_rows):
+    if len(anchors) != int(expected_rows):
         raise ValueError(
             "Frozen unlabeled split count does not match the round2 contract: "
-            f"actual={len(prompts)}, expected={expected_rows}"
+            f"actual={len(anchors)}, expected={expected_rows}"
         )
     sft_ids = {row["sample_id"] for row in rows}
-    if sft_ids != set(prompts):
-        missing = sorted(set(prompts) - sft_ids)[:5]
-        extra = sorted(sft_ids - set(prompts))[:5]
+    if sft_ids != set(anchors):
+        missing = sorted(set(anchors) - sft_ids)[:5]
+        extra = sorted(sft_ids - set(anchors))[:5]
         raise ValueError(
             f"SFT/unlabeled sample-id mismatch: missing={missing}, extra={extra}"
         )
     for row in rows:
-        if row["prompt"] != prompts[row["sample_id"]]:
+        prompt, response_a = anchors[row["sample_id"]]
+        if row["prompt"] != prompt:
             raise ValueError(f"SFT prompt mismatch for sample_id={row['sample_id']}")
+        if row["response"] != response_a:
+            raise ValueError(
+                "Round2 SFT anchor must equal the public randomized response_a: "
+                f"sample_id={row['sample_id']}"
+            )
     digest = hashlib.sha256(sft_file.read_bytes()).hexdigest()
     return {
         "path": str(sft_file),
@@ -132,4 +153,8 @@ def validate_sft_corpus(
         "sha256": digest,
         "schema_version": SFT_SCHEMA_VERSION,
         "matches_unlabeled_split": True,
+        "matches_public_response_a": True,
+        "selection_rule": (
+            "mvp_unlabeled_public_response_a_after_seed42_position_randomization"
+        ),
     }

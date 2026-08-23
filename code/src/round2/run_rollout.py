@@ -122,6 +122,8 @@ def _process_request(llm, tokenizer, config: Dict[str, Any], request: Dict[str, 
     configured_generation = {
         "temperature": float(rollout["temperature"]),
         "top_p": float(rollout["top_p"]),
+        "top_k": int(rollout["top_k"]),
+        "min_p": float(rollout["min_p"]),
         "max_new_tokens": int(rollout["max_new_tokens"]),
         "min_new_tokens": int(rollout["min_new_tokens"]),
         "max_model_len": int(rollout["max_model_len"]),
@@ -133,6 +135,8 @@ def _process_request(llm, tokenizer, config: Dict[str, Any], request: Dict[str, 
         n=n,
         temperature=configured_generation["temperature"],
         top_p=configured_generation["top_p"],
+        top_k=configured_generation["top_k"],
+        min_p=configured_generation["min_p"],
         max_tokens=configured_generation["max_new_tokens"],
         min_tokens=configured_generation["min_new_tokens"],
         seed=int(config["training"]["seed"]) + int(request["step"]),
@@ -265,6 +269,10 @@ def main() -> None:
             "versions": versions,
             "cuda_visible_devices": visible,
             "model": model_path,
+            "sampling": {
+                key: rollout[key]
+                for key in ("temperature", "top_p", "top_k", "min_p")
+            },
         },
     )
 

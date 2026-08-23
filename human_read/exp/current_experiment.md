@@ -182,17 +182,17 @@ standalone运行不依赖SSH会话，也不产生排队任务；默认两张GPU�
 - 训练：`TP=2, PP=1, DP=1`，bf16、SDPA、LoRA r8/alpha16/all projections；每次物理 forward/backward 为1个 preference pair，但一次 optimizer step 仍精确覆盖8 labeled +56 dynamic pairs。
 - 环境：训练侧因 PEFT 官方 TP-LoRA 接口要求而隔离使用 Transformers 5.4+/PEFT 0.19+；GPU2 的 vLLM 0.9.2 使用另一隔离环境。该版本适配不改变 Qwen3 权重、tokenization、loss 或冻结超参，第一轮 `envs/youc` 不被覆盖。
 - 在线性：每个 optimizer step 都先发布不可变 current-policy adapter，再由 GPU2 生成该步候选；不是预先用base批量生成后重复使用。
-- SFT+rollout：每个 prompt 使用一个固定 SFT response 与一个 current-policy rollout。
+- SFT+rollout：每个 prompt 使用一个固定单回复锚点与一个 current-policy rollout。锚点由同一冻结 `unlabeled_train.jsonl` 的公开 `response_a` 逐行确定性导出；A/B 已在 seed42 数据准备时随机换位，导出过程不得读取 private label。
 - rollout-only：每个 prompt 必须从该方法自己的 current policy 独立采样两条候选；不能把同一条复制到A/B两侧，也不能在两条已经分叉的训练轨迹之间共享实际输出。
 - 两条正式方法顺序运行并使用独立输出目录；第一轮结果只读引用。
 
-下面三项尚未预注册，因而第二轮 formal execution 仍锁定：
+2026-08-23 已完成 Round2 数据与采样预注册：
 
-1. 与24,000个 frozen unlabeled prompt 一一对应的 label-free 单回复 SFT corpus 来源；
-2. rollout temperature；
-3. rollout top-p。
+1. 固定单回复锚点来源为第一轮 MVP 的24,000条公开 `unlabeled_train.jsonl`；逐行只取已经随机换位的 `response_a`，另存为仅含 `schema_version/sample_id/prompt/response` 的派生 JSONL。不得按 private label 选择 chosen，也不得覆盖冻结源文件。
+2. `enable_thinking=false` 的 rollout 统一使用 Qwen3 官方建议的 `temperature=0.7`、`top_p=0.8`、`top_k=20`、`min_p=0`；两条方法完全相同。
+3. 该数据在论文语义上称为“来自冻结无标签集的固定单回复锚点”。它不是独立高质量 SFT 语料，因此本轮只能解释为“固定历史回复锚点 vs 纯在线 rollout”，不能外推为任意监督 SFT corpus 的收益。
 
-代码只实现严格 schema 和必填入口，不从隐藏 preference label 选择 chosen response，也不自行填经验默认值。用户确认上述三项并完成本次代码交接后，才可形成 clean commit 并在3×4090服务器依次执行 preflight、server tests 和 production-path strong smoke。
+代码必须确定性生成并哈希该派生文件，预检逐条验证 `response == public response_a`，同时把完整四项采样参数写进每步 request/response。正式执行仍因本次代码交接尚未获用户确认而锁定；确认 diff 并手工形成 clean commit 后，才可在3×4090服务器安装隔离环境并运行 tests/production-path strong smoke。
 
 ## 8. 评价与解释边界
 
@@ -218,5 +218,6 @@ standalone运行不依赖SSH会话，也不产生排队任务；默认两张GPU�
 - 2026-08-21：用户明确核心比较同时包含 paper exponential `gamma_t` 与 normalized fixed lambda PE。
 - 2026-08-21：用户确认上述内容无问题并要求开始正式编码。
 - 2026-08-22：服务器执行阶段中，用户明确要求在不改变训练目标与全局batch的前提下支持1/2/4卡，并可通过少量shell配置快速切换；该项作为等价执行适配实现，不新增方法臂或科学比较。
+- 2026-08-23：用户明确批准 Round2 使用第一轮24k公开 unlabeled 数据的已随机换位 `response_a` 作为固定单回复锚点，并批准 Qwen3 non-thinking 采样 `temperature=0.7/top_p=0.8/top_k=20/min_p=0`；该决定补齐此前三项开放预注册项。
 
 这些批准只解锁 v0.6 `CODE_IMPLEMENTATION`；不自动授权 SFTP 上传、模型/数据操作或 Slurm 提交。

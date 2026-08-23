@@ -98,6 +98,10 @@ def main() -> None:
         "model": str(model_dir),
         "model_manifest": str(manifest),
         "sft": sft,
+        "rollout_sampling": {
+            key: config["rollout"][key]
+            for key in ("temperature", "top_p", "top_k", "min_p")
+        },
     }
     print(json.dumps(evidence, indent=2, sort_keys=True))
 
