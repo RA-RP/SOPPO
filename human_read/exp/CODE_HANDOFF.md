@@ -8,8 +8,8 @@
 - 实验设计：`current_experiment.md` v0.6 已同步为两轮边界；第二轮只新增 rollout 相关 PE 实验
 - 当前阶段：`CODE_IMPLEMENTATION`
 - 已确认代码：用户于2026-08-24明确确认 commit `c2c9069a0b1a1187c8e709729b33b15aaec8c454`；服务器 clean checkout 与 `round2-train` / `round2-rollout` 环境已核验
-- 当前未提交增量：后台控制器的只读 GPU 空闲等待门禁；相对 `c2c9069` 的 `code/` diff（排除 `CODE_OVERVIEW.md`，包含新文件）的 SHA-256：`82c3b26be37f34f30e7de06e119c597a003a480851452793b8969b28b8bcdb70`
-- 服务器执行：新增 diff 待审阅，暂时 `LOCKED`；不得把对 `c2c9069` 的确认自动沿用到新版本
+- 当前代码候选：后台控制器的只读 GPU 空闲等待门禁；相对 `c2c9069` 的 `code/` diff（排除 `CODE_OVERVIEW.md`，包含新文件）SHA-256 为 `82c3b26be37f34f30e7de06e119c597a003a480851452793b8969b28b8bcdb70`，工作期间被外部操作形成并推送为 commit `03f26639c711dbb8b13682eb622f0f952e0a387f`
+- 服务器执行：候选 `03f2663` 待用户明确审阅确认，暂时 `LOCKED`；不得把对 `c2c9069` 的确认自动沿用到新版本
 - 当前平台适配：3×4090 目标为 GPU0–1 native TP-LoRA、GPU2 vLLM；运行前可后台等待GPU稳定空闲，实际训练仍待 strong smoke
 - 正式代码说明：`../../code/CODE_OVERVIEW.md`
 
@@ -78,6 +78,6 @@
 
 2026-08-23 用户已补齐开放决定：固定单回复锚点来自第一轮24k公开 unlabeled 的已随机换位 `response_a`；采样冻结为 `temperature=0.7/top_p=0.8/top_k=20/min_p=0`。这些实现随 `c2c9069` 于2026-08-24获用户明确确认，且服务器两个环境已安装验证。
 
-随后用户要求在三张卡暂时被占用时先挂起本实验。当前未提交实现把只读等待器插入 `server_tests → strong_smoke` 之间：默认每30秒查询 resolved config 指定的三张4090，要求90秒稳定无 compute PID、显存使用不超过1024MiB、利用率不超过5%，并持续核对 clean Git commit；它只写原子 `gpu_wait.json`，绝不发送信号。无调度器条件下无法原子锁卡，因此放行后仍由原有 preflight 再次失败关闭。该增量获得“编写”授权但尚未获得代码交接确认；服务器 tests/strong smoke 也尚未运行。
+随后用户要求在三张卡暂时被占用时先挂起本实验。候选实现把只读等待器插入 `server_tests → strong_smoke` 之间：默认每30秒查询 resolved config 指定的三张4090，要求90秒稳定无 compute PID、显存使用不超过1024MiB、利用率不超过5%，并持续核对 clean Git commit；它只写原子 `gpu_wait.json`，绝不发送信号。无调度器条件下无法原子锁卡，因此放行后仍由原有 preflight 再次失败关闭。该增量获得“编写”授权并已由外部操作进入 `03f2663`，但尚未获得用户的代码交接确认；服务器 tests/strong smoke 也尚未运行。
 
 代码总览需明确第二轮两条新增 rollout 实验的实现、默认值、产物、与第一轮冻结基线的只读合并方式、已知限制、静态复核和服务器待验证项；完成这些仍只意味着可以请求服务器执行授权，不等于已经获得授权。

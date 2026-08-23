@@ -28,8 +28,8 @@
 - 当前实现依据：`exp/current_experiment.md` v0.6 SSPO-aligned 30k MVP
 - 理论通过状态：v0.2 已明确通过（2026-08-19）
 - 实验设计通过状态：v0.6 已逐项确认，用户已明确要求开始编码（2026-08-21）
-- 代码交接状态：Round2 commit `c2c9069a0b1a1187c8e709729b33b15aaec8c454` 已于2026-08-24获用户明确确认，服务器 clean checkout 与两个环境已核验；其后新增的 GPU 空闲等待门禁尚未提交、待审阅
-- 服务器执行状态：第二轮暂时 `LOCKED`；GPU 等待门禁形成新的 clean commit 并获用户确认后，才恢复服务器启动授权
+- 代码交接状态：Round2 commit `c2c9069a0b1a1187c8e709729b33b15aaec8c454` 已于2026-08-24获用户明确确认，服务器 clean checkout 与两个环境已核验；其后 GPU 空闲等待门禁已被外部操作形成并推送为候选 commit `03f26639c711dbb8b13682eb622f0f952e0a387f`，尚待用户明确确认
+- 服务器执行状态：第二轮暂时 `LOCKED`；候选 `03f2663` 获用户明确代码交接确认后，才恢复服务器启动授权
 - `RESULT_HANDOFF` 与 `NEXTCYCLE_DISCUSSION`：锁定
 
 ## 阅读顺序

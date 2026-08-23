@@ -8,8 +8,8 @@
 - 设计依据：`../human_read/exp/current_experiment.md` v0.6；当前文档将第一轮 MVP 代码说明与第二轮 rollout 新增边界分开记录
 - 当前阶段：`CODE_IMPLEMENTATION`（为新增 GPU 空闲等待门禁暂时返回代码阶段）
 - 已确认代码：第二轮 TP=2 + 单卡 vLLM commit `c2c9069a0b1a1187c8e709729b33b15aaec8c454` 已于2026-08-24获用户明确确认；服务器 clean checkout 与两个环境已核验
-- 当前未提交增量：只读 GPU 空闲等待门禁；相对 `c2c9069` 的 `code/` diff（排除本总览、包含新文件）SHA-256 为 `82c3b26be37f34f30e7de06e119c597a003a480851452793b8969b28b8bcdb70`
-- 服务器执行：新增 diff 待用户审阅，暂时 `LOCKED`；确认并形成新的 clean commit 后，控制器可在GPU仍忙时启动并自动等待 strong smoke
+- 当前代码候选：只读 GPU 空闲等待门禁；相对 `c2c9069` 的 `code/` diff（排除本总览、包含新文件）SHA-256 为 `82c3b26be37f34f30e7de06e119c597a003a480851452793b8969b28b8bcdb70`，工作期间已被外部操作形成并推送为 `03f26639c711dbb8b13682eb622f0f952e0a387f`
+- 服务器执行：候选 `03f2663` 待用户明确审阅确认，暂时 `LOCKED`；确认后控制器可在GPU仍忙时启动并自动等待 strong smoke
 
 第一轮本地只编辑纯文本源码、配置和说明。没有在本地安装/import 项目依赖，没有运行 pytest、数据、模型、训练、评价或 GPU 任务。第一轮运行正确性必须由获批后的服务器 tests/strong smoke 证明。第二轮不得改写第一轮 MVP 代码语义，只能复用公共模块并新增 rollout 相关入口、配置和脚本。
 
@@ -215,6 +215,6 @@ stage03/04/05 合计正好八条 first-round final trajectories，都写在 `run
 - v0.6将已有pair拆成两个SSPO unpaired response，是数据形态适配，不等同于论文使用UltraChat single-response corpus。
 - 单种子不能支持显著性结论；`C_epsilon`不是因果证据。
 - 第二轮 adapter 每 step 都必须发布给在线 rollout，因此会保留大量 LoRA checkpoint；当前不保存 optimizer/scheduler state，不支持 bit-exact 热恢复。
-- 第二轮固定锚点、采样四元组与 `c2c9069` 已确认；后续新增的 GPU 等待门禁仍须单独完成代码交接。
+- 第二轮固定锚点、采样四元组与 `c2c9069` 已确认；候选 `03f2663` 中新增的 GPU 等待门禁仍须单独完成代码交接。
 
 旧 Slurm 路径的静态复核与部分服务器门禁已有证据；Round2 两个环境已在服务器安装验证，但 GPU wait、tests、TP/vLLM strong smoke 与正式训练尚未执行，不能把脚本存在写成已验证成功。
