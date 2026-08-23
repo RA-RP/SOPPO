@@ -4,12 +4,13 @@
 
 - Cycle：`cycle-20260818-01`
 - 第一轮 Experiment：`exp-20260819-01-mvp`（冻结基线，只读引用）
-- 第二轮 Experiment：待定，必须使用独立 experiment_id，不得写入第一轮结果目录
+- 第二轮默认 Experiment：`exp-20260823-01-round2-tp2`；正式运行必须使用新的唯一 ID
 - 实验设计：`current_experiment.md` v0.6 已同步为两轮边界；第二轮只新增 rollout 相关 PE 实验
-- 当前阶段：`SERVER_EXECUTION`
-- 代码交接：训练实现基线 `e047ce7` 已确认；standalone平台适配基线 `e4eb95d`；1/2/4卡等价执行档位基线`cf6bb99`已完成本地静态复核、尚待服务器验证
-- 服务器执行：`AUTHORIZED`（2026-08-21）
-- 当前平台适配：2026-08-22 新增 `scripts/standalone/` 无 Slurm 独占服务器入口；尚待该服务器验证
+- 当前阶段：`CODE_IMPLEMENTATION`
+- 代码交接：第一轮既有基线保持冻结；第二轮 TP2/vLLM 修改未提交、待用户审阅
+- 当前基线 HEAD：`fda051497849bf69fb613899685081c5df409352`；未提交 Round2 `code/` 实现 diff（排除 `CODE_OVERVIEW.md`）SHA-256：`078fe3b804b74f425beb493a4daab21a089ecc4ac39b1c024c7ec4e984cd68d2`
+- 服务器执行：第二轮 `LOCKED`，不得继承第一轮旧授权
+- 当前平台适配：3×4090 目标为 GPU0–1 native TP-LoRA、GPU2 vLLM；服务器待验证
 - 正式代码说明：`../../code/CODE_OVERVIEW.md`
 
 ## 第二轮新增实验清单
@@ -61,6 +62,11 @@
 | strong smoke | `scripts/cluster/03_smoke.sh` |
 | 第一轮 final runs | `03_preexperiment.sh`, `04_lambda_search.sh`, `05_run_main.sh`（冻结，不改写） |
 | 第二轮 rollout runs | 新增独立配置、命令和入口；不得复用会覆盖第一轮输出的 experiment_id 或目录 |
+| 第二轮 TP 训练 | `src/round2/tp_trainer.py`, `tp_backend.py`, `run_tp.py`；TP=2/PP=1/DP=1，真实 DTensor 分片门禁 |
+| 在线候选与不可变 adapter handoff | `src/round2/run_rollout.py`, `queue_protocol.py`；每步 READY/SHA adapter、56-prompt request/response |
+| SFT 单回复隔离 | `src/round2/sft_schema.py`；24k ID/prompt 精确连接，禁止 label/pair 字段 |
+| 第二轮 strong smoke / 长链 | `scripts/round2/02_strong_smoke.sh`, `start_all.sh`, `run_all.sh`, `status_all.sh`, `stop_all.sh` |
+| 第二轮独立评价与无样本导出 | `src/round2/evaluate.py`, `aggregate.py`, `scripts/round2/03_evaluate.sh`, `04_aggregate.sh` |
 | adapter evaluator/GetSlice | `src/evaluation/evaluator.py`, `observe/.../model_utils.py` |
 | 一次提交 DAG | `scripts/cluster/submit_all.sh` |
 | 独占服务器顺序长链 | `scripts/standalone/start_pipeline.sh`, `run_pipeline.sh` |
@@ -68,6 +74,8 @@
 
 ## 第二轮实现边界与交接条件
 
-本地只允许纯文本编辑、`bash -n`、`git diff --check` 和静态路径/旧接口搜索；不运行 Python import、pytest、数据、模型、训练、评价或 GPU 工作。第二轮只新增代码、配置和命令，不修改第一轮 MVP 代码路径的既有语义。服务器 tests 与 strong smoke 必须在后续明确授权后完成。
+本地只允许纯文本编辑、`bash -n`、`git diff --check` 和静态路径/旧接口搜索；不运行 Python import、pytest、数据、模型、训练、评价或 GPU 工作。第二轮只新增代码、配置和命令，不修改第一轮 MVP 代码路径的既有语义。服务器 tests 与 strong smoke 必须在用户确认本次未提交 diff 并形成 clean commit 后完成。
+
+当前交接还缺少用户决定：正式 SFT corpus 来源、rollout temperature 与 top-p。配置以 null/必填环境变量表示，不允许代码自行补默认值。这三项未确定以及服务器 strong smoke 未通过以前，本页状态不得改为已交接或可正式运行。
 
 代码总览需明确第二轮两条新增 rollout 实验的实现、默认值、产物、与第一轮冻结基线的只读合并方式、已知限制、静态复核和服务器待验证项；完成这些仍只意味着可以请求服务器执行授权，不等于已经获得授权。

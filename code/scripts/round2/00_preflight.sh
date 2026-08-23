@@ -1,58 +1,70 @@
 #!/usr/bin/env bash
-# Round2 preflight validates GPU disjointness and immutable output paths.
+# Validate a resolved TP=2 + one-GPU vLLM round2 method before any GPU process starts.
 set -euo pipefail
 
-source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/round2_env.sh"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/round2_env.sh"
 
 CONFIG_NAME="${1:-soppo_pe_sft_rollout_exp.yaml}"
-CONFIG_PATH="$ROUND2_CONFIG_DIR/$CONFIG_NAME"
-if [[ ! -f "$CONFIG_PATH" ]]; then
-    echo "ERROR: round2 config not found: $CONFIG_PATH" >&2
+METHOD_NAME="${CONFIG_NAME%.yaml}"
+RESOLVED="${2:-$ROUND2_RUN_ROOT/$METHOD_NAME/config.resolved.yaml}"
+RUN_DIR="$(cd "$(dirname "$RESOLVED")" && pwd)"
+[[ -f "$RESOLVED" ]] || {
+    echo "ERROR: resolved config is missing; run 01_resolve_config.sh first" >&2
+    exit 1
+}
+[[ -x "$ROUND2_TRAIN_PYTHON" ]] || { echo "ERROR: missing $ROUND2_TRAIN_PYTHON" >&2; exit 1; }
+[[ -x "$ROUND2_ROLLOUT_PYTHON" ]] || { echo "ERROR: missing $ROUND2_ROLLOUT_PYTHON" >&2; exit 1; }
+export PYTHONPATH="$CODE_ROOT:${PYTHONPATH:-}"
+
+if [[ -n "$(git -C "$SOPPO_ROOT" status --porcelain)" ]]; then
+    echo "ERROR: formal round2 requires a clean SOPPO checkout" >&2
     exit 1
 fi
-
-if [[ ! -x "$ROUND2_PYTHON" ]]; then
-    echo "ERROR: round2 Python is unavailable: $ROUND2_PYTHON" >&2
+EXPECTED_GIT_COMMIT="$(round2_resolved_value "$RESOLVED" provenance.git_commit)"
+ACTUAL_GIT_COMMIT="$(git -C "$SOPPO_ROOT" rev-parse HEAD)"
+if [[ "$ACTUAL_GIT_COMMIT" != "$EXPECTED_GIT_COMMIT" ]]; then
+    echo "ERROR: server checkout differs from the resolved round2 commit" >&2
+    echo "  resolved: $EXPECTED_GIT_COMMIT" >&2
+    echo "  checkout: $ACTUAL_GIT_COMMIT" >&2
     exit 1
 fi
-
-TRAIN_GPU_IDS="$($ROUND2_PYTHON - "$CONFIG_PATH" <<'PY'
-from pathlib import Path
-import sys
-import yaml
-path = Path(sys.argv[1])
-config = yaml.safe_load(path.read_text())
-print(config["megatron"]["gpu_ids"])
-PY
-)"
-ROLLOUT_GPU_IDS="$($ROUND2_PYTHON - "$CONFIG_PATH" <<'PY'
-from pathlib import Path
-import sys
-import yaml
-path = Path(sys.argv[1])
-config = yaml.safe_load(path.read_text())
-print(config["rollout"]["gpu_ids"])
-PY
-)"
-
-IFS=',' read -r -a TRAIN_ARRAY <<< "$TRAIN_GPU_IDS"
-IFS=',' read -r -a ROLLOUT_ARRAY <<< "$ROLLOUT_GPU_IDS"
-for gpu in "${TRAIN_ARRAY[@]}"; do
-    for rgpu in "${ROLLOUT_ARRAY[@]}"; do
-        if [[ "$gpu" == "$rgpu" ]]; then
-            echo "ERROR: training and rollout GPUs must be disjoint ($gpu)" >&2
-            exit 1
-        fi
-    done
+for marker in \
+    "$RUN_DIR/controller_status.json" \
+    "$RUN_DIR/state.json" \
+    "$RUN_DIR/tp_launch.resolved.json" \
+    "$RUN_DIR/preflight" \
+    "$RUN_DIR/rollouts/worker.ready.json"; do
+    if [[ -e "$marker" ]]; then
+        echo "ERROR: Refuse to reuse an existing round2 attempt: $marker" >&2
+        exit 1
+    fi
 done
 
-RUN_DIR="$ROUND2_RUN_ROOT"
-if [[ -e "$RUN_DIR" ]]; then
-    echo "ERROR: Refuse to reuse existing round2 run directory: $RUN_DIR" >&2
+mapfile -t GPU_PROCESSES < <(
+    nvidia-smi --query-compute-apps=pid --format=csv,noheader,nounits 2>/dev/null \
+        | awk 'NF && $1 != "N/A" {print $1}'
+)
+if (( ${#GPU_PROCESSES[@]} > 0 )); then
+    echo "ERROR: round2 requires all three exclusive 4090 GPUs to be idle" >&2
+    printf '  active GPU PID: %s\n' "${GPU_PROCESSES[@]}" >&2
     exit 1
 fi
 
-echo "Round2 config: $CONFIG_PATH"
-echo "Training GPUs: $TRAIN_GPU_IDS"
-echo "Rollout GPUs:  $ROLLOUT_GPU_IDS"
-echo "Run root:      $RUN_DIR"
+TRAIN_GPU_IDS="$(round2_resolved_value "$RESOLVED" tensor_parallel.gpu_ids)"
+ROLLOUT_GPU_IDS="$(round2_resolved_value "$RESOLVED" rollout.gpu_ids)"
+mkdir -p "$RUN_DIR/preflight"
+
+CUDA_VISIBLE_DEVICES="$TRAIN_GPU_IDS" \
+    "$ROUND2_TRAIN_PYTHON" -m src.round2.preflight \
+    --config "$RESOLVED" --role training \
+    > "$RUN_DIR/preflight/training.json"
+CUDA_VISIBLE_DEVICES="$ROLLOUT_GPU_IDS" \
+    "$ROUND2_ROLLOUT_PYTHON" -m src.round2.preflight \
+    --config "$RESOLVED" --role rollout \
+    > "$RUN_DIR/preflight/rollout.json"
+
+echo "Round2 preflight passed: $METHOD_NAME"
+echo "Training GPUs: $TRAIN_GPU_IDS (TP=2, DP=1)"
+echo "Rollout GPU:  $ROLLOUT_GPU_IDS (vLLM TP=1)"
+echo "Evidence:     $RUN_DIR/preflight"

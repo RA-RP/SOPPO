@@ -33,11 +33,11 @@
 ## 当前活动阶段
 
 - 当前 cycle：`cycle-20260818-01`
-- 唯一活动阶段：`SERVER_EXECUTION`
-- 当前入口：`human_read/exp/current_experiment.md` v0.6 SSPO-aligned 30k MVP；共享A800集群使用`code/scripts/cluster/`，无Slurm独占服务器使用`code/scripts/standalone/`，当前讨论焦点回到A800集群
-- 已完成门禁：理论 v0.2 已获用户明确通过（2026-08-19）；实验设计 v0.6 已由用户逐项确认并明确要求开始编码（2026-08-21）；训练实现基线 `e047ce7` 完成静态交接后，用户于 2026-08-21 明确要求挂载任务并授权服务器执行；standalone平台适配基线为`e4eb95d`；1/2/4卡等价执行档位基线为`cf6bb99`（2026-08-22，服务器待验证）。
-- 锁定阶段：`RESULT_HANDOFF`、`NEXTCYCLE_DISCUSSION`
-- 下一解锁条件：所选服务器从clean、commit-locked checkout通过对应1/2/4卡档位的preflight/tests/strong smoke并形成完整白名单结果摘要，或形成失败/终止摘要与远程证据索引，然后进入`RESULT_HANDOFF`。
+- 唯一活动阶段：`CODE_IMPLEMENTATION`
+- 当前入口：`human_read/exp/current_experiment.md` v0.6 的第二轮 rollout 扩展；当前实现目标为3×4090上 GPU0–1 native TP-LoRA、GPU2独立vLLM
+- 已完成门禁：第一轮既有理论/实验/代码与执行记录保持冻结；用户已明确批准第二轮 TP=2 + 单卡 rollout 的代码修改方向。本次修改仍未提交、未完成代码交接确认。
+- 锁定阶段：`SERVER_EXECUTION`、`RESULT_HANDOFF`、`NEXTCYCLE_DISCUSSION`
+- 下一解锁条件：用户先确认 SFT 单回复 corpus、rollout temperature/top-p，再审阅本次未提交 diff；完成静态交接并形成 clean commit 后，方可请求在3×4090服务器运行 tests/strong smoke。
 
 ## 标识与交叉引用
 

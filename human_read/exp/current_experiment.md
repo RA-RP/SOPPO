@@ -7,10 +7,10 @@
 - 理论依据：`../theory/current_theory.md` v0.2，已于 2026-08-19 明确通过
 - 实验版本：v0.6 SSPO-aligned 30k MVP
 - 实验批准：用户于 2026-08-21 逐项确认 SSPO 对齐、DPO headroom、LoRA、两种 PE 权重和八条最终轨迹，并明确要求开始编码
-- 当前唯一活动阶段：`SERVER_EXECUTION`
-- 代码交接：训练实现基线 `e047ce7` 已完成；无 Slurm standalone 平台适配基线 `e4eb95d`（2026-08-22，本地静态复核完成、服务器待验证）
-- 当前入口：`../../code/scripts/standalone/EXECUTION_GUIDE.md`；旧共享集群入口保留为 `../../code/scripts/cluster/EXECUTION_GUIDE.md`
-- 服务器执行：`AUTHORIZED`（2026-08-21）；2026-08-22 用户明确要求迁移至无 Slurm 独占服务器。必须从 clean、commit-locked checkout 启动 fail-closed 顺序 pipeline；新增平台适配尚待服务器验证
+- 当前唯一活动阶段：`CODE_IMPLEMENTATION`
+- 代码交接：第一轮冻结基线保持不变；第二轮 3×4090 TP=2 + 单卡 vLLM 适配尚未提交、尚待用户审阅
+- 当前入口：第二轮草案为 `../../code/scripts/round2/EXECUTION_GUIDE.md`；第一轮 cluster/standalone 入口保持冻结
+- 服务器执行：第二轮 `LOCKED`。本次实现获得代码修改授权，但尚未获得新代码交接确认；不得把第一轮 2026-08-21 的执行授权自动沿用到第二轮 TP 实现
 
 v0.6 替代 v0.5 的 SFT/Pseudo/DPO+PE 方案。第一轮静态 PE 已完成并冻结；本文件当前只约束后续第二轮 rollout 相关扩展。30k 数据及隔离合同不变，训练目标、超参、LoRA、batch、checkpoint 和任务图以本文件为准。
 
@@ -43,7 +43,7 @@ DPO-10、DPO-100、静态 PE 与已有伪标签/SSPO 类对照均属于第一轮
 ## 3. 模型、LoRA 与序列
 
 - 冻结 base：ModelScope `Qwen/Qwen3-4B`，服务器路径 `<SERVER_BASE>/models/Qwen3-4B`。
-- `transformers==4.51.3`，`trust_remote_code=false`，`enable_thinking=false`。
+- 第一轮冻结环境使用 `transformers==4.51.3`；所有路径均保持 `trust_remote_code=false`、`enable_thinking=false`。第二轮 TP 专用依赖版本见 §7.1，不覆盖第一轮环境。
 - 正式精度 bf16、SDPA、gradient checkpointing、`max_seq_len=2048`、response-only mask。
 - 所有训练统一标准 LoRA；不使用 QLoRA，不更新 base 参数。
 - LoRA：`r=8`、`alpha=16`、`dropout=0`、`bias=none`，目标为 `q/k/v/o/gate/up/down_proj`。
@@ -174,6 +174,25 @@ CPU tests
 ```
 
 standalone运行不依赖SSH会话，也不产生排队任务；默认两张GPU，也可由GPU ID列表选择1张或4张，其中一张用于串行后处理，并要求每张卡至少79000 MiB。实际GPU SKU、显存、torch CUDA版本和所选卡数必须写入registry邻接的hardware CSV；如果新服务器并非原计划的A800，结果交接必须把它列为执行环境差异。训练目标、global batch、8/56和八条轨迹不因平台或卡数档位变化。
+
+## 7.1 第二轮 3×4090 执行剖面
+
+用户已确认第二轮使用 GPU0–1 对 Qwen3-4B 做真正 tensor parallel、GPU2 独立运行 vLLM rollout；不得把两张训练卡实现成 DDP 两份模型，也不得用 QLoRA、缩短2048序列或改变8+56来规避显存。
+
+- 训练：`TP=2, PP=1, DP=1`，bf16、SDPA、LoRA r8/alpha16/all projections；每次物理 forward/backward 为1个 preference pair，但一次 optimizer step 仍精确覆盖8 labeled +56 dynamic pairs。
+- 环境：训练侧因 PEFT 官方 TP-LoRA 接口要求而隔离使用 Transformers 5.4+/PEFT 0.19+；GPU2 的 vLLM 0.9.2 使用另一隔离环境。该版本适配不改变 Qwen3 权重、tokenization、loss 或冻结超参，第一轮 `envs/youc` 不被覆盖。
+- 在线性：每个 optimizer step 都先发布不可变 current-policy adapter，再由 GPU2 生成该步候选；不是预先用base批量生成后重复使用。
+- SFT+rollout：每个 prompt 使用一个固定 SFT response 与一个 current-policy rollout。
+- rollout-only：每个 prompt 必须从该方法自己的 current policy 独立采样两条候选；不能把同一条复制到A/B两侧，也不能在两条已经分叉的训练轨迹之间共享实际输出。
+- 两条正式方法顺序运行并使用独立输出目录；第一轮结果只读引用。
+
+下面三项尚未预注册，因而第二轮 formal execution 仍锁定：
+
+1. 与24,000个 frozen unlabeled prompt 一一对应的 label-free 单回复 SFT corpus 来源；
+2. rollout temperature；
+3. rollout top-p。
+
+代码只实现严格 schema 和必填入口，不从隐藏 preference label 选择 chosen response，也不自行填经验默认值。用户确认上述三项并完成本次代码交接后，才可形成 clean commit 并在3×4090服务器依次执行 preflight、server tests 和 production-path strong smoke。
 
 ## 8. 评价与解释边界
 

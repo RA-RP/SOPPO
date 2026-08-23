@@ -1,6 +1,9 @@
 # Round2 defaults inherit the frozen model/data/training contract.
 _base_: ../mvp/base.yaml
 
+provenance:
+  git_commit: null
+
 model:
   name_or_path: null
   manifest_path: null
@@ -13,36 +16,62 @@ model:
 training:
   lr: 0.00001
   learning_rate: 0.00001
+  num_devices: 2
   global_batch_size: 64
   joint_labeled_global_batch_size: 8
   joint_unlabeled_global_batch_size: 56
-  backward_subbatch_size_per_device: 2
+  # One preference pair is materialized at a time.  Gradient accumulation
+  # preserves the exact 8 labeled + 56 dynamic-pair optimizer population.
+  backward_subbatch_size_per_device: 1
+  gradient_accumulation_steps: 64
+  # The inherited DDP microbatch fields do not describe TP execution.
+  dpo_batch_size_per_device: null
+  joint_labeled_batch_size_per_device: null
+  joint_labeled_microsteps: null
+  joint_unlabeled_microbatch_pattern: null
+  save_steps: 1
   seed: 42
-  distributed_backend: "megatron"
+  distributed_backend: "transformers_tp"
+  eval_max_samples: null
+  smoke_objective_step: null
 
-megatron:
-  entrypoint: null
-  working_dir: null
+tensor_parallel:
   gpu_ids: "0,1"
-  tensor_model_parallel_size: 1
+  tensor_model_parallel_size: 2
   pipeline_model_parallel_size: 1
-  data_parallel_size: 2
+  data_parallel_size: 1
   micro_batch_size: 1
-  backend: "megatron-core"
-  require_external_install: true
+  sequence_parallel: false
+  backend: "transformers-native-tp"
+  require_tp_lora: true
+  minimum_transformers_version: "5.4.0"
+  minimum_peft_version: "0.19.0"
+  minimum_torch_version: "2.7.0"
 
 rollout:
   engine: "vllm"
   gpu_ids: "2"
   artifact_dir: null
-  artifact_path: null
-  policy_checkpoint: null
   source: null
+  sft_data_file: null
   tensor_parallel_size: 1
   max_model_len: 2048
   max_new_tokens: 512
+  min_new_tokens: 0
   gpu_memory_utilization: 0.80
-  command: null
+  max_num_seqs: 8
+  enforce_eager: true
+  minimum_vllm_version: "0.9.2"
+  temperature: null
+  top_p: null
+  sync_interval_steps: 1
+  poll_interval_seconds: 1.0
+  request_timeout_seconds: 3600
+
+evaluation:
+  gpu_id: "0"
+  batch_size: 1
+  score_type: "simpo_mean_logp_delta_margin_free"
 
 output:
   run_dir: null

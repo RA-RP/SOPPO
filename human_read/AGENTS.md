@@ -24,12 +24,12 @@
 ## 当前状态
 
 - Cycle ID：`cycle-20260818-01`
-- 唯一活动阶段：`SERVER_EXECUTION`
+- 唯一活动阶段：`CODE_IMPLEMENTATION`
 - 当前实现依据：`exp/current_experiment.md` v0.6 SSPO-aligned 30k MVP
 - 理论通过状态：v0.2 已明确通过（2026-08-19）
 - 实验设计通过状态：v0.6 已逐项确认，用户已明确要求开始编码（2026-08-21）
-- 代码交接状态：训练实现基线`e047ce7`已确认；standalone平台适配基线`e4eb95d`；1/2/4卡等价执行档位基线`cf6bb99`已完成本地静态复核、尚待服务器验证
-- 服务器执行状态：`AUTHORIZED`；共享A800集群入口为`../code/scripts/cluster/EXECUTION_GUIDE.md`，无Slurm独占服务器入口为`../code/scripts/standalone/EXECUTION_GUIDE.md`；当前讨论焦点回到A800集群的单卡/双卡/四卡切换
+- 代码交接状态：第一轮既有基线保持冻结；第二轮3×4090 TP2/vLLM修改未提交、待用户审阅，且正式SFT corpus与采样参数待确认
+- 服务器执行状态：第二轮 `LOCKED`；不得沿用第一轮授权上传或运行本次新代码
 - `RESULT_HANDOFF` 与 `NEXTCYCLE_DISCUSSION`：锁定
 
 ## 阅读顺序

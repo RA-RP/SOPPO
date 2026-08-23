@@ -4,11 +4,12 @@
 
 - Cycle：`cycle-20260818-01`
 - 第一轮 Experiment：`exp-20260819-01-mvp`（冻结基线，只读引用）
-- 第二轮 Experiment：待定，必须使用独立 experiment_id 和独立输出根目录
+- 第二轮默认 Experiment：`exp-20260823-01-round2-tp2`；正式运行时必须换成新的唯一 ID
 - 设计依据：`../human_read/exp/current_experiment.md` v0.6；当前文档将第一轮 MVP 代码说明与第二轮 rollout 新增边界分开记录
-- 当前阶段：`SERVER_EXECUTION`
-- 代码交接：训练实现基线 `e047ce7`；无 Slurm standalone 平台适配基线 `e4eb95d`；1/2/4卡等价执行档位基线 `cf6bb99`（2026-08-22，本地静态复核完成、服务器待验证）
-- 服务器执行：`AUTHORIZED`（2026-08-21）；只允许从 clean、commit-locked checkout 运行执行指南中的 fail-closed pipeline。2026-08-22 新增无 Slurm 独占服务器适配，服务器待验证
+- 当前阶段：`CODE_IMPLEMENTATION`（第二轮 3×4090 TP/rollout 适配返回代码阶段）
+- 代码交接：第一轮既有基线保持冻结；第二轮 TP=2 + 单卡 vLLM 修改尚未提交、尚待用户审阅
+- 当前基线 HEAD：`fda051497849bf69fb613899685081c5df409352`；其上 Round2 实现 diff（仅 `code/`，排除本总览）的 SHA-256 为 `078fe3b804b74f425beb493a4daab21a089ecc4ac39b1c024c7ec4e984cd68d2`
+- 服务器执行：第二轮当前为 `LOCKED`；只有用户确认本次代码交接、形成 clean commit 并在服务器依次通过 preflight/tests/strong smoke 后才允许正式运行
 
 第一轮本地只编辑纯文本源码、配置和说明。没有在本地安装/import 项目依赖，没有运行 pytest、数据、模型、训练、评价或 GPU 任务。第一轮运行正确性必须由获批后的服务器 tests/strong smoke 证明。第二轮不得改写第一轮 MVP 代码语义，只能复用公共模块并新增 rollout 相关入口、配置和脚本。
 
@@ -37,22 +38,27 @@ SOPPO-PE-rollout-only-exp
 
 DPO-10、DPO-100、SSPO-hard-exp、第一轮静态 PE 与第一轮 `SOPPO-PE-exp` 均作为冻结基线只读引用。第二轮必须使用独立 experiment_id、独立输出根目录和独立命令入口，最终合并阶段只读取两轮各自导出的聚合结果。
 
-## 1.2 round2 Megatron 训练与独立 rollout 边界
+## 1.2 round2 TP=2 训练与独立 rollout 边界
 
-round2 新增 Megatron 训练 adapter，不扩大第一轮 `src/config.py` 的方法集合，也不把第一轮 DDP trainer 作为 round2 的隐式 fallback：
+第二轮不再依赖未提供的外部 Megatron/rollout entrypoint，也不复用第一轮 DDP trainer。4090 专用实现把三张卡固定分成两个资源池：
 
-- `src/round2/megatron_backend.py` 将 round2 配置转换为明确的 Megatron 启动命令；`src/round2/run_megatron.py` 设置训练 GPU、写入启动记录并调用目标服务器上的 Megatron entrypoint；
-- 当前仓库不内置 Megatron 安装，缺失 entrypoint 时必须 fail closed，不能静默退回第一轮 DDP；
-- round2 训练配置、checkpoint 和输出根目录均与第一轮分离。
+- GPU `0,1`：`src/round2/tp_trainer.py` 通过 `torchrun --nproc_per_node=2`、Transformers `tp_plan="auto"` 和 PEFT TP-LoRA 把 Qwen3-4B 权重切到两卡，`TP=2, PP=1, DP=1`；启动后必须找到真实 sharded DTensor，否则拒绝把两份复制模型冒充 TP。
+- GPU `2`：`src/round2/run_rollout.py` 常驻一个 vLLM engine，每个 optimizer step 加载训练端刚发布的只读 LoRA adapter，生成候选后卸载该 adapter。
+- 两个 Python 环境隔离：`requirements-round2-train.txt` 固定 Transformers 5.4+/PEFT 0.19+ 的 TP-LoRA 侧；`requirements-round2-rollout.txt` 固定 vLLM 0.9.2 侧，避免用一个环境强行满足不兼容依赖。
+- GPU ID、Git commit、模型/data/SFT 路径、采样参数均写入 resolved config。preflight 只信 resolved config，并核对 clean checkout、完整 commit、三张 4090 全空闲以及实际 `CUDA_VISIBLE_DEVICES`。
 
-rollout 使用独立的 vLLM worker：
+每个训练 step 的顺序是：发布当前 adapter → rank0 向 GPU2 发出 56-prompt 请求 → GPU2 原子写回候选对 → 两个 TP rank 在同一 56-pair population 上求 PE 系数 → 依次回传 8 labeled + 56 dynamic pairs → 一个 optimizer step → 发布下一版 adapter。队列由 `queue_protocol.py` 定义 request/response schema；只有含 `READY.json` 和 SHA-256 的完整 adapter 目录能被 rollout 读取。
 
-- `src/round2/rollout_backend.py` 与 `src/round2/run_rollout.py` 负责独立 rollout 命令和 GPU 边界；
-- 训练 GPU 集合与 rollout GPU 集合必须显式配置且不重叠；
-- 同一个正在生成的 checkpoint 不能被 rollout 同时读取；只有对已经完成且不可变 checkpoint 做 rollout 时，才允许与另一项训练任务并发；
-- rollout artifact 使用 `round2.rollout.v1` schema，由 `src/round2/rollout_schema.py` 校验；不读取 hidden test label，也不承担 PE loss 或最终评价。
+两条方法共享同一批 prompt、SFT corpus、采样超参和当前策略，但不共享实际生成结果：
 
-round2 的执行入口位于 `scripts/round2/`，配置位于 `configs/round2/`。`dry_run.sh` 只构造并打印 Megatron/vLLM 命令，不启动训练或 rollout；正式服务器执行前必须确认 Megatron/Megatron-Core、PyTorch、CUDA、Transformer Engine 和 vLLM 版本兼容性。
+- `SOPPO-PE-sft-rollout-exp` 每个 prompt 生成 1 条，组成 `SFT response vs rollout_0`；
+- `SOPPO-PE-rollout-only-exp` 每个 prompt 生成 2 条独立候选，组成 `rollout_0 vs rollout_1`。若只生成并复用同一条，候选会变成 A=B，`p_i=0.5`，无法检验 rollout-only。
+
+第二轮 logical optimizer batch 始终为 8 labeled + 56 dynamic pairs。两张训练卡只承担模型 TP，不做 data parallel；每次物理前/反向仅 materialize 一个 preference pair，按完整 population 的精确一阶系数累计后只执行一次 optimizer step。该实现不改变 global64、PE 定义、两 epoch、lr1e-5 或 `gamma_t`。
+
+正式配置仍有三项必须由用户预注册：24,000 行 label-free 单回复 SFT corpus、`temperature`、`top_p`。SFT 文件必须以 `sample_id,prompt,response` 与冻结 unlabeled prompt 一一对应，并禁止 label/chosen/rejected/pair 字段。三项任一缺失时 `01_resolve_config.sh` fail closed，不会从隐藏偏好标签或经验默认值推断。
+
+round2 执行入口位于 `scripts/round2/`，配置位于 `configs/round2/`。`start_all.sh` 在独占服务器后台依次完成 server tests、两种方法的生产路径 strong smoke、正式训练、validation-selected 独立 test 评价与 sample-free Round2 聚合导出；`status_all.sh` 只读状态，`stop_all.sh` 仅终止该 experiment 记录的进程组。完整服务器命令见 `scripts/round2/EXECUTION_GUIDE.md`。
 
 ## 2. 关键实现
 
@@ -115,7 +121,8 @@ validation：DPO 用 reference delta；SSPO/PE 用 margin-free SimPO mean-logp d
 
 - `src/training/selectors.py`：共同 raw mean-logp score 下 DPO-10 对训练前显式禁用 adapter 的冻结 base 的 .05 headroom gate，并核对前后 score type/样本数；四条 static lambda validation-only selector。DPO-100只作为 oracle。
 - `src/evaluation/evaluator.py`：独立 adapter 加载；只有 DPO 读取 reference cache，只有此入口读取 test private labels。
-- `src/evaluation/aggregate.py`：第一轮要求八个评价完整，报告 dynamic controlled 与 validation-selected static 差值，不在 test 上挑最好方法。第二轮需要新增独立聚合入口，只读取两条 rollout 实验及第一轮冻结基线摘要。
+- `src/evaluation/aggregate.py`：第一轮要求八个评价完整，报告 dynamic controlled 与 validation-selected static 差值，不在 test 上挑最好方法。
+- `src/round2/evaluate.py` 与 `aggregate.py`：只在训练结束后读取 validation-selected adapter；前者在单卡上读取独立3000 test私有标签并把逐样本预测留在服务器，后者只比较两条 Round2 方法并导出无样本聚合。第一轮冻结摘要留到结果交接时只读合并，不回写任一轮产物。
 - `src/evaluation/c_epsilon.py`：Qwen L18，epsilon `{.01,.025,.05,.10}`，module-first equal5/equal7。
 - `src/data/audit_prepared_data.py`：提交前重验30k行数、SHA-256、跨 split ID、公开隐藏标签和私有标签精确连接；审计摘要进入回传白名单。
 - `observe/.../GetSlice/utils/model_utils.py`：相对原工具唯一的当前项目兼容改动是 adapter-aware offline load + in-memory safe merge。
@@ -185,9 +192,13 @@ stage03/04/05 合计正好八条 first-round final trajectories，都写在 `run
 
 正式任务另有运行时 GPU gate。standalone 不把 SKU 名称静默写死为 A800，会把实际卡名、显存和 torch CUDA 版本写入 hardware CSV；若实际 SKU 不同，结果交接必须披露。smoke通过只表示工程接口闭环，不代表30k训练一定不会出现后期数值或wall-time问题。
 
+第二轮另有独立的 `round2/02_strong_smoke.sh`。它不复用第一轮五方法 smoke，而是让两条 rollout 方法各自完成一个生产路径 optimizer step：真实 TP=2 Qwen3 LoRA、8+56 完整 population、物理 pair subbatch=1、最长真实 labeled 样本的 2048 backward、每条 rollout 强制512 token、adapter 保存/哈希/vLLM回载、在线候选构造、PE反传、optimizer step、adapter 再发布与8条最长 validation评价。它必须在正式两条轨迹之前成功，且服务器仍须验证实际 wall time 与峰值显存。
+
 ## 7. 静态复核与服务器待验证
 
-本地复核范围：cluster/standalone shell `bash -n`、`git diff --check`、旧接口/方法/路径静态搜索、第一轮八方法名称和配置入口交叉核对。第二轮新增时还必须核对只新增两条 rollout 实验，且不改写第一轮入口。依赖 import、pytest、Qwen3/PEFT兼容、DDP、显存、数值、adapter round-trip、GetSlice与两类 pipeline 均必须在服务器验证。
+本地复核范围：shell `bash -n`、`git diff --check`、旧接口/方法/路径静态搜索、第一轮入口未被改写、第二轮只有两种方法。根据本地边界，不运行 Python import、pytest、数据、模型或 GPU。Transformers TP、PEFT TP-LoRA 保存、DTensor optimizer/clip、vLLM adapter回载、24GB峰值显存、数值、512-token rollout 和完整长链都必须在服务器验证。
+
+2026-08-23 已完成的静态复核：`bash -n code/scripts/round2/*.sh`、工作区与 index 的 `git diff --check` 均通过；正式 Round2 路径未再引用旧 `SOPPO_MEGATRON_*`、`run_megatron.py` 或 `rollout_schema.py`。未在本地执行 Python/pytest。
 
 已知风险：
 
@@ -201,5 +212,7 @@ stage03/04/05 合计正好八条 first-round final trajectories，都写在 `run
 - SSPO论文未给KDE bandwidth，Scott rule是明确记录的复现决定。
 - v0.6将已有pair拆成两个SSPO unpaired response，是数据形态适配，不等同于论文使用UltraChat single-response corpus。
 - 单种子不能支持显著性结论；`C_epsilon`不是因果证据。
+- 第二轮 adapter 每 step 都必须发布给在线 rollout，因此会保留大量 LoRA checkpoint；当前不保存 optimizer/scheduler state，不支持 bit-exact 热恢复。
+- 第二轮正式 SFT corpus 与采样 `temperature/top_p` 尚未由用户确认；本次代码交接和服务器执行在确认前保持锁定。
 
-旧 Slurm 路径的静态复核与部分服务器门禁已有证据；新增 standalone 平台适配仅完成本地静态复核，仍须在新服务器依次通过环境、GPU preflight、tests 与 strong smoke，不能把脚本存在写成已验证成功。
+旧 Slurm 路径的静态复核与部分服务器门禁已有证据；本次 round2 TP/vLLM 实现仍是未提交、未在服务器运行的代码草案，不能把脚本存在写成已验证成功，也不能沿用第一轮的执行授权自动启动。

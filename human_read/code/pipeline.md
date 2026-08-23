@@ -1,337 +1,147 @@
-# SOPPO Round2 基础设施流水线草稿
+# SOPPO Round2：3×4090 TP 训练与在线 rollout 流水线
 
-> 状态：协作草稿
-> 范围：帮助理解 round2 如何把配置、训练、rollout、资源、日志与失败处理串起来
-> 相关文档：[human_read/AGENTS.md](../AGENTS.md)、[current_experiment.md](../exp/current_experiment.md)、[CODE_OVERVIEW.md](../../code/CODE_OVERVIEW.md)
+> 状态：代码实现中，尚未提交、尚未通过服务器 strong smoke，也未获本次代码交接确认。
 
-## 0. 为什么要写这份文档
+## 1. 三张卡怎么分
 
-这个项目很适合学习 infra，因为 round2 不只是“跑一个模型”，它还要同时处理：
+Round2 不是三卡 DDP，而是两个独立执行器：
 
-- 训练后端（`Megatron` / `Megatron-Core`）
-- rollout 后端（`vLLM`）
-- 训练与 rollout 之间严格的 GPU 隔离
-- 明确的外部 entrypoint
-- 清晰的状态、日志和 launch record
-- 缺少条件时必须 fail-closed
+```text
+GPU 0 ─┐
+       ├─ Qwen3-4B TP=2 LoRA training（一个模型横跨两卡）
+GPU 1 ─┘
 
-这份文档的目标，是把 round2 当成一个**系统**来理解，而不是把它当成一个单脚本任务。
+GPU 2 ─── vLLM rollout worker（独立的一份冻结 base + 当前 LoRA）
+```
 
-## 1. 心智模型
+训练侧 `TP=2, PP=1, DP=1`。两张卡共同完成同一个 forward/backward，不各自处理不同数据副本。GPU 2 只生成候选，不计算 PE loss、不更新参数。
 
-可以把 round2 理解成一个围绕两个执行器的小型控制平面：
+实现不再需要外部 Megatron entrypoint：
 
-- **训练执行器**：消费训练配置，启动 Megatron 侧工作
-- **rollout 执行器**：消费 rollout 配置，启动 vLLM 侧工作
+- `src/round2/tp_trainer.py`：项目内置训练循环；
+- `src/round2/tp_backend.py` / `run_tp.py`：TP 命令、版本和真实分片证据；
+- `src/round2/run_rollout.py`：常驻 vLLM worker；
+- `src/round2/queue_protocol.py`：训练与 rollout 的原子文件队列；
+- `src/round2/sft_schema.py`：单回复 SFT corpus 的隔离门禁。
 
-SOPPO 本身主要负责编排：
+## 2. 一个 optimizer step 怎么流动
 
-1. 校验配置
-2. 解析路径
-3. 检查资源
-4. 拼接命令
-5. 写入启动/状态记录
-6. 把执行交给外部 entrypoint
-7. 收集日志和结果
+```text
+训练 rank 0/1 发布 current LoRA adapter（step t + READY/SHA）
+                  │
+                  ▼
+rank 0 写入 56 个 prompt 的 rollout request
+                  │
+                  ▼
+GPU 2 加载 step t adapter 并生成候选
+                  │
+                  ▼
+GPU 2 原子写 response；训练两 rank 共同读取并校验
+                  │
+                  ▼
+8 labeled pairs + 56 dynamic pairs 的完整群体前向
+                  │
+                  ▼
+求 labeled / PE 对每个 response score 的精确一阶系数
+                  │
+                  ▼
+每次只 materialize 1 pair，逐 response 反向累计
+                  │
+                  ▼
+clip → 一个 optimizer step → 发布 step t+1 adapter
+```
 
-理解每个文件时，可以先问自己：
+物理 pair subbatch=1 是显存执行方式，不是把 logical batch 改成 1。一次 optimizer step 仍严格消费 8 个 labeled pair 与 56 个 dynamic pair；PE 仍在完整 56-pair population 上求值。
 
-> 这个文件是在描述策略、在生成命令，还是在真正执行工作？
+## 3. 为什么两种方法生成数不同
 
-## 2. 核心组成
+两条方法共享相同的 24,000 prompt、SFT corpus、采样配置和 current-policy 定义，只替换候选构造：
 
-### 2.1 配置层
+| 方法 | GPU 2 每 prompt 生成 | PE pair |
+| --- | ---: | --- |
+| SFT+rollout | 1 条 | `SFT response` vs `rollout_0` |
+| rollout-only | 2 条 | `rollout_0` vs `rollout_1` |
 
-主要位置：
+rollout-only 不能复用同一条回答作为两侧。若 A=B，则 mean-logp delta 恒为 0、`p_i=0.5`，PE 没有方法所需的候选差异。两种方法也不能跨完整训练轨迹共享实际 rollout，因为做过第一次更新后，它们的 current policy 已经不同。rollout-only 仍用 SFT manifest 校验共同的24k prompt universe，但发往训练/worker的 request 不含 SFT response 文本。
 
-- `code/configs/round2/base.yaml`
-- `code/configs/round2/*.yaml`
+## 4. 不可变 handoff
 
-这一层应该回答：
+训练端不会让 vLLM 读取正在写的 checkpoint。每个 adapter 先写入 `.partial` 目录；两个 TP rank 都完成 PEFT gather/save 后，rank0 再写：
 
-- round2 的实验标识是什么
-- 训练 GPU 集合是什么
-- rollout GPU 集合是什么
-- 模型 / 数据 / 输出根目录在哪里
-- 是否需要外部安装
-- entrypoint 和 working dir 是否已经提供
+- `adapter_model.safetensors`；
+- `adapter_config.json`；
+- `checkpoint_meta.json`；
+- `READY.json`（含 adapter SHA-256）。
 
-建议重点思考：
+最后以原子目录 rename 发布。rollout worker 只接受完成目录，并在每个 request 后卸载当步 adapter。
 
-- 哪些值是默认值？
-- 哪些值必须从环境变量补齐？
-- 哪些值必须保证训练与 rollout 不重叠？
-- 哪些值属于 round1，哪些属于 round2？
+## 5. 配置和数据门禁
 
-### 2.2 后端适配层
+resolved config 是运行时唯一真源。它冻结：
 
-主要位置：
+- 完整 Git commit；
+- Qwen3 路径和 manifest；
+- 30k 数据路径；
+- SFT corpus 路径和 SHA；
+- GPU `0,1` / `2`；
+- TP=2、LoRA r8/alpha16、bf16/2048；
+- 8+56、2 epochs、lr1e-5、paper `gamma_t`；
+- temperature、top-p、512 max new tokens。
 
-- `code/src/round2/megatron_backend.py`
-- `code/src/round2/rollout_backend.py`
-- `code/src/round2/rollout_schema.py`
+SFT corpus 必须是 24,000 行 `sample_id,prompt,response`，与冻结 unlabeled split 的 ID 和 prompt 精确一一对应；任何 label、chosen/rejected 或 pair 字段都会被拒绝。
 
-这一层应该回答：
+当前尚未由用户确认的正式参数是：
 
-- round2 如何把配置映射成命令
-- 哪些字段在启动前是必填的
-- 外部 worker 的契约是什么
-- rollout 产物如何被校验
+1. 单回复 SFT corpus 的来源与绝对路径；
+2. rollout `temperature`；
+3. rollout `top_p`。
 
-### 2.3 启动器
+因此代码保持 null / 环境变量必填，不自行选择经验默认值。
 
-主要位置：
-
-- `code/src/round2/run_megatron.py`
-- `code/src/round2/run_rollout.py`
-
-这一层应该回答：
-
-- GPU 可见性是怎么设置的
-- launch record 是怎么写的
-- 什么时候会提前退出
-- 什么内容会在真正执行前就被写入磁盘
-
-### 2.4 可观测性
-
-常见产物：
-
-- `status.json`
-- Megatron 日志
-- rollout 日志
-- launch record
-- resolved config
-- smoke 输出
-
-这些产物告诉我们系统处于以下哪种状态：
-
-- 未启动
-- 被阻塞
-- 正在运行
-- 失败
-- 部分完成
-- 已准备好进入下一阶段
-
-## 3. round2 流水线，按步骤看
-
-### 第 1 步：读取并解析配置
-
-流水线从读取 round2 YAML 开始。
-
-预期动作：
-
-- 加载 base config
-- 应用 override
-- 解析路径
-- 分离训练和 rollout 的设置
-- 确认 round2 的 experiment ID / 输出根目录
-
-这里要理解：
-
-- 配置继承是怎么工作的
-- override 是如何叠加的
-- 哪些环境变量可以覆盖 YAML
-
-### 第 2 步：校验硬约束
-
-如果关键条件不满足，round2 应该 fail-closed。
-
-常见硬约束：
-
-- entrypoint 路径缺失
-- working directory 缺失
-- 模型路径缺失
-- GPU 列表重叠
-- 依赖未安装
-- 输出根目录与 round1 产物冲突
-- rollout 路径未配置
-
-这里要区分：
-
-- 哪些是配置错误
-- 哪些是资源错误
-- 哪些是应该立即阻断执行的错误
-
-### 第 3 步：构建外部命令
-
-round2 不直接拥有 Megatron 或 vLLM 的内部实现，而是为外部 worker 生成命令。
-
-训练命令构建应该说明：
-
-- Python 解释器
-- 外部 entrypoint
-- 模型路径
-- manifest 路径
-- 数据路径
-- 输出路径
-- GPU IDs
-- TP / PP / DP 参数
-- seed / learning rate / batch 等参数
-
-rollout 命令构建应该说明：
-
-- Python 解释器
-- 外部 entrypoint
-- base model
-- checkpoint / adapter 路径
-- artifact 路径
-- GPU IDs
-- rollout 长度和显存参数
-
-这里要理解：
-
-- 命令行契约是怎么形成的
-- 哪些属于 SOPPO，哪些属于 worker
-- 如何让训练和 rollout 的契约平行但彼此独立
-
-### 第 4 步：启动前写记录
-
-好的 infra 系统会在真正启动前先写一些东西。
-
-预期记录包括：
-
-- 启动元数据
-- resolved config 快照
-- 状态标记
-- 可能还有 PID 或进程记录
-
-这里要理解：
-
-- 哪些记录用于重启和调试
-- dry-run 是只预览还是也会产生真实记录
-- 如何避免“看起来像启动了，但其实没有”的假象
-
-### 第 5 步：启动训练
-
-训练启动应该回答：
-
-- 哪些 GPU 是可见的
-- 使用哪个 working directory
-- 训练过程是外部的还是本地的
-- 失败如何被暴露出来
-
-需要重点问的 infra 问题：
-
-- 缺少 entrypoint 时是否立即硬失败？
-- 训练 GPU 与 rollout GPU 是否通过结构保证不重叠？
-- 输出是否写到 round2 专用路径？
-
-### 第 6 步：等待可用输出
-
-训练输出必须达到一个可用于 rollout 的 checkpoint / artifact 边界。
-
-要问的问题：
-
-- 什么叫“可以 rollout 了”？
-- round2 如何避免读取未完成的 checkpoint？
-- 有没有明确的 handoff 文件或状态转换？
-
-### 第 7 步：启动 rollout
-
-rollout 只有在 checkpoint 稳定后才应该发生。
-
-要问的问题：
-
-- rollout 读取的是同一个 checkpoint 路径，还是一个拷贝出来的快照？
-- rollout 是否允许和其他工作并发？
-- rollout 产物的契约是什么？
-
-### 第 8 步：记录结果和失败状态
-
-这个流水线即使失败，也应该留下足够的痕迹。
-
-可能的终态包括：
-
-- 启动前被阻塞
-- 启动了但立刻失败
-- 训练完成但 rollout 失败
-- rollout 完成但产物无效
-- round2 完整成功
-
-这里要理解：
-
-- 如何定位失败边界
-- 如何区分环境问题和代码问题
-- 如何避免删除有价值的失败证据
-
-## 4. 资源模型
-
-### 4.1 GPU 划分
-
-round2 当前把训练和 rollout 视为两个独立资源池。
-
-一个很重要的不变量：
-
-- 训练 GPU 不能和 rollout GPU 重叠
-- 可见 GPU 集合必须和后端契约一致
-- GPU “空闲”并不代表可用；只要还有别的进程占着显存或 compute，就不能当成空闲
-
-需要关注：
-
-- `CUDA_VISIBLE_DEVICES`
-- 训练 GPU IDs
-- rollout GPU IDs
-- GPU 利用率与显存占用
-- 外部后台进程
-
-### 4.2 不需要 GPU 也能做的工作
-
-即使 GPU 被占用，下面这些仍然可以先做：
-
-- 配置解析
-- 路径校验
-- 命令构建
-- 静态代码检查
-- 依赖检查
-- launch record 格式检查
-- 日志结构审阅
-
-这一点很重要，因为它把**准备**和**执行**区分开了。
-
-## 5. 失败矩阵
-
-这部分我们可以后续一起补全。
-
-| 现象 | 可能原因 | 安全动作 | 不安全动作 |
-| --- | --- | --- | --- |
-| entrypoint 是 null | 外部 worker 配置缺失 | 停止并报告阻塞 | 自己猜一个路径 |
-| `vllm` 缺失 | 依赖未安装 | 在正确环境中安装 | 伪造导入成功 |
-| GPU 被其他用户占用 | 资源冲突 | 等待并再次检查 | 杀掉对方进程 |
-| status 存在但任务没推进 | 启动或 worker 失败 | 查看日志 | 覆盖状态 |
-| rollout 读取到不完整 checkpoint | handoff 竞态 | 增加明确的就绪契约 | 直接启动 |
-| dry-run 写了正式记录 | 契约问题 | 修代码或修文档 | 当作无伤大雅 |
-
-## 6. 我们接下来要补的内容
-
-建议按四轮来补这份文档：
-
-1. **路径轮**：精确目录、文件、环境变量
-2. **启动轮**：训练与 rollout 的精确命令顺序
-3. **状态轮**：status 文件的含义和变化时机
-4. **失败轮**：哪些情况阻塞、哪些情况重试、哪些必须人工介入
-
-## 7. 待回答的问题
-
-请帮我补这几个点：
-
-- round2 的 experiment ID 命名规则是什么？
-- 哪个文件是 round2 状态转换的权威来源？
-- 这份文档你更想侧重哪一类内容：
-  - 命令流
-  - GPU / 进程编排
-  - 配置契约
-  - 故障恢复
-- 要不要下一步加一张极简 ASCII 流程图？
-
-## 8. 下一步可以加的内容
-
-可能的下一批补充：
-
-- round2 训练 → checkpoint → rollout 的流程图
-- 环境变量及其含义的表格
-- smoke vs full run 的检查清单
-- 一个“为什么这就是 infra”的小节，把每个概念对应到真实工程能力
-
----
-
-草稿说明：这份文档故意没有写完，目的是和你一起迭代，而不是当作最终规范。
+## 6. strong smoke 与正式长链
+
+`02_strong_smoke.sh` 对两个方法各跑一个真实生产 step，不使用缩小到几条样本的假 batch。每条 smoke 都覆盖：
+
+- TP=2 真分片证据，不允许两份模型复制；
+- 8+56 完整 population；
+- 最长真实 labeled 样本达到 2048 的反向；
+- rollout 强制生成 512 token；
+- current adapter 发布、SHA、vLLM 加载/卸载；
+- 两种候选构造、PE、有限 loss/gradient、optimizer step；
+- 更新后 adapter 再发布和最长8条 validation。
+
+`run_all.sh` 前台依次执行：
+
+```text
+resolve 两条 formal config
+  → 全量 server pytest
+  → SFT+rollout strong smoke
+  → rollout-only strong smoke
+  → SFT+rollout formal
+  → rollout-only formal
+  → independent test evaluation
+  → Round2 aggregate/export
+```
+
+`start_all.sh` 用独立 session 在后台运行同一长链，使 SSH 断开不影响进程。任一步失败都阻断后续；不会覆盖失败证据，也不会自动猜测恢复点。
+
+正式每条方法按第一轮相同的 drop-last 口径运行 `floor(24000/56)×2=856` 个 optimizer step。两条方法不能用同一个 smoke 耗时相互代替估算：SFT+rollout 每步生成56条，rollout-only每步生成112条。
+
+## 7. 状态与停止边界
+
+- 全链状态：`runs/<experiment>/controller.json`；
+- 全链 PID/日志：`controller.pid`、`controller.log`；
+- 单方法状态：`<method>/controller_status.json` 和 `state.json`；
+- 训练日志：`<method>/logs/tp_train.log`；
+- rollout 日志：`<method>/logs/vllm_worker.log`；
+- 指标：`<method>/logs/metrics.jsonl`；
+- TP 证据：`<method>/tp_evidence.json`。
+
+`status_all.sh` 只读这些文件。`stop_all.sh` 默认只预览；带 `--execute` 后也只向本 experiment 记录的进程组发送 TERM，不使用 `pkill python` 或按账号批量结束。
+
+## 8. 当前限制
+
+- 尚未在真实 3×4090 上验证 Transformers TP、PEFT TP adapter 保存、DTensor optimizer/clip 或 vLLM adapter round-trip。
+- 每步在线 rollout 与 adapter 发布会显著增加 wall time 和存储；实际耗时由 strong smoke 和首个 formal step 校准。
+- 当前保留每步 LoRA adapter，但不保存 optimizer/scheduler state，因此不能声称 bit-exact 热恢复。
+- 第一轮 A800 DDP pipeline 与第二轮 4090 TP pipeline 是两个独立入口；本实现不会让第一轮任务自动迁移或重跑。

@@ -1,13 +1,14 @@
-"""Round2 backend and rollout orchestration helpers."""
+"""Round2 TP-LoRA training and online rollout orchestration helpers."""
 
 from .config import load_round2_config, validate_round2_config
-from .megatron_backend import MegatronLaunchSpec, build_megatron_command
-from .rollout_schema import validate_rollout_record
+from .queue_protocol import validate_request, validate_response
+from .tp_backend import TPLaunchSpec, build_tp_command
 
 __all__ = [
-    "MegatronLaunchSpec",
-    "build_megatron_command",
+    "TPLaunchSpec",
+    "build_tp_command",
     "load_round2_config",
     "validate_round2_config",
-    "validate_rollout_record",
+    "validate_request",
+    "validate_response",
 ]
