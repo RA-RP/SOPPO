@@ -1,6 +1,6 @@
 # Round2 3×4090 执行指南
 
-> 当前状态：`LOCKED / CODE REVIEW`。本指南对应尚未提交、尚未服务器验证的 TP2/vLLM 实现。24k固定单回复锚点与采样参数已确认；用户明确确认完整代码交接并手工形成 clean commit 以前，只阅读命令，不上传或启动。
+> 当前状态：`GPU WAIT GATE / CODE REVIEW`。用户已于2026-08-24确认 `c2c9069a0b1a1187c8e709729b33b15aaec8c454` 的 Round2 代码交接，服务器 clean checkout 与两个隔离环境也已核验；随后因三张卡被其他任务占用，用户要求新增自动等待门禁。本指南现包含该尚未提交的新修改，必须先审阅并形成新的 clean commit，才能在服务器启动。
 
 ## 1. 固定资源和目录
 
@@ -84,7 +84,42 @@ bash 00_prepare_sft_anchor.sh
 
 `start_all.sh` 内还会再执行同一验证，因此手工执行这一步是为了在占用 GPU 前更早发现数据错误，不会重复生成或覆盖有效文件。
 
-## 5. 启动前实时检查三张卡
+## 5. GPU 空闲等待门禁
+
+完整控制器现在可以在 GPU 仍被占用时启动。它完成锚点复核、配置解析和 server tests 后，会由 `02_wait_for_idle_gpus.sh` 自动等待以下三张 resolved config 指定的卡：
+
+```text
+training = 0,1
+rollout  = 2
+```
+
+默认每30秒查询一次，并要求完整观察到90秒稳定空闲窗口。每张卡同时满足以下条件才算空闲：
+
+- GPU 是 RTX 4090，物理显存至少23GiB；
+- 没有 compute PID；
+- 已用显存不超过1024MiB；
+- GPU utilization 不超过5%；
+- 两条 formal config 的GPU分配一致，Git checkout仍是 resolved config 锁定的 clean commit。
+
+等待器只执行 `nvidia-smi` 和 Git 只读查询，不会向任何现有进程发送信号，也不会抢占 GPU。实时证据原子写入：
+
+```text
+runs/<experiment>/gpu_wait.json
+```
+
+默认无限等待。必要时可在启动前调整纯调度参数：
+
+```bash
+export SOPPO_ROUND2_GPU_POLL_SECONDS=30
+export SOPPO_ROUND2_GPU_IDLE_CONFIRMATIONS=3
+export SOPPO_ROUND2_GPU_IDLE_MAX_USED_MIB=1024
+export SOPPO_ROUND2_GPU_IDLE_MAX_UTIL_PERCENT=5
+export SOPPO_ROUND2_GPU_WAIT_TIMEOUT_SECONDS=0  # 0表示无限等待
+```
+
+建议保持默认阈值。等待器放行后，`run_method.sh` 的正式 preflight 会立即再次检查三张卡；独占服务器没有调度器，检查与进程启动之间无法建立原子资源锁。如果此时另一进程抢先占卡，preflight 会失败关闭，而不会与它共享显存。
+
+仍可人工查看当前占用：
 
 ```bash
 nvidia-smi --query-gpu=index,name,memory.total,memory.used,memory.free,utilization.gpu \
@@ -93,7 +128,7 @@ nvidia-smi --query-compute-apps=gpu_uuid,pid,process_name,used_memory \
   --format=csv
 ```
 
-preflight 要求三张卡均为 RTX 4090、物理显存至少23GiB，并且没有 compute process。不要按进程名直接杀任务；先确认占用者，只有自己的已知进程才能停止。
+不要按进程名直接杀任务；先确认占用者，只有自己的已知进程才能停止。
 
 ## 6. 一次挂完整长链
 
@@ -114,6 +149,7 @@ bash start_all.sh
 生成/复核24k固定单回复锚点
   → resolve 两条 formal config
   → 全量 server pytest
+  → 等待三张目标4090连续稳定空闲
   → 两条方法各一个 production-path strong smoke
   → SOPPO-PE-sft-rollout-exp formal
   → SOPPO-PE-rollout-only-exp formal
@@ -149,6 +185,7 @@ bash status_method.sh soppo_pe_rollout_only_exp.yaml
 
 ```text
 runs/<experiment>/controller.json
+runs/<experiment>/gpu_wait.json
 runs/<experiment>/strong_smoke/complete.json
 runs/<experiment>/<method>/controller_status.json
 runs/<experiment>/<method>/state.json
@@ -182,6 +219,8 @@ bash stop_all.sh --execute
 bash 01_resolve_all.sh
 
 bash 00_server_tests.sh
+
+bash 02_wait_for_idle_gpus.sh
 
 bash dry_run.sh soppo_pe_sft_rollout_exp.yaml
 bash dry_run.sh soppo_pe_rollout_only_exp.yaml

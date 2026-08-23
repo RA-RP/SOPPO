@@ -6,10 +6,10 @@
 - 第一轮 Experiment：`exp-20260819-01-mvp`（冻结基线，只读引用）
 - 第二轮默认 Experiment：`exp-20260823-01-round2-tp2`；正式运行时必须换成新的唯一 ID
 - 设计依据：`../human_read/exp/current_experiment.md` v0.6；当前文档将第一轮 MVP 代码说明与第二轮 rollout 新增边界分开记录
-- 当前阶段：`CODE_IMPLEMENTATION`（第二轮 3×4090 TP/rollout 适配返回代码阶段）
-- 代码交接：第一轮既有基线保持冻结；第二轮 TP=2 + 单卡 vLLM 修改尚未提交、尚待用户审阅
-- 当前基线 HEAD：`0f228d18fcbfb3d71d52c599deb3c85c036381f0`；其上本轮未提交数据/采样补充 diff（仅 `code/`，排除本总览）的 SHA-256 为 `458370248fb263f6939b09c0daa14592ce84ab21985945e3420c794e412e15bf`
-- 服务器执行：第二轮当前为 `LOCKED`；只有用户确认本次代码交接、形成 clean commit 并在服务器依次通过 preflight/tests/strong smoke 后才允许正式运行
+- 当前阶段：`CODE_IMPLEMENTATION`（为新增 GPU 空闲等待门禁暂时返回代码阶段）
+- 已确认代码：第二轮 TP=2 + 单卡 vLLM commit `c2c9069a0b1a1187c8e709729b33b15aaec8c454` 已于2026-08-24获用户明确确认；服务器 clean checkout 与两个环境已核验
+- 当前未提交增量：只读 GPU 空闲等待门禁；相对 `c2c9069` 的 `code/` diff（排除本总览、包含新文件）SHA-256 为 `82c3b26be37f34f30e7de06e119c597a003a480851452793b8969b28b8bcdb70`
+- 服务器执行：新增 diff 待用户审阅，暂时 `LOCKED`；确认并形成新的 clean commit 后，控制器可在GPU仍忙时启动并自动等待 strong smoke
 
 第一轮本地只编辑纯文本源码、配置和说明。没有在本地安装/import 项目依赖，没有运行 pytest、数据、模型、训练、评价或 GPU 任务。第一轮运行正确性必须由获批后的服务器 tests/strong smoke 证明。第二轮不得改写第一轮 MVP 代码语义，只能复用公共模块并新增 rollout 相关入口、配置和脚本。
 
@@ -192,13 +192,15 @@ stage03/04/05 合计正好八条 first-round final trajectories，都写在 `run
 
 正式任务另有运行时 GPU gate。standalone 不把 SKU 名称静默写死为 A800，会把实际卡名、显存和 torch CUDA 版本写入 hardware CSV；若实际 SKU 不同，结果交接必须披露。smoke通过只表示工程接口闭环，不代表30k训练一定不会出现后期数值或wall-time问题。
 
-第二轮另有独立的 `round2/02_strong_smoke.sh`。它不复用第一轮五方法 smoke，而是让两条 rollout 方法各自完成一个生产路径 optimizer step：真实 TP=2 Qwen3 LoRA、8+56 完整 population、物理 pair subbatch=1、最长真实 labeled 样本的 2048 backward、每条 rollout 强制512 token、adapter 保存/哈希/vLLM回载、在线候选构造、PE反传、optimizer step、adapter 再发布与8条最长 validation评价。它必须在正式两条轨迹之前成功，且服务器仍须验证实际 wall time 与峰值显存。
+第二轮在 strong smoke 前增加 `round2/02_wait_for_idle_gpus.sh`。后台控制器完成数据/配置/tests 后即可无限等待，不要求用户保持 SSH：默认每30秒只读查询 resolved config 的GPU0–2，要求完整90秒无 compute PID、每卡已用显存不超过1024MiB且利用率不超过5%；同时持续核对4090/23GiB硬件和 clean Git commit。状态原子写入 `gpu_wait.json`，停止仍由实验专属进程组完成。等待器不发送信号，也不替代正式 preflight；无调度器导致的放行后抢卡会被 preflight 失败关闭。
+
+随后运行独立的 `round2/02_strong_smoke.sh`。它不复用第一轮五方法 smoke，而是让两条 rollout 方法各自完成一个生产路径 optimizer step：真实 TP=2 Qwen3 LoRA、8+56 完整 population、物理 pair subbatch=1、最长真实 labeled 样本的 2048 backward、每条 rollout 强制512 token、adapter 保存/哈希/vLLM回载、在线候选构造、PE反传、optimizer step、adapter 再发布与8条最长 validation评价。它必须在正式两条轨迹之前成功，且服务器仍须验证实际 wall time 与峰值显存。
 
 ## 7. 静态复核与服务器待验证
 
 本地复核范围：shell `bash -n`、`git diff --check`、旧接口/方法/路径静态搜索、第一轮入口未被改写、第二轮只有两种方法。根据本地边界，不运行 Python import、pytest、数据、模型或 GPU。Transformers TP、PEFT TP-LoRA 保存、DTensor optimizer/clip、vLLM adapter回载、24GB峰值显存、数值、512-token rollout 和完整长链都必须在服务器验证。
 
-2026-08-23 已完成的静态复核：`bash -n code/scripts/round2/*.sh`、工作区与 index 的 `git diff --check` 均通过；新增锚点脚本具备执行位；正式 Round2 路径未再引用旧 `SOPPO_MEGATRON_*`、`run_megatron.py`、`rollout_schema.py`、旧采样环境变量、null采样值或测试用 `top_p=0.9`。未在本地执行 Python/pytest。
+2026-08-24 已完成的本地静态复核：`bash -n code/scripts/round2/*.sh`、工作区与 index 的 `git diff --check` 均通过；锚点与 GPU 等待脚本具备执行位。未在本地执行 Python/pytest、数据、模型或GPU任务。`02_wait_for_idle_gpus.sh` 的真实 `nvidia-smi` 输出解析、等待状态和放行到 preflight 的行为仍须在服务器验证。
 
 已知风险：
 
@@ -213,6 +215,6 @@ stage03/04/05 合计正好八条 first-round final trajectories，都写在 `run
 - v0.6将已有pair拆成两个SSPO unpaired response，是数据形态适配，不等同于论文使用UltraChat single-response corpus。
 - 单种子不能支持显著性结论；`C_epsilon`不是因果证据。
 - 第二轮 adapter 每 step 都必须发布给在线 rollout，因此会保留大量 LoRA checkpoint；当前不保存 optimizer/scheduler state，不支持 bit-exact 热恢复。
-- 第二轮固定锚点与采样四元组已经确认；本次代码交接和服务器执行仍在完整 diff 获用户明确确认前保持锁定。
+- 第二轮固定锚点、采样四元组与 `c2c9069` 已确认；后续新增的 GPU 等待门禁仍须单独完成代码交接。
 
-旧 Slurm 路径的静态复核与部分服务器门禁已有证据；本次 round2 TP/vLLM 实现仍是未提交、未在服务器运行的代码草案，不能把脚本存在写成已验证成功，也不能沿用第一轮的执行授权自动启动。
+旧 Slurm 路径的静态复核与部分服务器门禁已有证据；Round2 两个环境已在服务器安装验证，但 GPU wait、tests、TP/vLLM strong smoke 与正式训练尚未执行，不能把脚本存在写成已验证成功。

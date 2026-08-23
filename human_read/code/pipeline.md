@@ -1,6 +1,6 @@
 # SOPPO Round2：3×4090 TP 训练与在线 rollout 流水线
 
-> 状态：代码实现中，尚未提交、尚未通过服务器 strong smoke，也未获本次代码交接确认。
+> 状态：`c2c9069` 已于2026-08-24获用户明确确认，服务器 clean checkout 与两个 Round2 环境已核验；随后新增的 GPU 空闲等待门禁尚未提交、待用户审阅。服务器 strong smoke 尚未运行。
 
 ## 1. 三张卡怎么分
 
@@ -110,6 +110,7 @@ resolved config 是运行时唯一真源。它冻结：
 确定性生成/复核24k固定单回复锚点
   → resolve 两条 formal config
   → 全量 server pytest
+  → 只读等待 GPU0–2 连续稳定空闲
   → SFT+rollout strong smoke
   → rollout-only strong smoke
   → SFT+rollout formal
@@ -118,13 +119,16 @@ resolved config 是运行时唯一真源。它冻结：
   → Round2 aggregate/export
 ```
 
-`start_all.sh` 用独立 session 在后台运行同一长链，使 SSH 断开不影响进程。任一步失败都阻断后续；不会覆盖失败证据，也不会自动猜测恢复点。
+`start_all.sh` 用独立 session 在后台运行同一长链，使 SSH 断开不影响进程。GPU 被占用时控制器不会失败或终止占用者，而是在 `02_wait_for_idle_gpus.sh` 中每30秒轮询；默认要求无 compute PID、已用显存不超过1024MiB、利用率不超过5%，并观察完整90秒稳定窗口。状态原子写入 `gpu_wait.json`。任一步失败都阻断后续；不会覆盖失败证据，也不会自动猜测恢复点。
+
+独占服务器没有 Slurm 一类的原子资源分配。等待门禁放行后，每个方法仍由 `00_preflight.sh` 立即复核全部三张卡；若检查与启动之间有其他进程抢卡，本实验会失败关闭，不会杀进程或静默共享 GPU。
 
 正式每条方法按第一轮相同的 drop-last 口径运行 `floor(24000/56)×2=856` 个 optimizer step。两条方法不能用同一个 smoke 耗时相互代替估算：SFT+rollout 每步生成56条，rollout-only每步生成112条。
 
 ## 7. 状态与停止边界
 
 - 全链状态：`runs/<experiment>/controller.json`；
+- GPU等待证据：`runs/<experiment>/gpu_wait.json`；
 - 全链 PID/日志：`controller.pid`、`controller.log`；
 - 单方法状态：`<method>/controller_status.json` 和 `state.json`；
 - 训练日志：`<method>/logs/tp_train.log`；

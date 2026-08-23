@@ -27,6 +27,11 @@ if [[ -f "$ROUND2_RUN_ROOT/controller.json" ]]; then
 else
     echo "Controller status is not available yet."
 fi
+if [[ -f "$ROUND2_RUN_ROOT/gpu_wait.json" ]]; then
+    echo
+    echo "## GPU wait gate"
+    cat "$ROUND2_RUN_ROOT/gpu_wait.json"
+fi
 
 for config_name in \
     soppo_pe_sft_rollout_exp.yaml \

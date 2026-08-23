@@ -7,10 +7,10 @@
 - 第二轮默认 Experiment：`exp-20260823-01-round2-tp2`；正式运行必须使用新的唯一 ID
 - 实验设计：`current_experiment.md` v0.6 已同步为两轮边界；第二轮只新增 rollout 相关 PE 实验
 - 当前阶段：`CODE_IMPLEMENTATION`
-- 代码交接：第一轮既有基线保持冻结；第二轮 TP2/vLLM 修改未提交、待用户审阅
-- 当前基线 HEAD：`0f228d18fcbfb3d71d52c599deb3c85c036381f0`；其上未提交 Round2 数据/采样补充 diff（排除 `CODE_OVERVIEW.md`）SHA-256：`458370248fb263f6939b09c0daa14592ce84ab21985945e3420c794e412e15bf`
-- 服务器执行：第二轮 `LOCKED`，不得继承第一轮旧授权
-- 当前平台适配：3×4090 目标为 GPU0–1 native TP-LoRA、GPU2 vLLM；服务器待验证
+- 已确认代码：用户于2026-08-24明确确认 commit `c2c9069a0b1a1187c8e709729b33b15aaec8c454`；服务器 clean checkout 与 `round2-train` / `round2-rollout` 环境已核验
+- 当前未提交增量：后台控制器的只读 GPU 空闲等待门禁；相对 `c2c9069` 的 `code/` diff（排除 `CODE_OVERVIEW.md`，包含新文件）的 SHA-256：`82c3b26be37f34f30e7de06e119c597a003a480851452793b8969b28b8bcdb70`
+- 服务器执行：新增 diff 待审阅，暂时 `LOCKED`；不得把对 `c2c9069` 的确认自动沿用到新版本
+- 当前平台适配：3×4090 目标为 GPU0–1 native TP-LoRA、GPU2 vLLM；运行前可后台等待GPU稳定空闲，实际训练仍待 strong smoke
 - 正式代码说明：`../../code/CODE_OVERVIEW.md`
 
 ## 第二轮新增实验清单
@@ -65,7 +65,7 @@
 | 第二轮 TP 训练 | `src/round2/tp_trainer.py`, `tp_backend.py`, `run_tp.py`；TP=2/PP=1/DP=1，真实 DTensor 分片门禁 |
 | 在线候选与不可变 adapter handoff | `src/round2/run_rollout.py`, `queue_protocol.py`；每步 READY/SHA adapter、56-prompt request/response |
 | 固定单回复锚点生成与隔离 | `src/round2/prepare_sft_anchor.py`, `sft_schema.py`, `scripts/round2/00_prepare_sft_anchor.sh`；从公开 response_a 确定性派生，24k ID/prompt/response 精确连接，禁止 label/pair 字段 |
-| 第二轮 strong smoke / 长链 | `scripts/round2/02_strong_smoke.sh`, `start_all.sh`, `run_all.sh`, `status_all.sh`, `stop_all.sh` |
+| 第二轮 GPU 等待 / strong smoke / 长链 | `scripts/round2/02_wait_for_idle_gpus.sh`, `02_strong_smoke.sh`, `start_all.sh`, `run_all.sh`, `status_all.sh`, `stop_all.sh` |
 | 第二轮独立评价与无样本导出 | `src/round2/evaluate.py`, `aggregate.py`, `scripts/round2/03_evaluate.sh`, `04_aggregate.sh` |
 | adapter evaluator/GetSlice | `src/evaluation/evaluator.py`, `observe/.../model_utils.py` |
 | 一次提交 DAG | `scripts/cluster/submit_all.sh` |
@@ -76,6 +76,8 @@
 
 本地只允许纯文本编辑、`bash -n`、`git diff --check` 和静态路径/旧接口搜索；不运行 Python import、pytest、数据、模型、训练、评价或 GPU 工作。第二轮只新增代码、配置和命令，不修改第一轮 MVP 代码路径的既有语义。服务器 tests 与 strong smoke 必须在用户确认本次未提交 diff 并形成 clean commit 后完成。
 
-2026-08-23 用户已补齐开放决定：固定单回复锚点来自第一轮24k公开 unlabeled 的已随机换位 `response_a`；采样冻结为 `temperature=0.7/top_p=0.8/top_k=20/min_p=0`。代码不再要求人为填写这些采样环境变量，并新增可重复验证但不覆盖既有文件的锚点派生入口。当前仍缺少用户对完整未提交 diff 的代码交接确认；服务器 tests/strong smoke 也尚未运行，因此本页状态仍不得改为已交接或可正式运行。
+2026-08-23 用户已补齐开放决定：固定单回复锚点来自第一轮24k公开 unlabeled 的已随机换位 `response_a`；采样冻结为 `temperature=0.7/top_p=0.8/top_k=20/min_p=0`。这些实现随 `c2c9069` 于2026-08-24获用户明确确认，且服务器两个环境已安装验证。
+
+随后用户要求在三张卡暂时被占用时先挂起本实验。当前未提交实现把只读等待器插入 `server_tests → strong_smoke` 之间：默认每30秒查询 resolved config 指定的三张4090，要求90秒稳定无 compute PID、显存使用不超过1024MiB、利用率不超过5%，并持续核对 clean Git commit；它只写原子 `gpu_wait.json`，绝不发送信号。无调度器条件下无法原子锁卡，因此放行后仍由原有 preflight 再次失败关闭。该增量获得“编写”授权但尚未获得代码交接确认；服务器 tests/strong smoke 也尚未运行。
 
 代码总览需明确第二轮两条新增 rollout 实验的实现、默认值、产物、与第一轮冻结基线的只读合并方式、已知限制、静态复核和服务器待验证项；完成这些仍只意味着可以请求服务器执行授权，不等于已经获得授权。

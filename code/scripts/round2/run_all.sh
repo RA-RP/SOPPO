@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Foreground controller: resolve, test, smoke, train, evaluate, and aggregate.
+# Foreground controller: resolve, test, wait for GPUs, smoke, train, evaluate, and aggregate.
 set -Eeuo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -66,6 +66,10 @@ bash "$SCRIPT_DIR/01_resolve_all.sh"
 failed_stage="server_tests"
 update_status "running" "$failed_stage"
 bash "$SCRIPT_DIR/00_server_tests.sh"
+
+failed_stage="wait_for_idle_gpus"
+update_status "waiting" "$failed_stage"
+bash "$SCRIPT_DIR/02_wait_for_idle_gpus.sh"
 
 failed_stage="strong_smoke"
 update_status "running" "$failed_stage"
