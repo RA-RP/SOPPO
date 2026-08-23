@@ -19,17 +19,33 @@ soppo_job_init() {
             echo "ERROR: Slurm worker is missing SOPPO_EXPECTED_GIT_COMMIT" >&2
             return 1
         fi
-        local actual_commit
-        actual_commit="$(git -C "$SOPPO_ROOT" rev-parse HEAD)"
-        if [[ "$actual_commit" != "$SOPPO_EXPECTED_GIT_COMMIT" ]]; then
-            echo "ERROR: Server checkout changed after DAG submission" >&2
-            echo "  expected: $SOPPO_EXPECTED_GIT_COMMIT" >&2
-            echo "  actual:   $actual_commit" >&2
-            return 1
-        fi
-        if [[ -n "$(git -C "$SOPPO_ROOT" status --porcelain)" ]]; then
-            echo "ERROR: Server checkout became dirty after DAG submission" >&2
-            return 1
+        if [[ -n "${SOPPO_SOURCE_MANIFEST:-}" || -n "${SOPPO_SOURCE_MANIFEST_SHA256:-}" ]]; then
+            if [[ ! "${SOPPO_SOURCE_MANIFEST_SHA256:-}" =~ ^[0-9a-f]{64}$ ]]; then
+                echo "ERROR: Slurm worker has an invalid source-manifest checksum" >&2
+                return 1
+            fi
+            if [[ ! -f "$script_dir/source_snapshot.py" ]]; then
+                echo "ERROR: Snapshot verifier is missing: $script_dir/source_snapshot.py" >&2
+                return 1
+            fi
+            "$ENV_ROOT/youc/bin/python" "$script_dir/source_snapshot.py" verify \
+                --root "$SOPPO_ROOT" \
+                --manifest "$SOPPO_SOURCE_MANIFEST" \
+                --manifest-sha256 "$SOPPO_SOURCE_MANIFEST_SHA256" \
+                --commit "$SOPPO_EXPECTED_GIT_COMMIT" || return 1
+        else
+            local actual_commit
+            actual_commit="$(git -C "$SOPPO_ROOT" rev-parse HEAD)"
+            if [[ "$actual_commit" != "$SOPPO_EXPECTED_GIT_COMMIT" ]]; then
+                echo "ERROR: Server checkout changed after DAG submission" >&2
+                echo "  expected: $SOPPO_EXPECTED_GIT_COMMIT" >&2
+                echo "  actual:   $actual_commit" >&2
+                return 1
+            fi
+            if [[ -n "$(git -C "$SOPPO_ROOT" status --porcelain)" ]]; then
+                echo "ERROR: Server checkout became dirty after DAG submission" >&2
+                return 1
+            fi
         fi
     fi
     soppo_activate_env "$ENV_ROOT/youc"

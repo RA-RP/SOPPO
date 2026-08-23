@@ -12,26 +12,28 @@
 - 当前入口：`../../code/scripts/standalone/EXECUTION_GUIDE.md`；旧共享集群入口保留为 `../../code/scripts/cluster/EXECUTION_GUIDE.md`
 - 服务器执行：`AUTHORIZED`（2026-08-21）；2026-08-22 用户明确要求迁移至无 Slurm 独占服务器。必须从 clean、commit-locked checkout 启动 fail-closed 顺序 pipeline；新增平台适配尚待服务器验证
 
-v0.6 替代 v0.5 的 SFT/Pseudo/DPO+PE 方案。30k 数据及隔离合同不变，训练目标、超参、LoRA、batch、checkpoint 和任务图以本文件为准。
+v0.6 替代 v0.5 的 SFT/Pseudo/DPO+PE 方案。第一轮静态 PE 已完成并冻结；本文件当前只约束后续第二轮 rollout 相关扩展。30k 数据及隔离合同不变，训练目标、超参、LoRA、batch、checkpoint 和任务图以本文件为准。
 
 ## 1. 问题与最终对照
 
-核心问题：在只有 10% 偏好标签时，population-level PE 能否比与 SSPO 论文设置对齐的 instance-level hard pseudo-label 更有效，并向 DPO-100 oracle 靠近。
+核心问题：第一轮静态 PE 已完成后，第二轮 rollout 相关实验中，population-level PE 在 SFT+rollout 与 rollout-only 之间能否保持优势，并进一步向 DPO-100 oracle 靠近。
 
-八条最终轨迹为：
+第二轮最终轨迹为：
 
 1. `DPO-10`；
 2. `DPO-100`；
-3. `SSPO-hard-exp`；
-4. `SOPPO-PE-exp`；
+3. `SOPPO-PE-exp`；
+4. `SOPPO-PE-rollout-only-exp`；
 5. `SOPPO-PE-static-0.1`；
 6. `SOPPO-PE-static-0.3`；
 7. `SOPPO-PE-static-0.5`；
 8. `SOPPO-PE-static-1.0`。
 
-不再训练 SFT、hard-static、linear scheduler 或旧的 DPO-style pseudo-target。`SSPO-hard-exp` 与 `SOPPO-PE-exp` 共享 labeled loss、优化超参、batch 和同一 `gamma_t`，只替换 unlabeled objective；这是核心受控比较。四条 static PE 用于判断固定混合是否优于动态 curriculum。
+第一轮静态 PE 结果不再重复作为主项，而是作为已冻结基线单独存储。第二轮只比较动态 rollout 相关主线与其消融；`SOPPO-PE-exp` 与 `SOPPO-PE-rollout-only-exp` 共享 labeled loss、优化超参、batch 和同一 `gamma_t`，只替换 unlabeled objective。四条 static PE 仅作为固定混合的补充消融与已完成基线对照。
 
 ## 2. 数据合同
+
+第一轮静态 PE 的结果目录与第二轮 rollout 扩展的结果目录必须分离存储，不得互相覆盖；后续最终合并只读取两边导出的聚合结果，不回写原始实验产物。
 
 继续复用已经冻结的 `<SERVER_BASE>/data/ultrafeedback/mvp-v0.5-30k/`，不复制或覆盖数据：
 

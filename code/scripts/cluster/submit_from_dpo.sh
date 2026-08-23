@@ -33,9 +33,13 @@ test -f "$REUSE_REGISTRY" || { echo "ERROR: reused registry not found: $REUSE_RE
 
 DATA_DIR="${SOPPO_DATA_DIR:-$DATA_ROOT/ultrafeedback/mvp-v0.5-30k}"
 MODEL_DIR="${SOPPO_MODEL_DIR:-$MODEL_ROOT/Qwen3-4B}"
+GIT_REPO_ROOT="${SOPPO_GIT_REPO_ROOT:-$SOPPO_ROOT}"
+SOURCE_COMMITISH="${SOPPO_SOURCE_COMMIT:-HEAD}"
 REFERENCE_ROOT="${SOPPO_REFERENCE_CACHE:-$CACHE_ROOT/soppo/reference/qwen3-4b-mvp-v0.5-30k}"
 PIPELINE_DIR="$RUN_ROOT/$EXPERIMENT_ID/pipeline"
 REGISTRY="$PIPELINE_DIR/task_registry.json"
+SOURCE_ROOT="$PIPELINE_DIR/source/SOPPO"
+SOURCE_MANIFEST="$PIPELINE_DIR/source_manifest.json"
 GPU_PARTITION="${SOPPO_GPU_PARTITION:-gpu}"
 CPU_PARTITION="${SOPPO_CPU_PARTITION:-$GPU_PARTITION}"
 GPU1_COUNT="${SOPPO_GPU1_COUNT:-1}"
@@ -54,6 +58,8 @@ esac
 command -v sbatch >/dev/null || { echo "ERROR: sbatch is unavailable" >&2; exit 1; }
 command -v scancel >/dev/null || { echo "ERROR: scancel is unavailable" >&2; exit 1; }
 command -v sacct >/dev/null || { echo "ERROR: sacct is unavailable" >&2; exit 1; }
+command -v git >/dev/null || { echo "ERROR: git is unavailable" >&2; exit 1; }
+command -v tar >/dev/null || { echo "ERROR: tar is unavailable" >&2; exit 1; }
 test -f "$MODEL_DIR/model_manifest.json" || { echo "ERROR: Qwen3 manifest is missing" >&2; exit 1; }
 test -f "$DATA_DIR/manifest_public.json" || { echo "ERROR: 30k data manifest is missing" >&2; exit 1; }
 test -f "$DATA_DIR/oracle_train.private.jsonl" || { echo "ERROR: oracle training file is missing" >&2; exit 1; }
@@ -66,10 +72,15 @@ for arm in dpo10 dpo100; do
         exit 1
     }
 done
-if [[ -n "$(git -C "$SOPPO_ROOT" status --porcelain)" ]]; then
+git -C "$GIT_REPO_ROOT" cat-file -e "$SOURCE_COMMITISH^{commit}" 2>/dev/null || {
+    echo "ERROR: Invalid SOPPO source commit: $SOURCE_COMMITISH" >&2
+    exit 1
+}
+if [[ -n "$(git -C "$GIT_REPO_ROOT" status --porcelain)" ]]; then
     echo "ERROR: Server SOPPO checkout must be clean before submission" >&2
     exit 1
 fi
+GIT_COMMIT="$(git -C "$GIT_REPO_ROOT" rev-parse "$SOURCE_COMMITISH^{commit}")"
 
 mapfile -t REUSED < <(python - "$REUSE_REGISTRY" "$EXPERIMENT_ID" <<'PY'
 import json
@@ -114,15 +125,17 @@ if [[ "$REUSED_FORMAL_GPU_COUNT" != "$FORMAL_GPU_COUNT" ]]; then
     exit 1
 fi
 
-git -C "$SOPPO_ROOT" cat-file -e "$REUSED_COMMIT^{commit}" 2>/dev/null || {
+git -C "$GIT_REPO_ROOT" cat-file -e "$REUSED_COMMIT^{commit}" 2>/dev/null || {
     echo "ERROR: reused commit is unavailable locally: $REUSED_COMMIT" >&2
     exit 1
 }
-git -C "$SOPPO_ROOT" merge-base --is-ancestor "$REUSED_COMMIT" HEAD || {
+git -C "$GIT_REPO_ROOT" merge-base --is-ancestor "$REUSED_COMMIT" "$GIT_COMMIT" || {
     echo "ERROR: current checkout is not a descendant of reused commit: $REUSED_COMMIT" >&2
     exit 1
 }
-mapfile -t CHANGED_PATHS < <(git -C "$SOPPO_ROOT" diff --name-only "$REUSED_COMMIT"..HEAD)
+mapfile -t CHANGED_PATHS < <(
+    git -C "$GIT_REPO_ROOT" diff --name-only "$REUSED_COMMIT".."$GIT_COMMIT"
+)
 for path in "${CHANGED_PATHS[@]}"; do
     case "$path" in
         *.md|code/scripts/cluster/cancel_pipeline.sh|code/scripts/cluster/submit_from_dpo.sh) ;;
@@ -148,14 +161,26 @@ for record in "tests=$TESTS" "smoke=$SMOKE" "reference_cache=$REFERENCE"; do
     }
 done
 
+mkdir -p "$PIPELINE_DIR/logs" "$PIPELINE_DIR/hardware"
+mkdir -p "$SOURCE_ROOT"
+git -C "$GIT_REPO_ROOT" archive "$GIT_COMMIT" | tar -x -C "$SOURCE_ROOT"
+SOURCE_SCRIPT_DIR="$SOURCE_ROOT/code/scripts/cluster"
+SOURCE_MANIFEST_SHA256="$(
+    python "$SOURCE_SCRIPT_DIR/source_snapshot.py" create \
+        --root "$SOURCE_ROOT" --manifest "$SOURCE_MANIFEST" --commit "$GIT_COMMIT"
+)"
+[[ "$SOURCE_MANIFEST_SHA256" =~ ^[0-9a-f]{64}$ ]] || {
+    echo "ERROR: Failed to create immutable source manifest" >&2
+    exit 1
+}
+export PYTHONPATH="$SOURCE_ROOT/code:${PYTHONPATH:-}"
 python -m src.model.model_manifest --model-dir "$MODEL_DIR" --verify
 python -m src.data.audit_prepared_data --data-dir "$DATA_DIR"
-GIT_COMMIT="$(git -C "$SOPPO_ROOT" rev-parse HEAD)"
-mkdir -p "$PIPELINE_DIR/logs" "$PIPELINE_DIR/hardware"
 
 echo "Reusing completed gates: tests=$TESTS, smoke=$SMOKE, reference_cache=$REFERENCE"
 echo "Slurm routing: auxiliary=$CPU_PARTITION/${AUX_GPU_COUNT}GPU, formal=$GPU_PARTITION/${FORMAL_GPU_COUNT}GPU"
 echo "Slurm node exclusions: ${EXCLUDE_NODES:-none}"
+echo "Immutable source: $SOURCE_ROOT @ ${GIT_COMMIT:0:12}"
 
 declare -a NODE_ARGS=()
 if [[ -n "$EXCLUDE_NODES" ]]; then
@@ -191,50 +216,51 @@ submit() {
     echo "Submitted $stage as Slurm job $LAST_JOB_ID" >&2
 }
 
-COMMON_EXPORT="ALL,RUN_CONTEXT=cluster,EXPERIMENT_ID=$EXPERIMENT_ID,SOPPO_CLUSTER_SCRIPT_DIR=$SCRIPT_DIR,SOPPO_DATA_DIR=$DATA_DIR,SOPPO_MODEL_DIR=$MODEL_DIR,SOPPO_EXPECTED_GIT_COMMIT=$GIT_COMMIT"
+COMMON_EXPORT="ALL,RUN_CONTEXT=cluster,EXPERIMENT_ID=$EXPERIMENT_ID,SOPPO_CLUSTER_SCRIPT_DIR=$SOURCE_SCRIPT_DIR,SOPPO_SERVER_BASE=$SERVER_BASE,SOPPO_DATA_DIR=$DATA_DIR,SOPPO_MODEL_DIR=$MODEL_DIR,SOPPO_EXPECTED_GIT_COMMIT=$GIT_COMMIT,SOPPO_SOURCE_MANIFEST=$SOURCE_MANIFEST,SOPPO_SOURCE_MANIFEST_SHA256=$SOURCE_MANIFEST_SHA256"
 submit dpo_headroom_runs -J soppo-dpo -p "$GPU_PARTITION" -N 1 -c 32 -G "$FORMAL_GPU_COUNT" -t 2-00:00:00 \
     --array="0-1%$ARRAY_LIMIT" -o "$PIPELINE_DIR/logs/dpo-%A_%a.out" \
-    --export="$COMMON_EXPORT,SOPPO_NPROC_PER_NODE=$FORMAL_GPU_COUNT,SOPPO_REQUIRE_A800=1" "$SCRIPT_DIR/03_preexperiment.sh"
+    --export="$COMMON_EXPORT,SOPPO_NPROC_PER_NODE=$FORMAL_GPU_COUNT,SOPPO_REQUIRE_A800=1" "$SOURCE_SCRIPT_DIR/03_preexperiment.sh"
 PRE="$LAST_JOB_ID"
 submit headroom_gate -J soppo-headroom -p "$CPU_PARTITION" -N 1 -c 4 -G "$AUX_GPU_COUNT" -t 01:00:00 \
     -d "afterok:$PRE" -o "$PIPELINE_DIR/logs/headroom-%j.out" \
-    --export="$COMMON_EXPORT" "$SCRIPT_DIR/03_select_preexperiment.sh"
+    --export="$COMMON_EXPORT" "$SOURCE_SCRIPT_DIR/03_select_preexperiment.sh"
 PRESELECT="$LAST_JOB_ID"
 submit pe_static_runs -J soppo-static -p "$GPU_PARTITION" -N 1 -c 32 -G "$FORMAL_GPU_COUNT" -t 3-00:00:00 \
     --array="0-3%$ARRAY_LIMIT" -d "afterok:$PRESELECT" -o "$PIPELINE_DIR/logs/static-%A_%a.out" \
-    --export="$COMMON_EXPORT,SOPPO_NPROC_PER_NODE=$FORMAL_GPU_COUNT,SOPPO_REQUIRE_A800=1" "$SCRIPT_DIR/04_lambda_search.sh"
+    --export="$COMMON_EXPORT,SOPPO_NPROC_PER_NODE=$FORMAL_GPU_COUNT,SOPPO_REQUIRE_A800=1" "$SOURCE_SCRIPT_DIR/04_lambda_search.sh"
 LAMBDA="$LAST_JOB_ID"
 submit static_select -J soppo-static-select -p "$CPU_PARTITION" -N 1 -c 4 -G "$AUX_GPU_COUNT" -t 01:00:00 \
     -d "afterok:$LAMBDA" -o "$PIPELINE_DIR/logs/static-select-%j.out" \
-    --export="$COMMON_EXPORT" "$SCRIPT_DIR/04_select_lambda.sh"
+    --export="$COMMON_EXPORT" "$SOURCE_SCRIPT_DIR/04_select_lambda.sh"
 LAMBDA_SELECT="$LAST_JOB_ID"
 submit dynamic_runs -J soppo-dynamic -p "$GPU_PARTITION" -N 1 -c 32 -G "$FORMAL_GPU_COUNT" -t 3-00:00:00 \
     --array="0-1%$ARRAY_LIMIT" -d "afterok:$LAMBDA_SELECT" -o "$PIPELINE_DIR/logs/dynamic-%A_%a.out" \
-    --export="$COMMON_EXPORT,SOPPO_NPROC_PER_NODE=$FORMAL_GPU_COUNT,SOPPO_REQUIRE_A800=1" "$SCRIPT_DIR/05_run_main.sh"
+    --export="$COMMON_EXPORT,SOPPO_NPROC_PER_NODE=$FORMAL_GPU_COUNT,SOPPO_REQUIRE_A800=1" "$SOURCE_SCRIPT_DIR/05_run_main.sh"
 MAIN="$LAST_JOB_ID"
 submit c_epsilon_prepare -J soppo-ceprep -p "$CPU_PARTITION" -N 1 -c 4 -G "$AUX_GPU_COUNT" -t 01:00:00 \
     -d "afterok:$MAIN" -o "$PIPELINE_DIR/logs/ceprep-%j.out" \
-    --export="$COMMON_EXPORT" "$SCRIPT_DIR/06_prepare_c_epsilon.sh"
+    --export="$COMMON_EXPORT" "$SOURCE_SCRIPT_DIR/06_prepare_c_epsilon.sh"
 CE_PREP="$LAST_JOB_ID"
 submit c_epsilon_raw -J soppo-ce -p "$GPU_PARTITION" -N 1 -c 16 -G "$GPU1_COUNT" -t 2-00:00:00 \
     --array="0-8%$ARRAY_LIMIT" -d "afterok:$CE_PREP" -o "$PIPELINE_DIR/logs/ce-%A_%a.out" \
-    --export="$COMMON_EXPORT,SOPPO_NPROC_PER_NODE=1,SOPPO_REQUIRE_A800=1" "$SCRIPT_DIR/06_c_epsilon.sh"
+    --export="$COMMON_EXPORT,SOPPO_NPROC_PER_NODE=1,SOPPO_REQUIRE_A800=1" "$SOURCE_SCRIPT_DIR/06_c_epsilon.sh"
 CE_RAW="$LAST_JOB_ID"
 submit c_epsilon_derive -J soppo-cederive -p "$CPU_PARTITION" -N 1 -c 8 -G "$AUX_GPU_COUNT" -t 02:00:00 \
     -d "afterok:$CE_RAW" -o "$PIPELINE_DIR/logs/ce-derive-%j.out" \
-    --export="$COMMON_EXPORT" "$SCRIPT_DIR/06_derive_c_epsilon.sh"
+    --export="$COMMON_EXPORT" "$SOURCE_SCRIPT_DIR/06_derive_c_epsilon.sh"
 CE_DERIVE="$LAST_JOB_ID"
 submit evaluation -J soppo-eval -p "$GPU_PARTITION" -N 1 -c 16 -G "$GPU1_COUNT" -t 24:00:00 \
     --array="0-7%$ARRAY_LIMIT" -d "afterok:$CE_DERIVE" -o "$PIPELINE_DIR/logs/eval-%A_%a.out" \
-    --export="$COMMON_EXPORT,SOPPO_NPROC_PER_NODE=1,SOPPO_REQUIRE_A800=1" "$SCRIPT_DIR/07_evaluate.sh"
+    --export="$COMMON_EXPORT,SOPPO_NPROC_PER_NODE=1,SOPPO_REQUIRE_A800=1" "$SOURCE_SCRIPT_DIR/07_evaluate.sh"
 EVAL="$LAST_JOB_ID"
 submit aggregate -J soppo-aggregate -p "$CPU_PARTITION" -N 1 -c 8 -G "$AUX_GPU_COUNT" -t 02:00:00 \
     -d "afterok:$EVAL" -o "$PIPELINE_DIR/logs/aggregate-%j.out" \
-    --export="$COMMON_EXPORT" "$SCRIPT_DIR/08_aggregate.sh"
+    --export="$COMMON_EXPORT" "$SOURCE_SCRIPT_DIR/08_aggregate.sh"
 AGG="$LAST_JOB_ID"
 
 python - "$REGISTRY" "$EXPERIMENT_ID" "$GIT_COMMIT" "$EXCLUDE_NODES" \
     "$AUX_GPU_COUNT" "$FORMAL_GPU_COUNT" "$GPU1_COUNT" "$REUSE_REGISTRY" "$REUSED_COMMIT" \
+    "$SOURCE_ROOT" "$SOURCE_MANIFEST" "$SOURCE_MANIFEST_SHA256" \
     "tests=$TESTS" "smoke=$SMOKE" "reference_cache=$REFERENCE" \
     "dpo_headroom_runs=$PRE" "headroom_gate=$PRESELECT" "pe_static_runs=$LAMBDA" \
     "static_select=$LAMBDA_SELECT" "dynamic_runs=$MAIN" "c_epsilon_prepare=$CE_PREP" \
@@ -245,7 +271,8 @@ import sys
 
 (
     path, experiment, commit, excluded, aux_gpus, formal_gpus, post_gpus,
-    reused_registry, reused_commit, *pairs
+    reused_registry, reused_commit, source_root, source_manifest,
+    source_manifest_sha256, *pairs
 ) = sys.argv[1:]
 jobs = dict(pair.split("=", 1) for pair in pairs)
 payload = {
@@ -254,6 +281,11 @@ payload = {
     "experiment_id": experiment,
     "experiment_design": "v0.6-sspo-aligned-30k",
     "git_commit": commit,
+    "source_snapshot": {
+        "root": source_root,
+        "manifest": source_manifest,
+        "manifest_sha256": source_manifest_sha256,
+    },
     "submission_status": "resumed_from_dpo",
     "recovery": {
         "reason": "restart_from_dpo_with_reused_gates",
@@ -282,4 +314,4 @@ PY
 trap - ERR INT TERM
 echo "Recovery Slurm DAG submitted from DPO."
 echo "Registry: $REGISTRY"
-echo "Read-only status: bash $SCRIPT_DIR/status_pipeline.sh"
+echo "Read-only status: SOPPO_SERVER_BASE=$SERVER_BASE bash $SOURCE_SCRIPT_DIR/status_pipeline.sh $REGISTRY"

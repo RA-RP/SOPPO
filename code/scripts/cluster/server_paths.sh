@@ -4,7 +4,15 @@
 CLUSTER_SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CODE_ROOT="$(cd "$CLUSTER_SCRIPT_DIR/../.." && pwd)"
 SOPPO_ROOT="$(cd "$CODE_ROOT/.." && pwd)"
-SERVER_BASE="$(cd "$SOPPO_ROOT/.." && pwd)"
+if [[ -n "${SOPPO_SERVER_BASE:-}" ]]; then
+    [[ "$SOPPO_SERVER_BASE" = /* ]] || {
+        echo "ERROR: SOPPO_SERVER_BASE must be absolute" >&2
+        return 1 2>/dev/null || exit 1
+    }
+    SERVER_BASE="$(cd "$SOPPO_SERVER_BASE" && pwd)"
+else
+    SERVER_BASE="$(cd "$SOPPO_ROOT/.." && pwd)"
+fi
 
 ICLR_ROOT="$SERVER_BASE/ICLR"
 ENV_ROOT="$SERVER_BASE/envs"

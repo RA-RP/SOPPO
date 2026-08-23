@@ -184,9 +184,43 @@ CPU tests
 
 `submit_all.sh` 会自行激活锁定环境，并在提交任何 job 前重验 Qwen3 manifest 与 30k 数据审计；它也拒绝覆盖已存在的 pipeline 目录。如果尚未提交任何 job 就失败，脚本会清理由本次创建的空目录；若部分 job 已提交后失败，则自动取消这些 job并保留 pipeline 目录供检查，不要直接删除。
 
-Slurm 实际执行的是 `/var/spool/slurmd/.../slurm_script` 副本。提交器会通过 `SOPPO_CLUSTER_SCRIPT_DIR` 给所有 worker 传递仓库中的真实 cluster 目录；不得删除这一 export，否则 worker 会在 spool 目录下错误寻找 `job_env.sh`。
+Slurm实际执行的是`/var/spool/slurmd/.../slurm_script`副本。新提交器会先用`git archive`把目标commit导出到`runs/<experiment>/pipeline/source/SOPPO/`，该目录不含`.git`，不会产生第二个Git仓库；随后生成`source_manifest.json`及其SHA-256。`SOPPO_CLUSTER_SCRIPT_DIR`指向这份按DAG冻结的源码，worker启动时逐文件复核manifest、commit和内容，任何缺失、增加或修改都fail-closed。因此新机制提交的不同commit DAG可以同时排队，后续切换共享checkout不会改变它们。
 
-每个 worker 还会核对 `submit_all.sh` 提交时记录的完整 Git commit 和 clean checkout。DAG 排队或运行期间不要再次 `git pull` 或修改服务器仓库；否则尚未启动的 worker 会明确失败，防止同一 pipeline 混用不同代码版本。PyTorch allocator 使用 `expandable_segments:True`，并只使用 `HF_HOME`，不再触发 `TRANSFORMERS_CACHE` 的 v5 deprecation warning。
+注意：在源码快照机制加入前已经提交的旧DAG仍使用共享`<SERVER_BASE>/SOPPO`并核对其commit；旧DAG结束前必须把共享checkout保持在其registry记录的版本。PyTorch allocator使用`expandable_segments:True`，并只使用`HF_HOME`，不再触发`TRANSFORMERS_CACHE`的v5 deprecation warning。
+
+### 6.1 与旧commit DAG并存提交
+
+若旧DAG锁定`<OLD_COMMIT>`、但新单卡代码位于`master`，不要创建第二个Git仓库。先确保旧DAG没有`RUNNING`任务，再把唯一checkout切到旧commit：
+
+```bash
+git -C "$SERVER_BASE/SOPPO" switch --detach <OLD_COMMIT>
+```
+
+把包含新提交器的bundle fetch到`master`引用后，在Git仓库外导出一次性launcher：
+
+```bash
+export NEW_COMMIT=<NEW_COMMIT>
+export LAUNCHER_ROOT="$SERVER_BASE/cache/soppo-launchers/$NEW_COMMIT"
+
+mkdir -p "$LAUNCHER_ROOT/SOPPO"
+git -C "$SERVER_BASE/SOPPO" archive "$NEW_COMMIT" \
+  | tar -x -C "$LAUNCHER_ROOT/SOPPO"
+```
+
+使用新的experiment ID从launcher提交；提交器再为正式DAG创建受manifest保护的最终源码快照：
+
+```bash
+export RUN_CONTEXT=cluster
+export EXPERIMENT_ID=exp-20260822-01-mvp-1gpu
+export SOPPO_SERVER_BASE="$SERVER_BASE"
+export SOPPO_GIT_REPO_ROOT="$SERVER_BASE/SOPPO"
+export SOPPO_SOURCE_COMMIT="$NEW_COMMIT"
+
+cd "$LAUNCHER_ROOT/SOPPO/code/scripts/cluster"
+bash submit_all.sh --formal-gpus 1
+```
+
+这样旧DAG继续读取保持在旧commit的唯一checkout，新DAG只读取自己的`pipeline/source/SOPPO`。两者的run/export目录由不同`EXPERIMENT_ID`隔离；共享模型、数据和已完成reference cache保持只读复用。
 
 ## 7. 日常查看状态
 

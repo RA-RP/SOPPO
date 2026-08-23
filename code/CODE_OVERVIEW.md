@@ -110,7 +110,7 @@ SSPO/PE exp：`gamma0=1`、`gamma_min=2700/26700`、`decay=.01`。PE static使�
 
 ## 4. 两类服务器入口与不重复的八条训练
 
-旧共享集群入口保留在 `scripts/cluster/EXECUTION_GUIDE.md`：环境、模型、数据准备后由 `submit_all.sh` 提交 Slurm `afterok` DAG；节点级故障恢复继续使用 registry-scoped `cancel_pipeline.sh` 与 `submit_from_dpo.sh`，不得按共享账户整批取消任务。
+旧共享集群入口保留在 `scripts/cluster/EXECUTION_GUIDE.md`：环境、模型、数据准备后由 `submit_all.sh` 提交 Slurm `afterok` DAG；每次提交从指定Git commit导出一个不含`.git`的源码快照并记录全文件SHA-256 manifest，worker只运行该快照，因此不同commit的DAG可以并存而不共享可变checkout。节点级故障恢复继续使用registry-scoped `cancel_pipeline.sh`与`submit_from_dpo.sh`，不得按共享账户整批取消任务。
 
 当前独占服务器入口为 `scripts/standalone/EXECUTION_GUIDE.md`，基目录由 repo 位置反推并要求 `SOPPO/` 与静态 `ICLR/` 平级：
 
@@ -165,7 +165,7 @@ stage03/04/05 合计正好八条 final trajectories，都写在 `runs/<experimen
 - 2048长度和 hard/PE两次前向会增加 wall time；实际耗时以 strong smoke和首个formal日志校准。
 - 当前账户没有 `cpu`/`gpu_test` 关联，且集群只接受 `-G N` 而拒绝 typed `--gres`；辅助阶段在 `gpu` partition 申请1卡，smoke/正式训练由 `--formal-gpus 1|2|4` 选择，卡不足时由 Slurm 排队。
 - Slurm 会把 batch script 复制到 `/var/spool/slurmd`；提交器通过 `SOPPO_CLUSTER_SCRIPT_DIR` 显式传递仓库中的真实脚本目录，worker 不再从 spool 路径寻找 `job_env.sh`。
-- Slurm worker 还会核对提交时冻结的完整 Git commit 和 clean worktree；排队期间若服务器 checkout 被更新，旧 DAG 会 fail-closed，而不会混用代码版本。
+- 新提交的Slurm worker会核对提交时冻结的源码快照manifest和完整Git commit，不再读取可变checkout；快照位于各自`runs/<experiment>/pipeline/source/`。在该机制加入前已经提交的旧DAG仍依赖共享checkout，必须保持其锁定commit直到结束。
 - standalone 由普通后台进程而非调度器托管；`nohup + setsid` 可跨 SSH 断开，但服务器重启不会自动恢复。registry 记录 PID/PGID与逐阶段状态，当前 checkpoint 仍不支持 exact resume。
 - standalone 默认使用两张约80GB卡并串行运行所有 arm，也可把 GPU ID 列表切到1张或4张；global batch与8/56不变。实际新服务器环境、driver、所选卡间通信和完整 strong smoke 尚待服务器验证。
 - 2026-08-21 两条 DPO array arm 分别在 `gn014` 发生 backward OOM、在 draining 的 `gn005` 发生 DDP/NCCL timeout。修复后默认排除 `gn005,gn021`，启用 expandable-segments allocator，并由 full-length smoke 验证 backward subbatch。

@@ -31,7 +31,7 @@
 - strong smoke：使用与正式训练相同的1/2/4卡档位、bf16/2048及各split最长真实样本；旧集群要求所选数量的A800，standalone必须记录实际SKU；覆盖五种配置、backward subbatch、KDE/PE、finite checks、adapter round-trip。
 - Slurm 路由：账户只获批`gpu` partition且拒绝`sbatch --hold`/typed `--gres`；统一使用`-G N`，辅助阶段申请1卡，smoke/正式训练由`--formal-gpus 1|2|4`选择，直接提交`afterok` DAG并在中途提交失败时回滚。
 - Slurm worker 路径：由提交器显式 export `SOPPO_CLUSTER_SCRIPT_DIR`，避免 batch 副本从 `/var/spool/slurmd` 错误解析 `job_env.sh`；状态工具使用真正的 array task ID 字段。
-- 版本/节点保护：每个 worker 启动时核对提交时的完整 Git commit 和 clean checkout；默认排除已发生 NCCL 卡死的 `gn005` 与既有排除节点 `gn021`，可由 `SOPPO_EXCLUDE_NODES` 显式覆盖。
+- 版本/节点保护：新DAG提交时从指定Git commit导出不含`.git`的独立源码快照，生成全文件SHA-256 manifest；每个worker启动时复核快照commit、manifest及内容，因而不依赖后续可变checkout。该机制加入前的旧DAG仍按原逻辑核对共享checkout。默认排除已发生NCCL卡死的`gn005`与既有排除节点`gn021`，可由`SOPPO_EXCLUDE_NODES`显式覆盖。
 - standalone 平台：不改变上述训练合同；后台controller串行复用相同stage worker，由`SOPPO_TRAIN_GPU_IDS`数量选择1/2/4卡训练、单卡后处理，以原子registry记录档位和状态并在任一失败时阻断下游。实际GPU不静默假定为A800，但每卡默认至少79000 MiB，卡名与torch CUDA写入硬件证据。
 - 数据入口：提交前重验30k行数/SHA、跨 split ID、公开隐藏标签和私有标签精确连接，摘要进入白名单。
 - 下游：adapter-aware independent evaluator、GetSlice 内存合并、八轨迹聚合、无样本级白名单。
