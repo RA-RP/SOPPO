@@ -24,6 +24,7 @@ from src.round2.tp_backend import (
     build_tp_command,
     launch_spec_from_config,
 )
+from src.round2.tp_trainer import _local_tp_squared_norms
 
 
 ROOT = Path(__file__).parents[1]
@@ -293,7 +294,7 @@ class _FakeMesh:
 
 
 class _FakeTPModel(torch.nn.Module):
-    def __init__(self, replicated_q_proj=False):
+    def __init__(self, replicated_q_proj=False, omit_q_proj_hooks=False):
         super().__init__()
         self._tp_size = 2
         self._device_mesh = _FakeMesh()
@@ -310,6 +311,8 @@ class _FakeTPModel(torch.nn.Module):
             (layer.q_proj, "colwise"),
             (layer.o_proj, "rowwise"),
         ):
+            if omit_q_proj_hooks and module is layer.q_proj:
+                continue
             module._hf_tp_plan = plan
             module._hf_device_mesh = self._device_mesh
         self.layers = torch.nn.ModuleList([layer])
@@ -336,6 +339,26 @@ def test_round2_tp_verifier_rejects_replicated_weight_shape():
     }
     with pytest.raises(RuntimeError, match="local shard shape mismatch"):
         _verify_local_tp_shapes(_FakeTPModel(replicated_q_proj=True), shapes)
+
+
+def test_round2_tp_verifier_rejects_missing_module_hooks():
+    shapes = {
+        "layers.0.q_proj.weight": (8, 4),
+        "layers.0.o_proj.weight": (8, 8),
+    }
+    with pytest.raises(RuntimeError, match="TP hooks are missing"):
+        _verify_local_tp_shapes(_FakeTPModel(omit_q_proj_hooks=True), shapes)
+
+
+def test_round2_tp_norm_separates_shards_from_replicas():
+    sharded = torch.nn.Parameter(torch.zeros(2))
+    replicated = torch.nn.Parameter(torch.zeros(2))
+    sharded.grad = torch.tensor([3.0, 4.0])
+    replicated.grad = torch.tensor([6.0, 8.0])
+    squared = _local_tp_squared_norms(
+        [sharded, replicated], {id(sharded)}, torch.device("cpu")
+    )
+    assert squared.tolist() == [25.0, 100.0]
 
 
 def test_round2_rollout_worker_has_an_isolated_cleanup_group():

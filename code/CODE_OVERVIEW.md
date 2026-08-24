@@ -9,7 +9,7 @@
 - 当前阶段：`CODE_IMPLEMENTATION`（第二次服务器启动在首条strong smoke暴露TP证据门禁与vLLM清理问题，返回代码阶段修复）
 - 已确认代码：第二轮 TP=2 + 单卡 vLLM commit `c2c9069a0b1a1187c8e709729b33b15aaec8c454` 已于2026-08-24获用户明确确认；服务器 clean checkout 与两个环境已核验
 - 已执行代码：依赖修复进入 `f54f6f4d744d138c80f2309ec5e350f1d5a428b3` 后，`exp-20260824-02-round2-tp2` 已通过锚点/config/server tests/GPU等待和vLLM ready；首条strong smoke在训练加载后、optimizer step前被旧DTensor门禁误拒绝，失败清理还留下vLLM EngineCore
-- 当前未提交修复：`tp_backend.py` 依据safetensors header的完整shape、Transformers TP plan/device mesh和每rank本地shape验证真实切分；rollout worker使用独立进程组并完整清理EngineCore；总状态显示strong-smoke子方法。待用户审阅
+- 当前代码版本：工作区HEAD/origin出现尚未经用户审阅的 `2af290df6447bf541abf225f666bff1e34beddd4`，包含初版safetensors local-shape门禁、rollout独立进程组和strong-smoke子状态；其上仍有未提交补充修复：逐planned-module验证TP hooks、LoRA sharded-SUM/replicated-average global clip，以及进程组建立失败的安全边界。全部待用户审阅
 - 服务器执行：当前修复形成clean commit并获确认前暂时 `LOCKED`；失败experiment保留，只能用新ID重启
 
 第一轮本地只编辑纯文本源码、配置和说明。没有在本地安装/import 项目依赖，没有运行 pytest、数据、模型、训练、评价或 GPU 任务。第一轮运行正确性必须由获批后的服务器 tests/strong smoke 证明。第二轮不得改写第一轮 MVP 代码语义，只能复用公共模块并新增 rollout 相关入口、配置和脚本。
@@ -50,6 +50,8 @@ DPO-10、DPO-100、SSPO-hard-exp、第一轮静态 PE 与第一轮 `SOPPO-PE-exp
 - GPU ID、Git commit、模型/data/固定锚点路径、采样参数均写入 resolved config。preflight 只信 resolved config，并核对 clean checkout、完整 commit、三张 4090 全空闲以及实际 `CUDA_VISIBLE_DEVICES`。
 
 每个训练 step 的顺序是：发布当前 adapter → rank0 向 GPU2 发出 56-prompt 请求 → GPU2 原子写回候选对 → 两个 TP rank 在同一 56-pair population 上求 PE 系数 → 依次回传 8 labeled + 56 dynamic pairs → 一个 optimizer step → 发布下一版 adapter。队列由 `queue_protocol.py` 定义 request/response schema；只有含 `READY.json` 和 SHA-256 的完整 adapter 目录能被 rollout 读取。
+
+Transformers 5.4/PEFT TP-LoRA同时包含本地sharded LoRA张量与跨rank replicated LoRA张量。梯度裁剪不能分别调用普通单rank `clip_grad_norm_`：实现先对sharded参数的平方范数做SUM，对replicated参数做SUM/world_size避免重复计数，再把同一个TP-global L2系数应用到两个rank；分类未覆盖全部可训练参数时fail-closed。
 
 两条方法共享同一批 prompt、固定单回复锚点、采样超参和 current-policy 定义，但不共享实际生成结果：
 

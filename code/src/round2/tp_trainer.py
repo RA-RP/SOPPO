@@ -140,6 +140,83 @@ def _verify_trainable_lora(policy, target_modules: Sequence[str]) -> Dict[str, A
     }
 
 
+def _tp_sharded_trainable_parameter_ids(policy) -> set[int]:
+    """Classify LoRA tensors whose optimizer state is locally TP-sharded."""
+    trainable_ids = {
+        id(parameter) for parameter in policy.parameters() if parameter.requires_grad
+    }
+    classified_ids = set()
+    sharded_ids = set()
+    for module in policy.modules():
+        if not (
+            hasattr(module, "get_base_layer")
+            and hasattr(module, "lora_A")
+            and hasattr(module, "lora_B")
+        ):
+            continue
+        plan = getattr(module.get_base_layer(), "_hf_tp_plan", None)
+        if plan not in {"colwise", "rowwise"}:
+            continue
+        a_parameters = {
+            id(parameter)
+            for parameter in module.lora_A.parameters()
+            if parameter.requires_grad
+        }
+        b_parameters = {
+            id(parameter)
+            for parameter in module.lora_B.parameters()
+            if parameter.requires_grad
+        }
+        classified_ids.update(a_parameters)
+        classified_ids.update(b_parameters)
+        # Transformers/PEFT shard B for colwise base layers and A for rowwise
+        # base layers. The complementary LoRA tensor is replicated and its
+        # gradient is synchronized by PEFT's TP hooks.
+        sharded_ids.update(b_parameters if plan == "colwise" else a_parameters)
+    if classified_ids != trainable_ids:
+        missing = len(trainable_ids - classified_ids)
+        unexpected = len(classified_ids - trainable_ids)
+        raise RuntimeError(
+            "TP LoRA gradient partition is incomplete: "
+            f"missing={missing}, unexpected={unexpected}"
+        )
+    if not sharded_ids or sharded_ids == trainable_ids:
+        raise RuntimeError("TP LoRA gradient partition lacks mixed shard/replica state")
+    return sharded_ids
+
+
+def _local_tp_squared_norms(
+    parameters: Sequence[torch.nn.Parameter],
+    sharded_parameter_ids: set[int],
+    device: torch.device,
+) -> torch.Tensor:
+    squared = torch.zeros(2, dtype=torch.float32, device=device)
+    for parameter in parameters:
+        if parameter.grad is None:
+            continue
+        target = 0 if id(parameter) in sharded_parameter_ids else 1
+        squared[target] += parameter.grad.detach().float().pow(2).sum()
+    return squared
+
+
+def _clip_tp_grad_norm_(
+    parameters: Sequence[torch.nn.Parameter],
+    sharded_parameter_ids: set[int],
+    max_norm: float,
+    device: torch.device,
+) -> torch.Tensor:
+    """Clip with one TP-global L2 norm without double-counting replicas."""
+    squared = _local_tp_squared_norms(parameters, sharded_parameter_ids, device)
+    dist.all_reduce(squared, op=dist.ReduceOp.SUM)
+    squared[1] /= dist.get_world_size()
+    total_norm = squared.sum().sqrt()
+    coefficient = torch.clamp(float(max_norm) / (total_norm + 1e-6), max=1.0)
+    for parameter in parameters:
+        if parameter.grad is not None:
+            parameter.grad.detach().mul_(coefficient)
+    return total_norm
+
+
 def _load_tp_policy(config: Dict[str, Any]):
     model = config["model"]
     model_path = Path(model["name_or_path"]).resolve()
@@ -552,6 +629,7 @@ def main() -> None:
     policy, tokenizer, tp_evidence = _load_tp_policy(config)
     dtype = DTYPES[config["model"]["torch_dtype"]]
     trainable = [parameter for parameter in policy.parameters() if parameter.requires_grad]
+    sharded_trainable_ids = _tp_sharded_trainable_parameter_ids(policy)
     trainable_count = sum(parameter.numel() for parameter in trainable)
     total_count = sum(parameter.numel() for parameter in policy.parameters())
     if not 0 < trainable_count < total_count:
@@ -764,8 +842,11 @@ def main() -> None:
             device,
             dtype,
         )
-        grad_norm = torch.nn.utils.clip_grad_norm_(
-            trainable, float(training["max_grad_norm"]), foreach=False
+        grad_norm = _clip_tp_grad_norm_(
+            trainable,
+            sharded_trainable_ids,
+            float(training["max_grad_norm"]),
+            device,
         )
         grad_norm_value = _scalar(grad_norm)
         if not math.isfinite(grad_norm_value):

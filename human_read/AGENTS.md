@@ -28,7 +28,7 @@
 - 当前实现依据：`exp/current_experiment.md` v0.6 SSPO-aligned 30k MVP
 - 理论通过状态：v0.2 已明确通过（2026-08-19）
 - 实验设计通过状态：v0.6 已逐项确认，用户已明确要求开始编码（2026-08-21）
-- 代码交接状态：依赖修复已进入服务器 commit `f54f6f4d744d138c80f2309ec5e350f1d5a428b3`；第二次尝试通过tests/GPU等待/vLLM ready，但在首条strong smoke的optimizer step前暴露TP证据门禁错误和vLLM子进程清理遗漏。当前TP shape验证与独立进程组清理修复未提交、待审阅
+- 代码交接状态：依赖修复已进入服务器 commit `f54f6f4d744d138c80f2309ec5e350f1d5a428b3`；第二次尝试通过tests/GPU等待/vLLM ready，但在首条strong smoke的optimizer step前暴露TP证据门禁错误和vLLM子进程清理遗漏。当前HEAD/origin的 `2af290d` 尚未经用户审阅；其上的TP hook完整性、TP-aware global grad norm与安全清理补充修复保持未提交、待审阅
 - 服务器执行状态：第二轮暂时 `LOCKED`；当前修复形成并获用户明确确认的新clean commit后，才允许保留旧失败目录并使用新experiment ID重启
 - `RESULT_HANDOFF` 与 `NEXTCYCLE_DISCUSSION`：锁定
 

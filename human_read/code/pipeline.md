@@ -1,6 +1,6 @@
 # SOPPO Round2：3×4090 TP 训练与在线 rollout 流水线
 
-> 状态：GPU等待门禁已随 `f4601c8` 获服务器启动授权；首次attempt在进入等待前的 pytest collection 因训练环境缺少 `datasets` 失败，未启动GPU。当前显式依赖修复未提交、待用户审阅，服务器 strong smoke 尚未运行。
+> 状态：依赖修复后的 `f54f6f4` 已在服务器通过24k锚点、config、server tests、GPU稳定等待和vLLM ready。首条strong smoke在optimizer step前被错误的DTensor专属门禁拒绝，且失败退出留下vLLM EngineCore。工作区HEAD/origin的初版修复 `2af290d` 尚未经用户审阅；TP hook完整性、TP-aware global grad norm和安全清理边界仍是其上的未提交补充修复。
 
 ## 1. 三张卡怎么分
 
@@ -52,6 +52,8 @@ clip → 一个 optimizer step → 发布 step t+1 adapter
 ```
 
 物理 pair subbatch=1 是显存执行方式，不是把 logical batch 改成 1。一次 optimizer step 仍严格消费 8 个 labeled pair 与 56 个 dynamic pair；PE 仍在完整 56-pair population 上求值。
+
+TP-LoRA的可训练张量同时包含local shard和replica。裁剪时先把sharded梯度平方范数跨rank求和，再把replicated部分跨rank平均以只计一次，最后两rank使用相同global L2系数；任何LoRA参数无法分类都会在optimizer之前失败关闭。
 
 ## 3. 为什么两种方法生成数不同
 
@@ -136,11 +138,11 @@ resolved config 是运行时唯一真源。它冻结：
 - 指标：`<method>/logs/metrics.jsonl`；
 - TP 证据：`<method>/tp_evidence.json`。
 
-`status_all.sh` 只读这些文件。`stop_all.sh` 默认只预览；带 `--execute` 后也只向本 experiment 记录的进程组发送 TERM，不使用 `pkill python` 或按账号批量结束。
+`status_all.sh` 只读这些文件，并展开 `strong_smoke/<method>/controller_status.json`，因此无需手工猜测smoke内部失败阶段。每个vLLM worker由 `setsid` 建立独立进程组并记录PID/PGID/starttime；训练正常或失败退出时先写STOP等待清理，超时后只向该worker组发送TERM/KILL，避免EngineCore成为孤儿。`stop_all.sh` 默认只预览；带 `--execute` 后也只向本experiment记录的控制器进程组发送TERM，不使用 `pkill python` 或按账号批量结束。
 
 ## 8. 当前限制
 
-- 尚未在真实 3×4090 上验证 Transformers TP、PEFT TP adapter 保存、DTensor optimizer/clip 或 vLLM adapter round-trip。
+- 已在真实3×4090上验证GPU等待、vLLM Qwen3-4B base加载和ready文件；尚未验证修复后的checkpoint-backed TP local-shape门禁、PEFT TP adapter保存/optimizer/clip、vLLM adapter round-trip或完整optimizer step。
 - 每步在线 rollout 与 adapter 发布会显著增加 wall time 和存储；实际耗时由 strong smoke 和首个 formal step 校准。
 - 当前保留每步 LoRA adapter，但不保存 optimizer/scheduler state，因此不能声称 bit-exact 热恢复。
 - 第一轮 A800 DDP pipeline 与第二轮 4090 TP pipeline 是两个独立入口；本实现不会让第一轮任务自动迁移或重跑。

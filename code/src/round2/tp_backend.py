@@ -119,7 +119,9 @@ def _checkpoint_tensor_shapes(model_path: str | Path) -> Dict[str, Tuple[int, ..
             for name in handle.keys():
                 if name in shapes:
                     raise RuntimeError(f"Duplicate tensor in model checkpoint: {name}")
-                shapes[name] = tuple(int(value) for value in handle.get_slice(name).get_shape())
+                shapes[name] = tuple(
+                    int(value) for value in handle.get_slice(name).get_shape()
+                )
     if expected_names is not None and set(shapes) != expected_names:
         missing = sorted(expected_names - set(shapes))
         unexpected = sorted(set(shapes) - expected_names)
@@ -180,16 +182,20 @@ def _verify_local_tp_shapes(
     sharded: List[Dict[str, Any]] = []
     replicated_tp_modules = 0
     for module_name, module in model.named_modules():
+        generic_name = _generic_module_name(module_name)
+        expected_plan = tp_plan.get(generic_name)
+        if expected_plan is None:
+            continue
         module_plan = getattr(module, "_hf_tp_plan", None)
         if module_plan is None:
-            continue
+            raise RuntimeError(
+                f"TP verification failed: TP hooks are missing for {module_name}"
+            )
         module_mesh = getattr(module, "_hf_device_mesh", None)
         if module_mesh is None or int(module_mesh.size()) != tp_size:
             raise RuntimeError(
                 f"TP verification failed: invalid module mesh for {module_name}"
             )
-        generic_name = _generic_module_name(module_name)
-        expected_plan = tp_plan.get(generic_name)
         if expected_plan != module_plan:
             raise RuntimeError(
                 "TP verification failed: module plan mismatch for "

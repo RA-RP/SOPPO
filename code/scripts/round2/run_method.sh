@@ -69,12 +69,22 @@ cleanup_worker() {
         return 0
     fi
     local forced_shutdown=0
+    local parent_reaped=0
+    local parent_state=""
     local worker_status=0
     if [[ -d "$RUN_DIR/rollouts" ]]; then
         : > "$RUN_DIR/rollouts/STOP"
     fi
     # Give the front-end time to close its spawned vLLM EngineCore cleanly.
     for _ in $(seq 1 30); do
+        parent_state=""
+        [[ -r "/proc/$ROLLOUT_PID/stat" ]] && \
+            parent_state="$(awk '{print $3}' "/proc/$ROLLOUT_PID/stat")"
+        if (( parent_reaped == 0 )) \
+            && { [[ -z "$parent_state" ]] || [[ "$parent_state" == "Z" ]]; }; then
+            wait "$ROLLOUT_PID" 2>/dev/null || worker_status=$?
+            parent_reaped=1
+        fi
         if ! kill -0 -- "-$ROLLOUT_PGID" 2>/dev/null; then
             break
         fi
@@ -86,6 +96,14 @@ cleanup_worker() {
         forced_shutdown=1
         kill -TERM -- "-$ROLLOUT_PGID" 2>/dev/null || true
         for _ in $(seq 1 10); do
+            parent_state=""
+            [[ -r "/proc/$ROLLOUT_PID/stat" ]] && \
+                parent_state="$(awk '{print $3}' "/proc/$ROLLOUT_PID/stat")"
+            if (( parent_reaped == 0 )) \
+                && { [[ -z "$parent_state" ]] || [[ "$parent_state" == "Z" ]]; }; then
+                wait "$ROLLOUT_PID" 2>/dev/null || worker_status=$?
+                parent_reaped=1
+            fi
             if ! kill -0 -- "-$ROLLOUT_PGID" 2>/dev/null; then
                 break
             fi
@@ -96,7 +114,9 @@ cleanup_worker() {
         forced_shutdown=1
         kill -KILL -- "-$ROLLOUT_PGID" 2>/dev/null || true
     fi
-    wait "$ROLLOUT_PID" 2>/dev/null || worker_status=$?
+    if (( parent_reaped == 0 )); then
+        wait "$ROLLOUT_PID" 2>/dev/null || worker_status=$?
+    fi
     ROLLOUT_PID=""
     ROLLOUT_PGID=""
     if (( forced_shutdown != 0 )); then
@@ -130,6 +150,8 @@ if [[ "$ROLLOUT_PGID" != "$ROLLOUT_PID" ]]; then
     echo "ERROR: vLLM worker did not obtain an isolated process group" >&2
     kill "$ROLLOUT_PID" 2>/dev/null || true
     wait "$ROLLOUT_PID" 2>/dev/null || true
+    ROLLOUT_PID=""
+    ROLLOUT_PGID=""
     exit 1
 fi
 printf '%s\n' "$ROLLOUT_PGID" > "$ROLLOUT_PGID_FILE"
@@ -138,7 +160,11 @@ awk '{print $22}' "/proc/$ROLLOUT_PID/stat" > "$ROLLOUT_STARTTIME_FILE"
 READY_FILE="$RUN_DIR/rollouts/worker.ready.json"
 for _ in $(seq 1 600); do
     [[ -f "$READY_FILE" ]] && break
-    if ! kill -0 "$ROLLOUT_PID" 2>/dev/null; then
+    ROLLOUT_STATE=""
+    [[ -r "/proc/$ROLLOUT_PID/stat" ]] && \
+        ROLLOUT_STATE="$(awk '{print $3}' "/proc/$ROLLOUT_PID/stat")"
+    if ! kill -0 "$ROLLOUT_PID" 2>/dev/null \
+        || [[ -z "$ROLLOUT_STATE" || "$ROLLOUT_STATE" == "Z" ]]; then
         update_status "failed" "rollout_startup" 1
         echo "ERROR: vLLM worker exited before readiness" >&2
         tail -n 100 "$LOG_DIR/vllm_worker.log" >&2 || true

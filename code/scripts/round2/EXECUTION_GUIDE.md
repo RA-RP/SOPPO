@@ -1,6 +1,6 @@
 # Round2 3×4090 执行指南
 
-> 当前状态：`DEPENDENCY FIX / CODE REVIEW`。服务器已运行 commit `f4601c85a2e10a56edadd2af28109515595eb3d9`，24k锚点与两条配置解析成功，但在进入GPU等待前的 pytest collection 因 `round2-train` 缺少 `datasets` 而失败，未启动任何GPU进程。当前未提交修复把 `datasets==2.21.0` 与 `tqdm==4.67.1` 加入训练环境并纳入安装后import验证；必须先完成新代码交接，保留失败目录并使用新experiment ID重启。
+> 当前状态：`TP/CLEANUP FIX / CODE REVIEW`。依赖修复后的服务器 commit `f54f6f4d744d138c80f2309ec5e350f1d5a428b3` 已通过24k锚点、配置、server tests、GPU稳定等待和vLLM ready；首条strong smoke在optimizer step前被错误的DTensor专属门禁拒绝，失败退出还留下vLLM EngineCore。工作区HEAD/origin的初版修复 `2af290d` 尚未经用户审阅，其上还有TP hook完整性、TP-aware global LoRA grad norm及安全清理边界的未提交补充修复；必须先完成新代码交接，保留两个失败目录并使用新experiment ID重启。
 
 ## 1. 固定资源和目录
 
