@@ -19,6 +19,7 @@ from src.round2.prepare_sft_anchor import SELECTION_RULE, prepare_sft_anchor
 from src.round2.run_rollout import _build_pairs
 from src.round2.sft_schema import SFT_SCHEMA_VERSION, validate_sft_corpus
 from src.round2.tp_backend import (
+    _build_peft_tp_hook_compatibility,
     _expected_local_shape,
     _verify_local_tp_shapes,
     build_tp_command,
@@ -279,6 +280,75 @@ def test_round2_tp_command_uses_two_torchrun_processes():
     assert spec.nproc_per_node == 2
     assert "--nproc_per_node=2" in command
     assert "src.round2.tp_trainer" in command
+
+
+def test_round2_peft_tp_hook_compatibility_supplies_current_plan():
+    calls = []
+    model = type("FakeTPModel", (), {"tp_plan": {"layer": "colwise"}})()
+
+    def transformers_hook(
+        model,
+        module,
+        tp_plan,
+        layer_name,
+        current_module_plan,
+        device_mesh,
+        parameter_name=None,
+    ):
+        calls.append(
+            {
+                "model": model,
+                "module": module,
+                "tp_plan": tp_plan,
+                "layer_name": layer_name,
+                "current_module_plan": current_module_plan,
+                "device_mesh": device_mesh,
+                "parameter_name": parameter_name,
+            }
+        )
+
+    compatible, evidence = _build_peft_tp_hook_compatibility(transformers_hook)
+    compatible(model, "module", "colwise", ("layer",), "mesh")
+    assert evidence["compatibility_installed"] is True
+    assert evidence["legacy_peft_call_count"] == 1
+    assert calls == [
+        {
+            "model": model,
+            "module": "module",
+            "tp_plan": {"layer": "colwise"},
+            "layer_name": ("layer",),
+            "current_module_plan": "colwise",
+            "device_mesh": "mesh",
+            "parameter_name": None,
+        }
+    ]
+
+
+def test_round2_peft_tp_hook_compatibility_preserves_new_api_calls():
+    calls = []
+
+    def transformers_hook(
+        model,
+        module,
+        tp_plan,
+        layer_name,
+        current_module_plan,
+        device_mesh,
+        parameter_name=None,
+    ):
+        calls.append((current_module_plan, device_mesh, parameter_name))
+
+    compatible, _ = _build_peft_tp_hook_compatibility(transformers_hook)
+    compatible(
+        "model",
+        "module",
+        {"layer": "rowwise"},
+        "layer",
+        "rowwise",
+        "mesh",
+        "weight",
+    )
+    assert calls == [("rowwise", "mesh", "weight")]
 
 
 class _FakeMesh:

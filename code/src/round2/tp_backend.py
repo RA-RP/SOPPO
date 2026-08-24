@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 import importlib.metadata
+import inspect
 import json
 import math
 import re
+from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, List, Mapping, Sequence, Tuple
+from typing import Any, Callable, Dict, Iterator, List, Mapping, Sequence, Tuple
 
 from packaging.version import Version
 
@@ -44,6 +46,99 @@ def validate_training_runtime(config: Dict[str, Any]) -> Dict[str, str]:
         "peft": require_package_version("peft", tp["minimum_peft_version"]),
     }
     return versions
+
+
+def _build_peft_tp_hook_compatibility(
+    hook: Callable[..., Any],
+) -> Tuple[Callable[..., Any], Dict[str, Any]]:
+    """Adapt PEFT 0.19.1's TP-hook call to the Transformers 5.4 API.
+
+    PEFT 0.19.1 calls ``add_tensor_parallel_hooks_to_module`` with the legacy
+    five positional arguments: model, module, current layer plan, layer name,
+    and mesh. Transformers 5.4 additionally requires the full model TP plan
+    before the current layer plan. The result is that PEFT's mesh is bound to
+    ``current_module_plan`` and the real mesh is reported missing. Keep this
+    adapter fail-closed on the exact upstream signature, and pass every
+    non-legacy invocation through unchanged.
+    """
+
+    signature = inspect.signature(hook)
+    parameter_names = tuple(signature.parameters)
+    evidence = {
+        "transformers_hook_signature": str(signature),
+        "compatibility_installed": False,
+        "legacy_peft_call_count": 0,
+    }
+    if "current_module_plan" not in signature.parameters:
+        return hook, evidence
+
+    expected_prefix = (
+        "model",
+        "module",
+        "tp_plan",
+        "layer_name",
+        "current_module_plan",
+        "device_mesh",
+    )
+    if parameter_names[: len(expected_prefix)] != expected_prefix:
+        raise RuntimeError(
+            "Unsupported Transformers TP hook API: "
+            f"expected prefix={expected_prefix}, actual={parameter_names}"
+        )
+
+    def compatible_hook(model, module, tp_plan, layer_name, *args, **kwargs):
+        full_tp_plan = getattr(model, "tp_plan", None)
+        if len(args) == 1 and not kwargs:
+            if not isinstance(full_tp_plan, Mapping) or not full_tp_plan:
+                raise RuntimeError(
+                    "PEFT TP-hook compatibility requires the full model TP plan"
+                )
+            evidence["legacy_peft_call_count"] += 1
+            device_mesh = args[0]
+            return hook(
+                model=model,
+                module=module,
+                tp_plan=full_tp_plan,
+                layer_name=layer_name,
+                current_module_plan=tp_plan,
+                device_mesh=device_mesh,
+            )
+        if not args and set(kwargs) == {"device_mesh"}:
+            if not isinstance(full_tp_plan, Mapping) or not full_tp_plan:
+                raise RuntimeError(
+                    "PEFT TP-hook compatibility requires the full model TP plan"
+                )
+            evidence["legacy_peft_call_count"] += 1
+            return hook(
+                model=model,
+                module=module,
+                tp_plan=full_tp_plan,
+                layer_name=layer_name,
+                current_module_plan=tp_plan,
+                device_mesh=kwargs["device_mesh"],
+            )
+        return hook(model, module, tp_plan, layer_name, *args, **kwargs)
+
+    evidence["compatibility_installed"] = True
+    return compatible_hook, evidence
+
+
+@contextmanager
+def peft_tp_hook_compatibility() -> Iterator[Dict[str, Any]]:
+    """Temporarily bridge the pinned PEFT/Transformers TP-hook API boundary."""
+
+    from transformers.integrations import tensor_parallel
+
+    original = tensor_parallel.add_tensor_parallel_hooks_to_module
+    compatible, evidence = _build_peft_tp_hook_compatibility(original)
+    if compatible is original:
+        yield evidence
+        return
+    tensor_parallel.add_tensor_parallel_hooks_to_module = compatible
+    try:
+        yield evidence
+    finally:
+        tensor_parallel.add_tensor_parallel_hooks_to_module = original
 
 
 def launch_spec_from_config(

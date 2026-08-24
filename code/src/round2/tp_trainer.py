@@ -34,7 +34,11 @@ from .queue_protocol import (
     wait_for_json,
 )
 from .sft_schema import load_sft_jsonl, validate_sft_corpus
-from .tp_backend import describe_tp_parameters, validate_training_runtime
+from .tp_backend import (
+    describe_tp_parameters,
+    peft_tp_hook_compatibility,
+    validate_training_runtime,
+)
 
 
 DTYPES = {
@@ -54,12 +58,8 @@ def _replace_json(path: Path, payload: Dict[str, Any]) -> None:
 
 
 def _initialize(config: Dict[str, Any]) -> Tuple[int, int, int, torch.device]:
-    if not dist.is_initialized():
-        dist.init_process_group("nccl")
-    rank = dist.get_rank()
-    world_size = dist.get_world_size()
     local_rank = int(os.environ.get("LOCAL_RANK", "-1"))
-    if world_size != 2 or local_rank not in {0, 1}:
+    if local_rank not in {0, 1}:
         raise RuntimeError(
             "Round2 must be launched by torchrun with exactly two local TP ranks"
         )
@@ -70,7 +70,16 @@ def _initialize(config: Dict[str, Any]) -> Tuple[int, int, int, torch.device]:
             f"Training CUDA_VISIBLE_DEVICES mismatch: actual={visible}, expected={expected}"
         )
     torch.cuda.set_device(local_rank)
-    return rank, local_rank, world_size, torch.device("cuda", local_rank)
+    device = torch.device("cuda", local_rank)
+    if not dist.is_initialized():
+        dist.init_process_group("nccl", device_id=device)
+    rank = dist.get_rank()
+    world_size = dist.get_world_size()
+    if world_size != 2:
+        raise RuntimeError(
+            "Round2 must be launched by torchrun with exactly two local TP ranks"
+        )
+    return rank, local_rank, world_size, device
 
 
 def _seed_everything(seed: int) -> None:
@@ -246,7 +255,16 @@ def _load_tp_policy(config: Dict[str, Any]):
             gradient_checkpointing_kwargs={"use_reentrant": False}
         )
         base.enable_input_require_grads()
-    policy = get_peft_model(base, _lora_config(config))
+    with peft_tp_hook_compatibility() as peft_hook_evidence:
+        policy = get_peft_model(base, _lora_config(config))
+    if peft_hook_evidence["compatibility_installed"] and int(
+        peft_hook_evidence["legacy_peft_call_count"]
+    ) < 1:
+        raise RuntimeError(
+            "PEFT TP-hook compatibility was installed but no legacy TP hook call "
+            "was observed"
+        )
+    tp_evidence["peft_tp_hook_compatibility"] = peft_hook_evidence
     tp_evidence["lora"] = _verify_trainable_lora(
         policy, model["lora"]["target_modules"]
     )
@@ -601,7 +619,7 @@ def _scalar(value: torch.Tensor) -> float:
     return float(value.detach())
 
 
-def main() -> None:
+def _run() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--config", required=True)
     args = parser.parse_args()
@@ -959,7 +977,14 @@ def main() -> None:
         _replace_json(output_dir / "complete.json", completion)
         _replace_json(state_path, completion)
     dist.barrier()
-    dist.destroy_process_group()
+
+
+def main() -> None:
+    try:
+        _run()
+    finally:
+        if dist.is_initialized():
+            dist.destroy_process_group()
 
 
 if __name__ == "__main__":

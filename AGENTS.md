@@ -36,10 +36,10 @@
 - 唯一活动阶段：`CODE_IMPLEMENTATION`
 - 当前入口：`human_read/exp/current_experiment.md` v0.6 的第二轮 rollout 扩展；当前实现目标为3×4090上 GPU0–1 native TP-LoRA、GPU2独立vLLM
 - 已完成门禁：第一轮既有理论/实验/代码与执行记录保持冻结；用户已于2026-08-24明确确认 Round2 commit `c2c9069a0b1a1187c8e709729b33b15aaec8c454`，服务器 clean checkout 和 train/rollout 两个环境已核验。
-- 最近服务器证据：commit `f54f6f4d744d138c80f2309ec5e350f1d5a428b3` 的 `exp-20260824-02-round2-tp2` 已通过24k锚点、config、server tests、GPU稳定等待和vLLM ready；首条strong smoke在optimizer step前被错误的“必须存在sharded DTensor”门禁拒绝。Transformers 5.4实际使用checkpoint-backed本地Tensor slices；控制器失败后还残留vLLM EngineCore。
-- 当前代码状态：工作区HEAD/origin出现尚未经用户审阅的 `2af290df6447bf541abf225f666bff1e34beddd4`，包含初版safetensors local-shape门禁、vLLM独立进程组和strong-smoke子状态；当前未提交补充修复要求每个planned module都有TP hooks、按sharded-SUM/replicated-average计算统一global grad norm，并避免进程组建立失败时误伤控制器组。活动阶段保持 `CODE_IMPLEMENTATION`。
+- 最近服务器证据：用户提交并运行 commit `2ef6fb4cc1024270555056a3eb91e5ee35d2dbd4` 的 `exp-20260824-03-round2-tp2`；24k锚点、config、server tests、GPU稳定等待、vLLM ready及失败后的完整worker回收均通过，但首条strong smoke在PEFT注入LoRA时因PEFT 0.19.1仍使用旧五参数TP hook调用、Transformers 5.4.0要求新增完整TP plan参数而失败。状态停在initializing/step0，未生成TP evidence、未进入optimizer step。
+- 当前代码状态：`2ef6fb4` 上有未提交兼容修复，仅在 `get_peft_model()` 期间将PEFT旧调用严格桥接为Transformers 5.4的完整model plan + current layer plan接口；同时在NCCL初始化前绑定local CUDA device，并用finally销毁process group。活动阶段保持 `CODE_IMPLEMENTATION`。
 - 锁定阶段：`SERVER_EXECUTION`、`RESULT_HANDOFF`、`NEXTCYCLE_DISCUSSION`
-- 下一解锁条件：用户审阅当前TP/清理修复 diff，手工形成并明确确认新的 clean commit；保留失败experiment并使用新ID重启server tests与strong smoke。
+- 下一解锁条件：用户审阅当前PEFT/Transformers兼容修复 diff，手工形成并明确确认新的 clean commit；保留三个失败experiment并使用新ID重启server tests与strong smoke。
 
 ## 标识与交叉引用
 

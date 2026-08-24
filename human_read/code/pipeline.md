@@ -1,6 +1,6 @@
 # SOPPO Round2：3×4090 TP 训练与在线 rollout 流水线
 
-> 状态：依赖修复后的 `f54f6f4` 已在服务器通过24k锚点、config、server tests、GPU稳定等待和vLLM ready。首条strong smoke在optimizer step前被错误的DTensor专属门禁拒绝，且失败退出留下vLLM EngineCore。工作区HEAD/origin的初版修复 `2af290d` 尚未经用户审阅；TP hook完整性、TP-aware global grad norm和安全清理边界仍是其上的未提交补充修复。
+> 状态：用户提交的 `2ef6fb4` 已在 `exp-20260824-03-round2-tp2` 通过24k锚点、config、server tests、GPU稳定等待、vLLM ready和失败后的完整worker清理。首条strong smoke在PEFT注入LoRA时暴露PEFT 0.19.1旧五参数调用与Transformers 5.4.0新TP-hook接口错位；当前本地兼容修复未提交、待审阅。
 
 ## 1. 三张卡怎么分
 

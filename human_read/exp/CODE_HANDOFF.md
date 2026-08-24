@@ -8,8 +8,8 @@
 - 实验设计：`current_experiment.md` v0.6 已同步为两轮边界；第二轮只新增 rollout 相关 PE 实验
 - 当前阶段：`CODE_IMPLEMENTATION`
 - 已确认代码：用户于2026-08-24明确确认 commit `c2c9069a0b1a1187c8e709729b33b15aaec8c454`；服务器 clean checkout 与 `round2-train` / `round2-rollout` 环境已核验
-- 已执行候选：依赖修复进入 commit `f54f6f4d744d138c80f2309ec5e350f1d5a428b3` 后，`exp-20260824-02-round2-tp2` 通过server tests、GPU等待和vLLM ready；首条strong smoke在optimizer step前因旧门禁只接受DTensor而失败，退出后残留vLLM EngineCore
-- 当前版本边界：工作区HEAD/origin出现尚未经用户审阅的 `2af290d`，包含初版safetensors local-shape门禁、vLLM独立PID/PGID清理和strong-smoke子状态；当前未提交补充修复增加逐planned-module TP hook验证、shard-SUM/replica-average global LoRA grad norm及进程组失败保护
+- 已执行候选：用户提交的 `2ef6fb4cc1024270555056a3eb91e5ee35d2dbd4` 在 `exp-20260824-03-round2-tp2` 通过server tests、GPU等待、vLLM ready及失败后的完整worker回收；PEFT注入LoRA时TP-hook API错位，首条strong smoke停在initializing/step0且无TP evidence
+- 当前版本边界：`2ef6fb4` 上有未提交的PEFT 0.19.1 / Transformers 5.4.0严格兼容层，并补充NCCL初始化前device绑定与异常finally销毁；未改变方法、数据或训练超参
 - 服务器执行：当前修复待审阅，暂时 `LOCKED`；不得覆盖失败experiment或沿用旧resolved config
 - 当前平台适配：3×4090固定GPU0–1 native TP-LoRA、GPU2 vLLM；GPU等待和vLLM base ready已有实证，完整TP训练仍待修复后strong smoke
 - 正式代码说明：`../../code/CODE_OVERVIEW.md`
@@ -81,6 +81,6 @@
 
 随后用户要求在三张卡暂时被占用时先挂起本实验。实现把只读等待器插入 `server_tests → strong_smoke` 之间：默认每30秒查询 resolved config 指定的三张4090，要求90秒稳定无 compute PID、显存使用不超过1024MiB、利用率不超过5%，并持续核对 clean Git commit；它只写原子 `gpu_wait.json`，绝不发送信号。无调度器条件下无法原子锁卡，因此放行后仍由原有 preflight 再次失败关闭。该门禁已进入获服务器启动授权的 `f4601c8`。
 
-首次启动在pytest collection因缺少 `datasets` 失败；该依赖修复进入 `f54f6f4` 后，第二次启动成功通过24k锚点、两条formal config、server tests、GPU等待和vLLM ready。随后 `tp_backend.py` 仍按旧假设要求参数必须是sharded DTensor，但Transformers 5.4原生TP实际加载普通本地Tensor slices，导致首条strong smoke在optimizer step前假阴性失败；原清理只终止vLLM front-end，还留下spawn的EngineCore。当前未提交修复改为用safetensors header完整shape核对每个本地shard，并把worker置于独立进程组做有界完整清理。它不改变方法、数据或超参，但仍须新代码交接和新experiment strong smoke。
+首次启动在pytest collection因缺少 `datasets` 失败；依赖修复后的第二次启动暴露旧DTensor专属门禁和vLLM EngineCore清理遗漏。用户提交 `2ef6fb4` 后的第三次启动验证了checkpoint-backed本地Tensor门禁前置路径、vLLM ready与失败清理，但PEFT 0.19.1仍按旧五参数调用Transformers TP hook，而Transformers 5.4.0要求完整model plan与current layer plan两个独立参数，导致LoRA注入前失败。当前未提交兼容层只在 `get_peft_model()` 期间桥接这一固定API边界，并保留后续shape/hook证据门禁；仍须新代码交接和新experiment strong smoke。
 
 代码总览需明确第二轮两条新增 rollout 实验的实现、默认值、产物、与第一轮冻结基线的只读合并方式、已知限制、静态复核和服务器待验证项；完成这些仍只意味着可以请求服务器执行授权，不等于已经获得授权。

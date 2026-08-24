@@ -1,6 +1,6 @@
 # Round2 3×4090 执行指南
 
-> 当前状态：`TP/CLEANUP FIX / CODE REVIEW`。依赖修复后的服务器 commit `f54f6f4d744d138c80f2309ec5e350f1d5a428b3` 已通过24k锚点、配置、server tests、GPU稳定等待和vLLM ready；首条strong smoke在optimizer step前被错误的DTensor专属门禁拒绝，失败退出还留下vLLM EngineCore。工作区HEAD/origin的初版修复 `2af290d` 尚未经用户审阅，其上还有TP hook完整性、TP-aware global LoRA grad norm及安全清理边界的未提交补充修复；必须先完成新代码交接，保留两个失败目录并使用新experiment ID重启。
+> 当前状态：`PEFT/TRANSFORMERS TP API FIX / CODE REVIEW`。用户提交的 `2ef6fb4` 在 `exp-20260824-03-round2-tp2` 通过24k锚点、配置、server tests、GPU稳定等待、vLLM ready及失败后的完整worker回收；首条strong smoke在PEFT注入LoRA时因PEFT 0.19.1旧五参数TP hook调用与Transformers 5.4.0新接口错位而停在initializing/step0。当前未提交兼容修复待用户审阅；必须保留失败目录并在新clean commit获确认后使用新experiment ID重启。
 
 ## 1. 固定资源和目录
 
