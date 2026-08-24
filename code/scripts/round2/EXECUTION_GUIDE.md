@@ -1,6 +1,6 @@
 # Round2 3×4090 执行指南
 
-> 当前状态：`PEFT/TRANSFORMERS TP API FIX / CODE REVIEW`。用户提交的 `2ef6fb4` 在 `exp-20260824-03-round2-tp2` 通过24k锚点、配置、server tests、GPU稳定等待、vLLM ready及失败后的完整worker回收；首条strong smoke在PEFT注入LoRA时因PEFT 0.19.1旧五参数TP hook调用与Transformers 5.4.0新接口错位而停在initializing/step0。当前未提交兼容修复待用户审阅；必须保留失败目录并在新clean commit获确认后使用新experiment ID重启。
+> 当前状态：`ROLLOUT-ONLY MAX-LENGTH SMOKE FIX / CODE REVIEW`。用户提交的 `d03a116` 在 `exp-20260824-04-round2-tp2` 完成SFT+rollout真实TP2/PE optimizer step；rollout-only已生成候选，但至少一条在512 token前结束，触发最坏长度门禁并完成进程回收。当前未提交修复只在strong smoke设置`ignore_eos=true`，formal仍允许自然EOS；必须保留失败目录并在新clean commit获确认后使用新experiment ID重启。
 
 ## 1. 固定资源和目录
 
@@ -173,7 +173,7 @@ bash start_all.sh
   → Round2 sample-free aggregate/export
 ```
 
-strong smoke 保持完整8+56 population、bf16/2048和真实 TP2，并强制 rollout 生成512 token。它比轻量单测慢，但会在 formal 前验证24GB显存、adapter交接与在线PE反传。任何阶段失败都会阻断后续。
+strong smoke 保持完整8+56 population、bf16/2048和真实 TP2，并以`min_tokens=max_tokens=512, ignore_eos=true`强制每条rollout生成512 token。该`ignore_eos`仅属于smoke最坏长度门禁；formal固定`min_tokens=0, ignore_eos=false`，允许自然EOS。smoke比轻量单测慢，但会在formal前验证24GB显存、adapter交接与在线PE反传。任何阶段失败都会阻断后续。
 
 正式每条方法为 `floor(24000/56) × 2 = 856` 个 optimizer step，与第一轮 joint trainer 的 drop-last 口径一致；每个 epoch 的32条余数不进入该 epoch。因而 SFT+rollout 正式生成47,936条回复，rollout-only正式生成95,872条回复。实际 wall time 不预猜，由两条 strong smoke 的日志分别外推。
 

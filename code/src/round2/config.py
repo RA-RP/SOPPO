@@ -256,6 +256,13 @@ def validate_round2_config(config: Dict[str, Any]) -> None:
         raise ValueError("Round2 strong smoke must force 512 generated tokens")
     if not smoke_mode and min_new_tokens != 0:
         raise ValueError("Formal round2 requires min_new_tokens=0")
+    ignore_eos = rollout.get("ignore_eos")
+    if not isinstance(ignore_eos, bool):
+        raise ValueError("rollout.ignore_eos must be an explicit boolean")
+    if smoke_mode and ignore_eos is not True:
+        raise ValueError("Round2 strong smoke must set ignore_eos=true")
+    if not smoke_mode and ignore_eos is not False:
+        raise ValueError("Formal round2 requires ignore_eos=false")
     if int(rollout.get("max_num_seqs", 0)) < 1:
         raise ValueError("Round2 rollout max_num_seqs must be positive")
     if not 0 < float(rollout.get("gpu_memory_utilization", 0)) < 1:

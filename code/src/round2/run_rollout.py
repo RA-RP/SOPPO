@@ -7,6 +7,7 @@ import hashlib
 import os
 import time
 import traceback
+from collections import Counter
 from pathlib import Path
 from typing import Any, Dict, List
 
@@ -126,6 +127,7 @@ def _process_request(llm, tokenizer, config: Dict[str, Any], request: Dict[str, 
         "min_p": float(rollout["min_p"]),
         "max_new_tokens": int(rollout["max_new_tokens"]),
         "min_new_tokens": int(rollout["min_new_tokens"]),
+        "ignore_eos": bool(rollout["ignore_eos"]),
         "max_model_len": int(rollout["max_model_len"]),
     }
     if requested_generation != configured_generation:
@@ -139,6 +141,7 @@ def _process_request(llm, tokenizer, config: Dict[str, Any], request: Dict[str, 
         min_p=configured_generation["min_p"],
         max_tokens=configured_generation["max_new_tokens"],
         min_tokens=configured_generation["min_new_tokens"],
+        ignore_eos=configured_generation["ignore_eos"],
         seed=int(config["training"]["seed"]) + int(request["step"]),
         truncate_prompt_tokens=(
             configured_generation["max_model_len"]
@@ -167,6 +170,15 @@ def _process_request(llm, tokenizer, config: Dict[str, Any], request: Dict[str, 
     generated_token_counts = [
         len(candidate.token_ids) for item in outputs for candidate in item.outputs
     ]
+    finish_reason_counts = dict(
+        sorted(
+            Counter(
+                str(candidate.finish_reason)
+                for item in outputs
+                for candidate in item.outputs
+            ).items()
+        )
+    )
     raw_prompt_token_counts = [
         len(tokenizer(prompt, add_special_tokens=False)["input_ids"])
         for prompt in prompts
@@ -204,6 +216,7 @@ def _process_request(llm, tokenizer, config: Dict[str, Any], request: Dict[str, 
                 min(value, prompt_limit) for value in raw_prompt_token_counts
             ),
             "duplicate_pair_count": duplicate_pair_count,
+            "finish_reason_counts": finish_reason_counts,
         },
         "pairs": pairs,
     }
@@ -271,7 +284,15 @@ def main() -> None:
             "model": model_path,
             "sampling": {
                 key: rollout[key]
-                for key in ("temperature", "top_p", "top_k", "min_p")
+                for key in (
+                    "temperature",
+                    "top_p",
+                    "top_k",
+                    "min_p",
+                    "max_new_tokens",
+                    "min_new_tokens",
+                    "ignore_eos",
+                )
             },
         },
     )

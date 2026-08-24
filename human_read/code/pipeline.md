@@ -1,6 +1,6 @@
 # SOPPO Round2：3×4090 TP 训练与在线 rollout 流水线
 
-> 状态：用户提交的 `2ef6fb4` 已在 `exp-20260824-03-round2-tp2` 通过24k锚点、config、server tests、GPU稳定等待、vLLM ready和失败后的完整worker清理。首条strong smoke在PEFT注入LoRA时暴露PEFT 0.19.1旧五参数调用与Transformers 5.4.0新TP-hook接口错位；当前本地兼容修复未提交、待审阅。
+> 状态：用户提交的 `d03a116` 已在 `exp-20260824-04-round2-tp2` 完成SFT+rollout真实TP2/PE optimizer step；rollout-only在候选生成后因至少一条不足512 token被最坏长度门禁拒绝并完整清理。当前smoke-only `ignore_eos=true`修复未提交、待审阅；formal仍允许自然EOS。
 
 ## 1. 三张卡怎么分
 

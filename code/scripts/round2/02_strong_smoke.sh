@@ -22,6 +22,7 @@ for config_name in \
     SOPPO_ROUND2_SMOKE_MODE=true \
     SOPPO_ROUND2_EVAL_MAX_SAMPLES=8 \
     SOPPO_ROUND2_MIN_NEW_TOKENS=512 \
+    SOPPO_ROUND2_IGNORE_EOS=true \
     SOPPO_ROUND2_SMOKE_OBJECTIVE_STEP=1 \
         bash "$SCRIPT_DIR/01_resolve_config.sh" "$config_name"
     bash "$SCRIPT_DIR/run_method.sh" \

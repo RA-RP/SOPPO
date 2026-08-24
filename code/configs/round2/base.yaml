@@ -58,6 +58,7 @@ rollout:
   max_model_len: 2048
   max_new_tokens: 512
   min_new_tokens: 0
+  ignore_eos: false
   gpu_memory_utilization: 0.80
   max_num_seqs: 8
   enforce_eager: true

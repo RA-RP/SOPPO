@@ -73,6 +73,11 @@ def test_round2_config_requires_tp2_lora_and_separate_rollout_gpu():
     with pytest.raises(ValueError, match="top_p=0.8"):
         validate_round2_config(invalid)
 
+    invalid = copy.deepcopy(config)
+    invalid["rollout"]["ignore_eos"] = True
+    with pytest.raises(ValueError, match="Formal round2 requires ignore_eos=false"):
+        validate_round2_config(invalid)
+
 
 def test_round2_strong_smoke_contract_is_not_a_small_batch():
     config = round2_config()
@@ -85,10 +90,17 @@ def test_round2_strong_smoke_contract_is_not_a_small_batch():
         }
     )
     config["rollout"]["min_new_tokens"] = 512
+    config["rollout"]["ignore_eos"] = True
     validate_round2_config(config)
     assert config["training"]["joint_labeled_global_batch_size"] == 8
     assert config["training"]["joint_unlabeled_global_batch_size"] == 56
     assert config["model"]["max_seq_len"] == 2048
+    assert config["rollout"]["ignore_eos"] is True
+
+    invalid = copy.deepcopy(config)
+    invalid["rollout"]["ignore_eos"] = False
+    with pytest.raises(ValueError, match="ignore_eos=true"):
+        validate_round2_config(invalid)
 
 
 def _request(checkpoint: Path, method: str):
@@ -99,6 +111,7 @@ def _request(checkpoint: Path, method: str):
         "min_p": 0.0,
         "max_new_tokens": 512,
         "min_new_tokens": 0,
+        "ignore_eos": False,
         "max_model_len": 2048,
     }
     request = {

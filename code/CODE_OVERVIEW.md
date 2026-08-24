@@ -6,10 +6,10 @@
 - 第一轮 Experiment：`exp-20260819-01-mvp`（冻结基线，只读引用）
 - 第二轮默认 Experiment：`exp-20260823-01-round2-tp2`；正式运行时必须换成新的唯一 ID
 - 设计依据：`../human_read/exp/current_experiment.md` v0.6；当前文档将第一轮 MVP 代码说明与第二轮 rollout 新增边界分开记录
-- 当前阶段：`CODE_IMPLEMENTATION`（第三次服务器启动在首条strong smoke暴露PEFT/Transformers TP-hook API错位，返回代码阶段修复）
+- 当前阶段：`CODE_IMPLEMENTATION`（第四次服务器启动通过第一条strong smoke，第二条暴露vLLM最坏长度门禁不足，返回代码阶段修复）
 - 已确认代码：第二轮 TP=2 + 单卡 vLLM commit `c2c9069a0b1a1187c8e709729b33b15aaec8c454` 已于2026-08-24获用户明确确认；服务器 clean checkout 与两个环境已核验
-- 已执行代码：用户提交的 `2ef6fb4cc1024270555056a3eb91e5ee35d2dbd4` 在 `exp-20260824-03-round2-tp2` 通过锚点/config/server tests/GPU等待/vLLM ready，并在TP初始化失败后完整回收worker；失败发生于PEFT LoRA注入，state停在initializing/step0且无TP evidence
-- 当前代码版本：`2ef6fb4` 上有未提交的严格兼容层，针对PEFT 0.19.1旧五参数调用与Transformers 5.4.0六参数TP hook接口错位，分别传入完整model TP plan和当前LoRA层plan；同时补充NCCL device绑定和finally销毁。待用户审阅
+- 已执行代码：用户提交的 `d03a116954b619749e3f1267cffc293406b5e093` 在 `exp-20260824-04-round2-tp2` 完成SFT+rollout的真实TP2 optimizer step，验证兼容层、adapter handoff、在线PE反传与每rank约8.65GB峰值；rollout-only在112条候选生成后因至少一条不足512 token而被smoke长度门禁拒绝，正式训练未启动
+- 当前代码版本：`d03a116` 上有未提交smoke-only长度修复，显式冻结`ignore_eos=true/min_tokens=512/max_tokens=512`；formal仍为`ignore_eos=false/min_tokens=0/max_tokens=512`，不改变正式采样分布。待用户审阅
 - 服务器执行：当前修复形成clean commit并获确认前暂时 `LOCKED`；失败experiment保留，只能用新ID重启
 
 第一轮本地只编辑纯文本源码、配置和说明。没有在本地安装/import 项目依赖，没有运行 pytest、数据、模型、训练、评价或 GPU 任务。第一轮运行正确性必须由获批后的服务器 tests/strong smoke 证明。第二轮不得改写第一轮 MVP 代码语义，只能复用公共模块并新增 rollout 相关入口、配置和脚本。
@@ -221,4 +221,4 @@ stage03/04/05 合计正好八条 first-round final trajectories，都写在 `run
 - 第二轮 adapter 每 step 都必须发布给在线 rollout，因此会保留大量 LoRA checkpoint；当前不保存 optimizer/scheduler state，不支持 bit-exact 热恢复。
 - 第二轮固定锚点、采样四元组、依赖、GPU等待、vLLM ready和失败清理已获服务器证据；当前需完成PEFT 0.19.1 / Transformers 5.4.0 TP-hook兼容修复的代码交接。
 
-旧 Slurm 路径的静态复核与部分服务器门禁已有证据；Round2 两个环境、server tests、GPU wait和vLLM base ready已有服务器证据，但首条TP/vLLM strong smoke尚未完成optimizer step，正式训练未执行，不能把部分启动成功写成训练验证成功。
+旧 Slurm 路径的静态复核与部分服务器门禁已有证据；Round2 两个环境、server tests、GPU wait、vLLM base ready及SFT+rollout单步TP/PE已有服务器证据，但rollout-only strong smoke尚未完成optimizer step，正式训练未执行，不能把单arm启动成功写成完整训练验证成功。

@@ -28,8 +28,8 @@
 - 当前实现依据：`exp/current_experiment.md` v0.6 SSPO-aligned 30k MVP
 - 理论通过状态：v0.2 已明确通过（2026-08-19）
 - 实验设计通过状态：v0.6 已逐项确认，用户已明确要求开始编码（2026-08-21）
-- 代码交接状态：用户提交的 `2ef6fb4` 已用于第三次尝试；tests/GPU等待/vLLM ready及失败清理通过，但PEFT 0.19.1旧五参数TP hook调用与Transformers 5.4.0新接口错位，首条strong smoke停在initializing/step0且无TP evidence。当前严格兼容层、NCCL device绑定和finally销毁保持未提交、待审阅
-- 服务器执行状态：第二轮暂时 `LOCKED`；当前兼容修复形成并获用户明确确认的新clean commit后，才允许保留旧失败目录并使用新experiment ID重启
+- 代码交接状态：用户提交的 `d03a116` 已用于第四次尝试；SFT+rollout完成真实TP2/PE optimizer step，rollout-only因至少一条候选未达到512 token而被最坏长度门禁拒绝。当前smoke-only `ignore_eos=true`与finish-reason汇总保持未提交、待审阅
+- 服务器执行状态：第二轮暂时 `LOCKED`；当前长度修复形成并获用户明确确认的新clean commit后，才允许保留旧失败目录并使用新experiment ID重启
 - `RESULT_HANDOFF` 与 `NEXTCYCLE_DISCUSSION`：锁定
 
 ## 阅读顺序

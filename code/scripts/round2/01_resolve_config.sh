@@ -64,6 +64,9 @@ fi
 if [[ -n "${SOPPO_ROUND2_MIN_NEW_TOKENS:-}" ]]; then
     OVERRIDES+=(--override "rollout.min_new_tokens=$SOPPO_ROUND2_MIN_NEW_TOKENS")
 fi
+if [[ -n "${SOPPO_ROUND2_IGNORE_EOS:-}" ]]; then
+    OVERRIDES+=(--override "rollout.ignore_eos=$SOPPO_ROUND2_IGNORE_EOS")
+fi
 if [[ -n "${SOPPO_ROUND2_SMOKE_OBJECTIVE_STEP:-}" ]]; then
     OVERRIDES+=(--override "training.smoke_objective_step=$SOPPO_ROUND2_SMOKE_OBJECTIVE_STEP")
 fi

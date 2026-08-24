@@ -8,8 +8,8 @@
 - 实验设计：`current_experiment.md` v0.6 已同步为两轮边界；第二轮只新增 rollout 相关 PE 实验
 - 当前阶段：`CODE_IMPLEMENTATION`
 - 已确认代码：用户于2026-08-24明确确认 commit `c2c9069a0b1a1187c8e709729b33b15aaec8c454`；服务器 clean checkout 与 `round2-train` / `round2-rollout` 环境已核验
-- 已执行候选：用户提交的 `2ef6fb4cc1024270555056a3eb91e5ee35d2dbd4` 在 `exp-20260824-03-round2-tp2` 通过server tests、GPU等待、vLLM ready及失败后的完整worker回收；PEFT注入LoRA时TP-hook API错位，首条strong smoke停在initializing/step0且无TP evidence
-- 当前版本边界：`2ef6fb4` 上有未提交的PEFT 0.19.1 / Transformers 5.4.0严格兼容层，并补充NCCL初始化前device绑定与异常finally销毁；未改变方法、数据或训练超参
+- 已执行候选：用户提交的 `d03a116954b619749e3f1267cffc293406b5e093` 在 `exp-20260824-04-round2-tp2` 完成SFT+rollout真实TP2/PE optimizer step；rollout-only生成112条候选后因至少一条不足512 token被最坏长度门禁拒绝并完整回收
+- 当前版本边界：`d03a116` 上有未提交smoke-only `ignore_eos=true`、formal `ignore_eos=false`的显式合同及sample-free finish-reason统计；未改变正式方法、数据或训练超参
 - 服务器执行：当前修复待审阅，暂时 `LOCKED`；不得覆盖失败experiment或沿用旧resolved config
 - 当前平台适配：3×4090固定GPU0–1 native TP-LoRA、GPU2 vLLM；GPU等待和vLLM base ready已有实证，完整TP训练仍待修复后strong smoke
 - 正式代码说明：`../../code/CODE_OVERVIEW.md`
@@ -81,6 +81,6 @@
 
 随后用户要求在三张卡暂时被占用时先挂起本实验。实现把只读等待器插入 `server_tests → strong_smoke` 之间：默认每30秒查询 resolved config 指定的三张4090，要求90秒稳定无 compute PID、显存使用不超过1024MiB、利用率不超过5%，并持续核对 clean Git commit；它只写原子 `gpu_wait.json`，绝不发送信号。无调度器条件下无法原子锁卡，因此放行后仍由原有 preflight 再次失败关闭。该门禁已进入获服务器启动授权的 `f4601c8`。
 
-首次启动在pytest collection因缺少 `datasets` 失败；依赖修复后的第二次启动暴露旧DTensor专属门禁和vLLM EngineCore清理遗漏。用户提交 `2ef6fb4` 后的第三次启动验证了checkpoint-backed本地Tensor门禁前置路径、vLLM ready与失败清理，但PEFT 0.19.1仍按旧五参数调用Transformers TP hook，而Transformers 5.4.0要求完整model plan与current layer plan两个独立参数，导致LoRA注入前失败。当前未提交兼容层只在 `get_peft_model()` 期间桥接这一固定API边界，并保留后续shape/hook证据门禁；仍须新代码交接和新experiment strong smoke。
+首次启动在pytest collection因缺少 `datasets` 失败；第二次启动暴露旧DTensor门禁和EngineCore清理遗漏；第三次启动暴露PEFT/Transformers TP-hook接口错位。用户提交兼容修复 `d03a116` 后，第四次启动的SFT+rollout已完成单步真实TP2/PE并记录每rank约8.65GB allocated峰值。rollout-only生成两条候选/提示时，`min_tokens=512`没有保证全部112条都恰好达到512，因而在训练前被最坏长度门禁拒绝。当前未提交修复为smoke同时设置`ignore_eos=true`，formal仍保持自然EOS；仍须新代码交接和新experiment strong smoke。
 
 代码总览需明确第二轮两条新增 rollout 实验的实现、默认值、产物、与第一轮冻结基线的只读合并方式、已知限制、静态复核和服务器待验证项；完成这些仍只意味着可以请求服务器执行授权，不等于已经获得授权。

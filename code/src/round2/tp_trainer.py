@@ -537,6 +537,7 @@ def _request_dynamic_pairs(
         "min_p": float(rollout["min_p"]),
         "max_new_tokens": int(rollout["max_new_tokens"]),
         "min_new_tokens": int(rollout["min_new_tokens"]),
+        "ignore_eos": bool(rollout["ignore_eos"]),
         "max_model_len": int(rollout["max_model_len"]),
     }
     request = {

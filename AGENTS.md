@@ -36,10 +36,10 @@
 - 唯一活动阶段：`CODE_IMPLEMENTATION`
 - 当前入口：`human_read/exp/current_experiment.md` v0.6 的第二轮 rollout 扩展；当前实现目标为3×4090上 GPU0–1 native TP-LoRA、GPU2独立vLLM
 - 已完成门禁：第一轮既有理论/实验/代码与执行记录保持冻结；用户已于2026-08-24明确确认 Round2 commit `c2c9069a0b1a1187c8e709729b33b15aaec8c454`，服务器 clean checkout 和 train/rollout 两个环境已核验。
-- 最近服务器证据：用户提交并运行 commit `2ef6fb4cc1024270555056a3eb91e5ee35d2dbd4` 的 `exp-20260824-03-round2-tp2`；24k锚点、config、server tests、GPU稳定等待、vLLM ready及失败后的完整worker回收均通过，但首条strong smoke在PEFT注入LoRA时因PEFT 0.19.1仍使用旧五参数TP hook调用、Transformers 5.4.0要求新增完整TP plan参数而失败。状态停在initializing/step0，未生成TP evidence、未进入optimizer step。
-- 当前代码状态：`2ef6fb4` 上有未提交兼容修复，仅在 `get_peft_model()` 期间将PEFT旧调用严格桥接为Transformers 5.4的完整model plan + current layer plan接口；同时在NCCL初始化前绑定local CUDA device，并用finally销毁process group。活动阶段保持 `CODE_IMPLEMENTATION`。
+- 最近服务器证据：用户提交并运行 commit `d03a116954b619749e3f1267cffc293406b5e093` 的 `exp-20260824-04-round2-tp2`；SFT+rollout strong smoke已完成真实TP2 LoRA/PE optimizer step，峰值每rank约8.65GB allocated/10.4GB reserved。rollout-only的112条候选中至少一条未达到512 token，触发最坏长度smoke门禁；该arm停在initializing/step0，vLLM与TP进程均被完整回收，正式训练未启动。
+- 当前代码状态：`d03a116` 上有未提交smoke长度修复：resolved smoke显式设置vLLM `ignore_eos=true`并保留`min_tokens=max_tokens=512`，formal固定`ignore_eos=false/min_tokens=0`；response另记录sample-free finish-reason计数。活动阶段保持 `CODE_IMPLEMENTATION`。
 - 锁定阶段：`SERVER_EXECUTION`、`RESULT_HANDOFF`、`NEXTCYCLE_DISCUSSION`
-- 下一解锁条件：用户审阅当前PEFT/Transformers兼容修复 diff，手工形成并明确确认新的 clean commit；保留三个失败experiment并使用新ID重启server tests与strong smoke。
+- 下一解锁条件：用户审阅当前smoke-only长度修复 diff，手工形成并明确确认新的 clean commit；保留四个失败experiment并使用新ID重启server tests与strong smoke。
 
 ## 标识与交叉引用
 
