@@ -1,6 +1,6 @@
 # Round2 3×4090 执行指南
 
-> 当前状态：`GPU WAIT GATE / CODE REVIEW`。用户已于2026-08-24确认 `c2c9069a0b1a1187c8e709729b33b15aaec8c454` 的 Round2 代码交接，服务器 clean checkout 与两个隔离环境也已核验；随后因三张卡被其他任务占用，用户要求新增自动等待门禁。工作期间外部操作已将候选形成并推送为 `03f26639c711dbb8b13682eb622f0f952e0a387f`；必须先由用户明确审阅确认该 commit，才能在服务器启动。
+> 当前状态：`DEPENDENCY FIX / CODE REVIEW`。服务器已运行 commit `f4601c85a2e10a56edadd2af28109515595eb3d9`，24k锚点与两条配置解析成功，但在进入GPU等待前的 pytest collection 因 `round2-train` 缺少 `datasets` 而失败，未启动任何GPU进程。当前未提交修复把 `datasets==2.21.0` 与 `tqdm==4.67.1` 加入训练环境并纳入安装后import验证；必须先完成新代码交接，保留失败目录并使用新experiment ID重启。
 
 ## 1. 固定资源和目录
 
@@ -75,6 +75,22 @@ bash 00_setup_envs.sh
 ```
 
 该步骤安装依赖并运行 `pip check`，但不启动 GPU 训练。不要把 Round2 包覆盖安装进第一轮 `envs/youc`。
+
+若环境已经存在，只需按当前获批 requirements 原位补齐训练侧依赖，不必重建两个环境：
+
+```bash
+"$SERVER_BASE/envs/round2-train/bin/python" -m pip install \
+  --cache-dir "$SERVER_BASE/cache/pip" \
+  -r "$SERVER_BASE/SOPPO/code/requirements-round2-train.txt"
+
+"$SERVER_BASE/envs/round2-train/bin/python" -m pip check
+"$SERVER_BASE/envs/round2-train/bin/python" - <<'PY'
+import datasets
+import tqdm
+print("datasets:", datasets.__version__)
+print("tqdm:", tqdm.__version__)
+PY
+```
 
 随后显式生成或复核一次固定锚点：
 

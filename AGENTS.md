@@ -36,9 +36,10 @@
 - 唯一活动阶段：`CODE_IMPLEMENTATION`
 - 当前入口：`human_read/exp/current_experiment.md` v0.6 的第二轮 rollout 扩展；当前实现目标为3×4090上 GPU0–1 native TP-LoRA、GPU2独立vLLM
 - 已完成门禁：第一轮既有理论/实验/代码与执行记录保持冻结；用户已于2026-08-24明确确认 Round2 commit `c2c9069a0b1a1187c8e709729b33b15aaec8c454`，服务器 clean checkout 和 train/rollout 两个环境已核验。
-- 当前代码候选：因目标三张4090暂被占用，用户要求在后台长链中新增只读 GPU 空闲等待门禁；工作期间检测到外部操作已将该候选形成并推送为 commit `03f26639c711dbb8b13682eb622f0f952e0a387f`，但用户尚未在代码交接中明确确认该新 commit，因此活动阶段仍为 `CODE_IMPLEMENTATION`。
+- 最近服务器证据：用户已授权启动 commit `f4601c85a2e10a56edadd2af28109515595eb3d9`；24k锚点和两条config成功，随后 pytest collection 因 `round2-train` 缺少 `datasets` 失败，控制器未进入GPU等待、未启动GPU进程。
+- 当前代码变更：训练环境补充显式 `datasets==2.21.0` / `tqdm==4.67.1` 与安装后import验证；该修复未提交、待用户审阅，因此活动阶段返回 `CODE_IMPLEMENTATION`。
 - 锁定阶段：`SERVER_EXECUTION`、`RESULT_HANDOFF`、`NEXTCYCLE_DISCUSSION`
-- 下一解锁条件：用户审阅并明确确认候选 commit `03f2663`；服务器随后可以同步该 clean commit，并在显卡仍忙时启动控制器，由门禁自动等到稳定空闲后进入 strong smoke。
+- 下一解锁条件：用户审阅依赖修复 diff，手工形成并明确确认新的 clean commit；服务器原位补齐训练环境，保留失败experiment并使用新ID重启。
 
 ## 标识与交叉引用
 

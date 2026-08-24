@@ -39,11 +39,20 @@ create_env "$ENV_ROOT/round2-train" "$TRAIN_REQUIREMENTS"
 create_env "$ENV_ROOT/round2-rollout" "$ROLLOUT_REQUIREMENTS"
 
 "$ENV_ROOT/round2-train/bin/python" - <<'PY'
+import datasets
 import peft
 import torch
 import transformers
+import tqdm
 
-print("round2-train:", torch.__version__, transformers.__version__, peft.__version__)
+print(
+    "round2-train:",
+    torch.__version__,
+    transformers.__version__,
+    peft.__version__,
+    datasets.__version__,
+    tqdm.__version__,
+)
 PY
 "$ENV_ROOT/round2-rollout/bin/python" - <<'PY'
 import torch

@@ -8,9 +8,9 @@
 - 实验版本：v0.6 SSPO-aligned 30k MVP
 - 实验批准：用户于 2026-08-21 逐项确认 SSPO 对齐、DPO headroom、LoRA、两种 PE 权重和八条最终轨迹，并明确要求开始编码
 - 当前唯一活动阶段：`CODE_IMPLEMENTATION`
-- 代码交接：第一轮冻结基线保持不变；第二轮 commit `c2c9069a0b1a1187c8e709729b33b15aaec8c454` 已于2026-08-24获用户确认，服务器 checkout 与两个 Round2 环境已核验；其后 GPU 空闲等待门禁已被外部操作形成并推送为候选 commit `03f26639c711dbb8b13682eb622f0f952e0a387f`，待用户明确确认
+- 代码交接：第一轮冻结基线保持不变；第二轮 commit `f4601c85a2e10a56edadd2af28109515595eb3d9` 已获服务器启动授权，首次尝试在 pytest collection 因训练环境遗漏 `datasets` 失败；当前依赖修复未提交、待用户审阅
 - 当前入口：第二轮为 `../../code/scripts/round2/EXECUTION_GUIDE.md`；第一轮 cluster/standalone 入口保持冻结
-- 服务器执行：因新增等待门禁形成新代码版本，第二轮暂时 `LOCKED`；候选 commit `03f2663` 获明确确认后，可在GPU仍忙时启动后台控制器
+- 服务器执行：首次尝试已失败关闭且未启动GPU；依赖修复获确认前暂时 `LOCKED`，失败目录必须保留，之后使用新ID重启
 
 v0.6 替代 v0.5 的 SFT/Pseudo/DPO+PE 方案。第一轮静态 PE 已完成并冻结；本文件当前只约束后续第二轮 rollout 相关扩展。30k 数据及隔离合同不变，训练目标、超参、LoRA、batch、checkpoint 和任务图以本文件为准。
 
@@ -221,5 +221,6 @@ standalone运行不依赖SSH会话，也不产生排队任务；默认两张GPU�
 - 2026-08-23：用户明确批准 Round2 使用第一轮24k公开 unlabeled 数据的已随机换位 `response_a` 作为固定单回复锚点，并批准 Qwen3 non-thinking 采样 `temperature=0.7/top_p=0.8/top_k=20/min_p=0`；该决定补齐此前三项开放预注册项。
 - 2026-08-24：用户明确确认 Round2 commit `c2c9069a0b1a1187c8e709729b33b15aaec8c454`，服务器 clean checkout 和两个隔离环境随后核验成功。
 - 2026-08-24：因三张4090暂被其他任务占用，用户要求控制器只读等待显卡稳定空闲后自动开始任务；该要求只改变执行编排，不改变方法、数据、采样、损失或超参，并使新增代码暂时返回 `CODE_IMPLEMENTATION` 审阅门禁。工作期间检测到外部操作已将实现形成并推送为候选 commit `03f2663`，Codex未执行 commit/push。
+- 2026-08-24：用户请求并执行 `f4601c8` 的服务器启动命令；24k锚点与两条resolved config成功，pytest收集因 `ModuleNotFoundError: datasets` 以exit 2失败，控制器未到达GPU等待。该失败使流程返回 `CODE_IMPLEMENTATION` 补齐环境合同。
 
-此前对 `c2c9069` 的代码交接不自动覆盖其后的 GPU 等待门禁；候选 `03f2663` 仍需独立、明确的代码交接确认。
+当前依赖修复不改变实验设计，但仍属于新代码版本；不得直接覆盖失败目录或在未确认修复版本上重启。

@@ -1,6 +1,6 @@
 # SOPPO Round2：3×4090 TP 训练与在线 rollout 流水线
 
-> 状态：`c2c9069` 已于2026-08-24获用户明确确认，服务器 clean checkout 与两个 Round2 环境已核验；随后新增的 GPU 空闲等待门禁已被外部操作形成并推送为候选 `03f2663`，待用户明确审阅确认。服务器 strong smoke 尚未运行。
+> 状态：GPU等待门禁已随 `f4601c8` 获服务器启动授权；首次attempt在进入等待前的 pytest collection 因训练环境缺少 `datasets` 失败，未启动GPU。当前显式依赖修复未提交、待用户审阅，服务器 strong smoke 尚未运行。
 
 ## 1. 三张卡怎么分
 
