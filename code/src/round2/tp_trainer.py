@@ -163,7 +163,7 @@ def _load_tp_policy(config: Dict[str, Any]):
         tp_plan="auto",
     )
     base.config.use_cache = False
-    tp_evidence = describe_tp_parameters(base)
+    tp_evidence = describe_tp_parameters(base, model_path)
     if bool(model["gradient_checkpointing"]):
         base.gradient_checkpointing_enable(
             gradient_checkpointing_kwargs={"use_reentrant": False}
@@ -372,9 +372,9 @@ def _publish_adapter(
         if final.exists() or partial.exists():
             raise FileExistsError(f"Refuse to overwrite policy publication: {final}")
     dist.barrier()
-    # PEFT's TP save gathers DTensor shards, so every TP rank must enter it.
-    # Supplying only LoRA entries prevents PEFT from gathering the frozen 4B
-    # base state to CPU before it applies its adapter-only filter.
+    # PEFT's Transformers-native TP save gathers local LoRA shards, so every
+    # TP rank must enter it. Supplying only LoRA entries prevents PEFT from
+    # gathering the frozen 4B base state before its adapter-only filter.
     adapter_state = {
         name: value
         for name, value in policy.state_dict().items()

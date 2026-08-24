@@ -12,11 +12,16 @@ RUN_DIR="$(cd "$(dirname "$RESOLVED")" && pwd)"
 LOG_DIR="$RUN_DIR/logs"
 STATUS_FILE="$RUN_DIR/controller_status.json"
 ROLLOUT_PID_FILE="$RUN_DIR/rollout.pid"
+ROLLOUT_PGID_FILE="$RUN_DIR/rollout.pgid"
+ROLLOUT_STARTTIME_FILE="$RUN_DIR/rollout.starttime"
 [[ -f "$RESOLVED" ]] || {
     echo "ERROR: resolved config is missing; run 01_resolve_config.sh first" >&2
     exit 1
 }
-[[ ! -e "$STATUS_FILE" && ! -e "$ROLLOUT_PID_FILE" ]] || {
+[[ ! -e "$STATUS_FILE" \
+    && ! -e "$ROLLOUT_PID_FILE" \
+    && ! -e "$ROLLOUT_PGID_FILE" \
+    && ! -e "$ROLLOUT_STARTTIME_FILE" ]] || {
     echo "ERROR: Refuse to reuse round2 method attempt: $RUN_DIR" >&2
     exit 1
 }
@@ -58,33 +63,77 @@ PY
 }
 
 ROLLOUT_PID=""
+ROLLOUT_PGID=""
 cleanup_worker() {
-    if [[ -n "$ROLLOUT_PID" ]]; then
-        if [[ -d "$RUN_DIR/rollouts" ]]; then
-            : > "$RUN_DIR/rollouts/STOP"
-        fi
-        if kill -0 "$ROLLOUT_PID" 2>/dev/null; then
-            kill "$ROLLOUT_PID" 2>/dev/null || true
-        fi
-        wait "$ROLLOUT_PID" 2>/dev/null || true
+    if [[ -z "$ROLLOUT_PID" || -z "$ROLLOUT_PGID" ]]; then
+        return 0
     fi
+    local forced_shutdown=0
+    local worker_status=0
+    if [[ -d "$RUN_DIR/rollouts" ]]; then
+        : > "$RUN_DIR/rollouts/STOP"
+    fi
+    # Give the front-end time to close its spawned vLLM EngineCore cleanly.
+    for _ in $(seq 1 30); do
+        if ! kill -0 -- "-$ROLLOUT_PGID" 2>/dev/null; then
+            break
+        fi
+        sleep 1
+    done
+    # The rollout worker owns an isolated process group. If graceful shutdown
+    # did not remove every child, terminate only that recorded group.
+    if kill -0 -- "-$ROLLOUT_PGID" 2>/dev/null; then
+        forced_shutdown=1
+        kill -TERM -- "-$ROLLOUT_PGID" 2>/dev/null || true
+        for _ in $(seq 1 10); do
+            if ! kill -0 -- "-$ROLLOUT_PGID" 2>/dev/null; then
+                break
+            fi
+            sleep 1
+        done
+    fi
+    if kill -0 -- "-$ROLLOUT_PGID" 2>/dev/null; then
+        forced_shutdown=1
+        kill -KILL -- "-$ROLLOUT_PGID" 2>/dev/null || true
+    fi
+    wait "$ROLLOUT_PID" 2>/dev/null || worker_status=$?
+    ROLLOUT_PID=""
+    ROLLOUT_PGID=""
+    if (( forced_shutdown != 0 )); then
+        return 1
+    fi
+    return "$worker_status"
 }
 handle_signal() {
-    cleanup_worker
+    cleanup_worker || true
     update_status "stopped" "signal" 143 || true
     trap - EXIT INT TERM
     exit 143
 }
-trap cleanup_worker EXIT
+trap 'cleanup_worker || true' EXIT
 trap handle_signal INT TERM
 
 update_status "starting_rollout"
 CUDA_VISIBLE_DEVICES="$ROLLOUT_GPU_IDS" \
 VLLM_WORKER_MULTIPROC_METHOD=spawn \
-    "$ROUND2_ROLLOUT_PYTHON" -m src.round2.run_rollout \
+    setsid "$ROUND2_ROLLOUT_PYTHON" -m src.round2.run_rollout \
     --config "$RESOLVED" > "$LOG_DIR/vllm_worker.log" 2>&1 &
 ROLLOUT_PID=$!
 printf '%s\n' "$ROLLOUT_PID" > "$ROLLOUT_PID_FILE"
+for _ in $(seq 1 20); do
+    ROLLOUT_PGID="$(ps -o pgid= -p "$ROLLOUT_PID" 2>/dev/null | tr -d '[:space:]')"
+    [[ -n "$ROLLOUT_PGID" ]] && break
+    sleep 0.1
+done
+if [[ "$ROLLOUT_PGID" != "$ROLLOUT_PID" ]]; then
+    update_status "failed" "rollout_process_group" 1
+    echo "ERROR: vLLM worker did not obtain an isolated process group" >&2
+    kill "$ROLLOUT_PID" 2>/dev/null || true
+    wait "$ROLLOUT_PID" 2>/dev/null || true
+    exit 1
+fi
+printf '%s\n' "$ROLLOUT_PGID" > "$ROLLOUT_PGID_FILE"
+awk '{print $22}' "/proc/$ROLLOUT_PID/stat" > "$ROLLOUT_STARTTIME_FILE"
 
 READY_FILE="$RUN_DIR/rollouts/worker.ready.json"
 for _ in $(seq 1 600); do
@@ -117,15 +166,15 @@ fi
 
 : > "$RUN_DIR/rollouts/STOP"
 set +e
-wait "$ROLLOUT_PID"
+cleanup_worker
 ROLLOUT_STATUS=$?
 set -e
-ROLLOUT_PID=""
 if (( ROLLOUT_STATUS != 0 )); then
     update_status "failed" "rollout_worker" "$ROLLOUT_STATUS"
     exit "$ROLLOUT_STATUS"
 fi
 rm -f "$ROLLOUT_PID_FILE"
+rm -f "$ROLLOUT_PGID_FILE" "$ROLLOUT_STARTTIME_FILE"
 update_status "completed"
 trap - EXIT INT TERM
 echo "Round2 method completed: $CONFIG_NAME"

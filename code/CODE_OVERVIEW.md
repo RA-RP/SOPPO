@@ -6,11 +6,11 @@
 - 第一轮 Experiment：`exp-20260819-01-mvp`（冻结基线，只读引用）
 - 第二轮默认 Experiment：`exp-20260823-01-round2-tp2`；正式运行时必须换成新的唯一 ID
 - 设计依据：`../human_read/exp/current_experiment.md` v0.6；当前文档将第一轮 MVP 代码说明与第二轮 rollout 新增边界分开记录
-- 当前阶段：`CODE_IMPLEMENTATION`（服务器首次启动在 tests 阶段暴露训练环境依赖遗漏，返回代码阶段修复）
+- 当前阶段：`CODE_IMPLEMENTATION`（第二次服务器启动在首条strong smoke暴露TP证据门禁与vLLM清理问题，返回代码阶段修复）
 - 已确认代码：第二轮 TP=2 + 单卡 vLLM commit `c2c9069a0b1a1187c8e709729b33b15aaec8c454` 已于2026-08-24获用户明确确认；服务器 clean checkout 与两个环境已核验
-- 已执行代码：GPU等待门禁已进入 `f4601c85a2e10a56edadd2af28109515595eb3d9` 并获服务器启动授权；首次尝试在 `server_tests` collection 因训练环境缺少 `datasets` 失败，锚点与config成功且未进入GPU门禁
-- 当前未提交修复：`requirements-round2-train.txt` 显式固定 `datasets==2.21.0`、`tqdm==4.67.1`，`00_setup_envs.sh` 增加安装后import/version验证；相对 `f4601c8` 的 `code/` diff（排除本总览）SHA-256 为 `33e506495c40eada307f2ed2b204c05018c56a8caf24939410bce44f7cd0d2ac`，待用户审阅
-- 服务器执行：新依赖修复形成clean commit并获确认前暂时 `LOCKED`；失败experiment保留，只能用新ID重启
+- 已执行代码：依赖修复进入 `f54f6f4d744d138c80f2309ec5e350f1d5a428b3` 后，`exp-20260824-02-round2-tp2` 已通过锚点/config/server tests/GPU等待和vLLM ready；首条strong smoke在训练加载后、optimizer step前被旧DTensor门禁误拒绝，失败清理还留下vLLM EngineCore
+- 当前未提交修复：`tp_backend.py` 依据safetensors header的完整shape、Transformers TP plan/device mesh和每rank本地shape验证真实切分；rollout worker使用独立进程组并完整清理EngineCore；总状态显示strong-smoke子方法。待用户审阅
+- 服务器执行：当前修复形成clean commit并获确认前暂时 `LOCKED`；失败experiment保留，只能用新ID重启
 
 第一轮本地只编辑纯文本源码、配置和说明。没有在本地安装/import 项目依赖，没有运行 pytest、数据、模型、训练、评价或 GPU 任务。第一轮运行正确性必须由获批后的服务器 tests/strong smoke 证明。第二轮不得改写第一轮 MVP 代码语义，只能复用公共模块并新增 rollout 相关入口、配置和脚本。
 
@@ -43,7 +43,7 @@ DPO-10、DPO-100、SSPO-hard-exp、第一轮静态 PE 与第一轮 `SOPPO-PE-exp
 
 第二轮不再依赖未提供的外部 Megatron/rollout entrypoint，也不复用第一轮 DDP trainer。4090 专用实现把三张卡固定分成两个资源池：
 
-- GPU `0,1`：`src/round2/tp_trainer.py` 通过 `torchrun --nproc_per_node=2`、Transformers `tp_plan="auto"` 和 PEFT TP-LoRA 把 Qwen3-4B 权重切到两卡，`TP=2, PP=1, DP=1`；启动后必须找到真实 sharded DTensor，否则拒绝把两份复制模型冒充 TP。
+- GPU `0,1`：`src/round2/tp_trainer.py` 通过 `torchrun --nproc_per_node=2`、Transformers `tp_plan="auto"` 和 PEFT TP-LoRA 把 Qwen3-4B 权重切到两卡，`TP=2, PP=1, DP=1`。Transformers 5.4把权重表示为普通本地Tensor slices；启动门禁逐项读取原始safetensors header的完整shape，核对TP plan/device mesh和每rank预期local shape，拒绝把两份完整复制模型冒充TP。
 - GPU `2`：`src/round2/run_rollout.py` 常驻一个 vLLM engine，每个 optimizer step 加载训练端刚发布的只读 LoRA adapter，生成候选后卸载该 adapter。
 - 两个 Python 环境隔离：`requirements-round2-train.txt` 固定 Transformers 5.4+/PEFT 0.19+ 的 TP-LoRA 侧；`requirements-round2-rollout.txt` 固定 vLLM 0.9.2 侧，避免用一个环境强行满足不兼容依赖。
 - 训练环境同时显式固定项目测试/数据导入所需的 `datasets==2.21.0` 与 `tqdm==4.67.1`；安装后不仅执行 `pip check`，还实际 import 并记录二者版本，避免仅依赖传递依赖造成 collection-time 缺包。
@@ -60,7 +60,7 @@ DPO-10、DPO-100、SSPO-hard-exp、第一轮静态 PE 与第一轮 `SOPPO-PE-exp
 
 2026-08-23 用户已冻结此前开放项：`00_prepare_sft_anchor.sh` 从第一轮24,000行公开 `unlabeled_train.jsonl` 的已随机换位 `response_a` 确定性生成单回复锚点；源数据不覆盖，已有派生目录只在 manifest、SHA及逐行 `response/ID/prompt` 全部一致时复用。该锚点不是独立高质量 SFT 语料，结果解释限于“固定历史回复锚点 vs 纯在线 rollout”。两条方法统一使用 Qwen3 non-thinking `temperature=0.7/top_p=0.8/top_k=20/min_p=0`，validator拒绝任何不同值，每步 request/response 都记录完整采样四元组。
 
-round2 执行入口位于 `scripts/round2/`，配置位于 `configs/round2/`。`start_all.sh` 在独占服务器后台依次完成锚点生成/复核、server tests、两种方法的生产路径 strong smoke、正式训练、validation-selected 独立 test 评价与 sample-free Round2 聚合导出；`status_all.sh` 只读状态，`stop_all.sh` 仅终止该 experiment 记录的进程组。完整服务器命令见 `scripts/round2/EXECUTION_GUIDE.md`。
+round2 执行入口位于 `scripts/round2/`，配置位于 `configs/round2/`。`start_all.sh` 在独占服务器后台依次完成锚点生成/复核、server tests、两种方法的生产路径 strong smoke、正式训练、validation-selected 独立 test 评价与 sample-free Round2 聚合导出；`status_all.sh` 同时只读展示总链、strong smoke与formal子状态。每个vLLM worker运行在独立进程组中，正常/失败退出都先写STOP，超时后只对该worker组TERM/KILL，避免EngineCore残留；`stop_all.sh` 仍只终止整个experiment记录的控制器进程组。完整服务器命令见 `scripts/round2/EXECUTION_GUIDE.md`。
 
 ## 2. 关键实现
 
@@ -200,7 +200,7 @@ stage03/04/05 合计正好八条 first-round final trajectories，都写在 `run
 
 ## 7. 静态复核与服务器待验证
 
-本地复核范围：shell `bash -n`、`git diff --check`、旧接口/方法/路径静态搜索、第一轮入口未被改写、第二轮只有两种方法。根据本地边界，不运行 Python import、pytest、数据、模型或 GPU。Transformers TP、PEFT TP-LoRA 保存、DTensor optimizer/clip、vLLM adapter回载、24GB峰值显存、数值、512-token rollout 和完整长链都必须在服务器验证。
+本地复核范围：shell `bash -n`、`git diff --check`、旧接口/方法/路径静态搜索、第一轮入口未被改写、第二轮只有两种方法。根据本地边界，不运行 Python import、pytest、数据、模型或 GPU。服务器已验证tests、GPU等待和vLLM base ready；修复后的checkpoint-backed TP shape门禁、PEFT TP-LoRA保存/optimizer/clip、vLLM adapter回载、失败清理、24GB峰值显存、数值、512-token rollout和完整长链仍必须由新strong smoke验证。
 
 2026-08-24 已完成的本地静态复核：`bash -n code/scripts/round2/*.sh`、工作区与 index 的 `git diff --check` 均通过；锚点与 GPU 等待脚本具备执行位。未在本地执行 Python/pytest、数据、模型或GPU任务。`02_wait_for_idle_gpus.sh` 的真实 `nvidia-smi` 输出解析、等待状态和放行到 preflight 的行为仍须在服务器验证。
 
@@ -217,6 +217,6 @@ stage03/04/05 合计正好八条 first-round final trajectories，都写在 `run
 - v0.6将已有pair拆成两个SSPO unpaired response，是数据形态适配，不等同于论文使用UltraChat single-response corpus。
 - 单种子不能支持显著性结论；`C_epsilon`不是因果证据。
 - 第二轮 adapter 每 step 都必须发布给在线 rollout，因此会保留大量 LoRA checkpoint；当前不保存 optimizer/scheduler state，不支持 bit-exact 热恢复。
-- 第二轮固定锚点、采样四元组与GPU等待门禁已经进入获执行授权的 `f4601c8`；当前只需单独完成训练环境依赖修复的代码交接。
+- 第二轮固定锚点、采样四元组、依赖和GPU等待已在 `f54f6f4` 的服务器尝试中通过；当前需完成TP shape门禁与vLLM独立清理修复的代码交接。
 
-旧 Slurm 路径的静态复核与部分服务器门禁已有证据；Round2 两个环境已在服务器安装验证，但 GPU wait、tests、TP/vLLM strong smoke 与正式训练尚未执行，不能把脚本存在写成已验证成功。
+旧 Slurm 路径的静态复核与部分服务器门禁已有证据；Round2 两个环境、server tests、GPU wait和vLLM base ready已有服务器证据，但首条TP/vLLM strong smoke尚未完成optimizer step，正式训练未执行，不能把部分启动成功写成训练验证成功。

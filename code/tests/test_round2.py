@@ -5,6 +5,7 @@ import sys
 from pathlib import Path
 
 import pytest
+import torch
 
 from src.round2.config import load_round2_config, validate_round2_config
 from src.round2.queue_protocol import (
@@ -17,7 +18,12 @@ from src.round2.queue_protocol import (
 from src.round2.prepare_sft_anchor import SELECTION_RULE, prepare_sft_anchor
 from src.round2.run_rollout import _build_pairs
 from src.round2.sft_schema import SFT_SCHEMA_VERSION, validate_sft_corpus
-from src.round2.tp_backend import build_tp_command, launch_spec_from_config
+from src.round2.tp_backend import (
+    _expected_local_shape,
+    _verify_local_tp_shapes,
+    build_tp_command,
+    launch_spec_from_config,
+)
 
 
 ROOT = Path(__file__).parents[1]
@@ -272,3 +278,71 @@ def test_round2_tp_command_uses_two_torchrun_processes():
     assert spec.nproc_per_node == 2
     assert "--nproc_per_node=2" in command
     assert "src.round2.tp_trainer" in command
+
+
+class _FakeMesh:
+    def __init__(self, size=2, rank=0):
+        self._size = size
+        self._rank = rank
+
+    def size(self):
+        return self._size
+
+    def get_local_rank(self):
+        return self._rank
+
+
+class _FakeTPModel(torch.nn.Module):
+    def __init__(self, replicated_q_proj=False):
+        super().__init__()
+        self._tp_size = 2
+        self._device_mesh = _FakeMesh()
+        self.tp_plan = {
+            "layers.*.q_proj": "colwise",
+            "layers.*.o_proj": "rowwise",
+        }
+        layer = torch.nn.Module()
+        layer.q_proj = torch.nn.Linear(
+            4, 8 if replicated_q_proj else 4, bias=False
+        )
+        layer.o_proj = torch.nn.Linear(4, 8, bias=False)
+        for module, plan in (
+            (layer.q_proj, "colwise"),
+            (layer.o_proj, "rowwise"),
+        ):
+            module._hf_tp_plan = plan
+            module._hf_device_mesh = self._device_mesh
+        self.layers = torch.nn.ModuleList([layer])
+
+
+def test_round2_tp_verifier_accepts_checkpoint_backed_local_tensor_slices():
+    shapes = {
+        "layers.0.q_proj.weight": (8, 4),
+        "layers.0.o_proj.weight": (8, 8),
+    }
+    evidence = _verify_local_tp_shapes(_FakeTPModel(), shapes)
+    assert evidence["sharding_representation"] == (
+        "checkpoint-verified-local-tensor-slices"
+    )
+    assert evidence["sharded_parameter_count"] == 2
+    assert _expected_local_shape((8, 4), "colwise", 2, 0) == (4, 4)
+    assert _expected_local_shape((8, 8), "rowwise", 2, 1) == (8, 4)
+
+
+def test_round2_tp_verifier_rejects_replicated_weight_shape():
+    shapes = {
+        "layers.0.q_proj.weight": (8, 4),
+        "layers.0.o_proj.weight": (8, 8),
+    }
+    with pytest.raises(RuntimeError, match="local shard shape mismatch"):
+        _verify_local_tp_shapes(_FakeTPModel(replicated_q_proj=True), shapes)
+
+
+def test_round2_rollout_worker_has_an_isolated_cleanup_group():
+    script = (ROOT / "scripts" / "round2" / "run_method.sh").read_text()
+    assert 'setsid "$ROUND2_ROLLOUT_PYTHON"' in script
+    assert 'kill -TERM -- "-$ROLLOUT_PGID"' in script
+    assert 'kill -KILL -- "-$ROLLOUT_PGID"' in script
+
+    status_script = (ROOT / "scripts" / "round2" / "status_all.sh").read_text()
+    assert '"$ROUND2_RUN_ROOT/strong_smoke"' in status_script

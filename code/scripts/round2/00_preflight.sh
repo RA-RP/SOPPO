@@ -15,6 +15,10 @@ RUN_DIR="$(cd "$(dirname "$RESOLVED")" && pwd)"
 }
 [[ -x "$ROUND2_TRAIN_PYTHON" ]] || { echo "ERROR: missing $ROUND2_TRAIN_PYTHON" >&2; exit 1; }
 [[ -x "$ROUND2_ROLLOUT_PYTHON" ]] || { echo "ERROR: missing $ROUND2_ROLLOUT_PYTHON" >&2; exit 1; }
+command -v setsid >/dev/null 2>&1 || {
+    echo "ERROR: setsid is required for isolated vLLM cleanup" >&2
+    exit 1
+}
 export PYTHONPATH="$CODE_ROOT:${PYTHONPATH:-}"
 
 if [[ -n "$(git -C "$SOPPO_ROOT" status --porcelain)" ]]; then
@@ -34,6 +38,9 @@ for marker in \
     "$RUN_DIR/state.json" \
     "$RUN_DIR/tp_launch.resolved.json" \
     "$RUN_DIR/preflight" \
+    "$RUN_DIR/rollout.pid" \
+    "$RUN_DIR/rollout.pgid" \
+    "$RUN_DIR/rollout.starttime" \
     "$RUN_DIR/rollouts/worker.ready.json"; do
     if [[ -e "$marker" ]]; then
         echo "ERROR: Refuse to reuse an existing round2 attempt: $marker" >&2

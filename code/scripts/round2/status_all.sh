@@ -33,17 +33,33 @@ if [[ -f "$ROUND2_RUN_ROOT/gpu_wait.json" ]]; then
     cat "$ROUND2_RUN_ROOT/gpu_wait.json"
 fi
 
-for config_name in \
-    soppo_pe_sft_rollout_exp.yaml \
-    soppo_pe_rollout_only_exp.yaml; do
-    method_name="${config_name%.yaml}"
-    method_status="$ROUND2_RUN_ROOT/$method_name/controller_status.json"
-    if [[ -f "$method_status" ]]; then
-        echo
-        echo "## $method_name"
-        cat "$method_status"
-    fi
-done
+show_method_statuses() {
+    local scope_root="$1"
+    local scope_label="$2"
+    local showed_heading=0
+    local config_name=""
+    local method_name=""
+    local method_status=""
+    for config_name in \
+        soppo_pe_sft_rollout_exp.yaml \
+        soppo_pe_rollout_only_exp.yaml; do
+        method_name="${config_name%.yaml}"
+        method_status="$scope_root/$method_name/controller_status.json"
+        if [[ -f "$method_status" ]]; then
+            if (( showed_heading == 0 )); then
+                echo
+                echo "## $scope_label"
+                showed_heading=1
+            fi
+            echo
+            echo "### $method_name"
+            cat "$method_status"
+        fi
+    done
+}
+
+show_method_statuses "$ROUND2_RUN_ROOT/strong_smoke" "Strong smoke methods"
+show_method_statuses "$ROUND2_RUN_ROOT" "Formal methods"
 
 if [[ -f "$ROUND2_RUN_ROOT/controller.log" ]]; then
     echo
