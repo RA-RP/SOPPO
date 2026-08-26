@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Materialize the approved 8K/1K/7K/1K/1K dual-source views on the server.
+# Materialize the approved 8K/1K/7K/1K/997 dual-source views on the server.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

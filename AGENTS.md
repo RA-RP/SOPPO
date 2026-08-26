@@ -37,7 +37,8 @@
 - 当前入口：`code/CODE_OVERVIEW.md`、`human_read/theory/current_theory.md` `r3-theory-v0.9`与`human_read/exp/current_experiment.md` `round3-exp-v1.4`
 - 已完成门禁：原`r3-theory-v0.8`/`round3-exp-v1.3`于2026-08-25获批；冻结数据审计发现`test_prefs`只有1,997个有效pair后，用户于2026-08-26明确批准方案B及本地修改，形成`r3-theory-v0.9`/`round3-exp-v1.4`并保持`CODE_IMPLEMENTATION`。
 - Round2边界：2026-08-26只读核验确认`exp-20260824-05-round2-tp2`已在step590停止，step580/589/590保留，第二方法未启动，两个pruner均未运行。旧环境已删除但runs/checkpoints仍在；不得删除或覆盖。
-- 当前本地代码基线：HEAD `33f0eea632ba93ede616650484f72c57f35742c6`；当前方案B修订为未提交worktree，未经用户审阅不commit/push。
+- 当前本地代码基线：方案B实现已出现在本地HEAD `8eedca51067162562cade72408930c8b2321ffda`；该commit存在本身不等于代码交接或服务器执行批准。当前GLM指南等后续修订仍为未提交worktree，Codex不commit/push。
+- 协作分工：用户于2026-08-26指定Codex为Round3设计与代码主责，只有Codex可以创作或修订`SOPPO/`内容；GLM只按`code/scripts/round3/GLM_VALIDATION_GUIDE.md`机械部署用户指定的exact commit、执行分阶段命令并回传证据，不得现场编辑/修复源码、commit或push。
 - Round3实现合同：Qwen3-1.7B非量化LoRA；SSPO双源类型缩放数据；DPO-1K、GitHub-loss SSPO、DPO-8K与两个动态PE共五方法；全部1 epoch/250 steps；共同1K validation selection与独立997-pair双head final test；GPU0单卡训练，动态方法在GPU1/2使用双vLLM replica与step/adapter hash/ACK屏障。PE-static与AlpacaEval/MT-Bench不在Round3实现范围。
 - 锁定阶段：Round3 `SERVER_EXECUTION`、`RESULT_HANDOFF`与`NEXTCYCLE_DISCUSSION`。
 - 下一阶段条件：Round3实现、`CODE_OVERVIEW.md`追踪映射与本地静态复核完成，且用户明确确认当前代码版本可提交服务器。

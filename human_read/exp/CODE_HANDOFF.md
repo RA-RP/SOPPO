@@ -4,16 +4,17 @@
 
 ## Round3交接状态
 
-- 代码候选：`round3-code-candidate-v0.3`，基于clean HEAD `33f0eea`的未提交worktree
+- 代码候选：`round3-code-candidate-v0.3`已出现在本地commit `8eedca51067162562cade72408930c8b2321ffda`；commit存在不等于用户已批准代码交接或部署，GLM指南等后续修订仍未提交
 - 获批实验：`round3-exp-v1.4`，用户于2026-08-26明确批准方案B及本地修改
 - 方案B：冻结`test_prefs`选择前隔离3条empty-rejected；保持1K validation，剩余997条全部作为独立test，不从train补样
 - 当前实现：隔离的`src/round3/`、`configs/round3/`、`scripts/round3/`；完整映射见`../../code/CODE_OVERVIEW.md`
 - 覆盖范围：双源确定性数据与malformed audit、Qwen3-1.7B非量化LoRA、DPO-1K、GitHub-loss SSPO、DPO-8K、两个双vLLM动态PE、完整训练态checkpoint、共同1K selection与独立997-pair双head final test
 - 明确排除：PE-static、AlpacaEval/MT-Bench、QLoRA、自动pruner及Round1/Round2观测入口
 - 当前验证：v0.3全部Round3 shell的`bash -n`、`git diff --check`、可执行位及旧路径/数量残留静态搜索通过；按门禁未在本地运行Python。旧v0.2在服务器的两个环境、CUDA、`pip check`、5项合同测试、三项revision和model manifest已通过，其data v1因3条empty-rejected正确失败、strong smoke未开始；这些不能冒充新增malformed/997/v2合同的server证据
-- 待交接：用户审阅当前未提交diff；审阅通过后才能由用户决定是否形成clean commit并另行申请服务器tests/strong smoke授权
+- 待交接：用户审阅`8eedca5`及当前后续diff，明确指定最终exact commit；随后仍须分别授权服务器部署、tests、data与strong smoke
 - 运行证据：服务器既有attempt为`round3-20260826-01`且只含source revision证据；最终修订commit、physical subbatch和storage projection仍未解析。服务器checkout留有GLM未完成的单文件dirty diff，不能作为候选实现或进入clean门禁
 - Round2保护：只读证据确认其正式任务在step590停止且step580/589/590保留，两个pruner未运行；本交接不授权删除或覆盖其checkpoint
+- 测试分工：Codex独占`SOPPO/`设计与内容修订权限；GLM只按`../../code/scripts/round3/GLM_VALIDATION_GUIDE.md`机械部署exact reviewed commit、执行命令并回传证据，禁止现场编辑源码或自行处理失败
 
 本候选还补齐了实现者不能留给运行者猜测的细节：显式public Git ref到模型/数据full SHA的服务器解析证据、sample ID源行反向审计、reference-cache输入/模型/tokenization绑定、SSPO下一batch round-trip数值容差、final selected checkpoint完整性复核、进程PID/PGID/starttime绑定，以及把source cache/strong-smoke留存纳入空间投影。这些是fail-closed复现与执行安全门禁，不改变五方法科学合同。
 
@@ -28,7 +29,7 @@
 - 历史阶段：曾进入`SERVER_EXECUTION`；2026-08-26只读核验确认第一方法在step590停止、第二方法未启动，不是全局活动阶段。
 - 历史代码交接：用户于2026-08-24明确确认 commit `c2c9069a0b1a1187c8e709729b33b15aaec8c454`；其后的多个失败attempt用于修复环境、DTensor/TP hook、vLLM生命周期和rollout长度门禁。
 - 历史执行状态：后续版本曾通过server tests、两条方法的真实TP2 strong smoke并启动正式Round2；正式experiment已核验为`exp-20260824-05-round2-tp2`，controller在step590以exit 143停止，第二方法未启动，仍无final结果。
-- 当前本地源码基线：方案B修改前本地、origin与服务器共同clean基线为`33f0eea632ba93ede616650484f72c57f35742c6`；当前是未提交Round3源码/文档diff，没有`commit`/`push`。
+- 当前本地源码基线：方案B修改前共同clean基线为`33f0eea632ba93ede616650484f72c57f35742c6`；方案B实现后来出现在本地`8eedca51067162562cade72408930c8b2321ffda`，而当前GLM指南修订仍未提交。服务器checkout仍须按实时证据处理。
 - 当前平台适配：3×4090固定GPU0–1 Transformers native TP-LoRA、GPU2 vLLM；两条正式方法串行而非并行。
 - 当前运行边界：不得热改潜在运行中的Round2共享checkout、停止控制器或改写正式配置。双vLLM副本和Qwen3-1.7B现已仅获Round3本地实现授权，仍不能热应用到Round2，也尚未获Round3服务器执行授权。
 - 现场运行、耗时、显存、磁盘、checkpoint清理和待决策项：`../code/ROUND2_LIVE_HANDOFF.md`。

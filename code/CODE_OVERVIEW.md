@@ -8,8 +8,8 @@
 - 当前唯一活动阶段：`CODE_IMPLEMENTATION`
 - 用户批准：用户于2026-08-26明确批准方案B数据勘误与本地修改，即1,000 validation +997 independent test、畸形行确定性审计且不从train补样
 - 代码交接：**方案B本地修订与允许范围内的静态复核已完成，等待用户审阅；修订后的服务器执行未授权**
-- 版本：基线HEAD为`33f0eea632ba93ede616650484f72c57f35742c6`，当前是未提交worktree，不能用HEAD冒充本实现commit；physical subbatch与最终dependency lock仍不得猜测
-- 本地边界：本次只静态编辑源码、YAML、shell与Markdown；没有安装/import依赖，没有运行Python、pytest、数据、模型、训练、评价、聚合或GPU任务，也没有commit/push。服务器对旧v0.2的环境/五项合同测试/revision/model证据不能冒充v0.3验证
+- 版本：方案B实现当前位于本地HEAD `8eedca51067162562cade72408930c8b2321ffda`；commit存在不等于用户已批准部署，GLM指南等后续修订仍是未提交worktree。physical subbatch与最终dependency lock仍不得猜测
+- 本地边界：Codex本次只静态编辑源码、YAML、shell与Markdown；没有安装/import依赖，没有运行Python、pytest、数据、模型、训练、评价、聚合或GPU任务，也没有commit/push。服务器对旧v0.2的环境/五项合同测试/revision/model证据不能冒充v0.3验证
 - Round2边界：只读证据确认正式任务已在step590停止，step580/589/590保留、第二方法未启动、两个pruner未运行；旧环境已删除但runs/checkpoints不得删除或覆盖
 
 当前实现严格隔离在`src/round3/`、`configs/round3/`与`scripts/round3/`。第一轮和Round2入口保持历史语义，不作为Round3 trainer或rollout worker。
@@ -58,6 +58,7 @@ dpo_pe_rollout_only
 | 3×4090、clean commit、数据/模型/磁盘门禁 | `preflight.py`、`storage_gate.py` |
 | 五方法strong smoke与projected peak | `scripts/round3/03_strong_smoke.sh`、`project_storage.py` |
 | standalone长链与只读状态 | `scripts/round3/run_all.sh`、`start_all.sh`、`status_all.sh` |
+| GLM只测试/部署、不改源码的分阶段作业单 | `scripts/round3/GLM_VALIDATION_GUIDE.md` |
 
 ## 3. 数据与模型流
 
@@ -158,6 +159,8 @@ status_all.sh
 `status_all.sh`只读controller、五个state/best、metrics尾部、`nvidia-smi`和`df`，并明确显示自动pruner关闭。`stop_all.sh`默认仅预览；即使将来明确授权`--execute`，也只向本experiment记录且重新核对的controller进程组发送TERM，不删除checkpoint。
 
 完整服务器阶段顺序与二次授权门禁见`scripts/round3/EXECUTION_GUIDE.md`。该手册当前只是静态交接材料，不构成上传、测试、strong smoke或正式运行授权。
+
+GLM执行服务器工作时另以`scripts/round3/GLM_VALIDATION_GUIDE.md`为操作边界：阶段A只读核验后必须先回传；部署、CPU tests、data v2和strong smoke分别授权，任何失败立即停止，禁止现场改源码或自行进入formal。
 
 ## 8. 静态复核与服务器待验证
 

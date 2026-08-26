@@ -2,9 +2,11 @@
 
 本手册对应`r3-theory-v0.9`、`round3-exp-v1.4`和五方法Round3方案B实现。它只定义代码交接后的执行顺序；当前仍处于`CODE_IMPLEMENTATION`，未经用户明确确认修订代码版本并另行授权`SERVER_EXECUTION`，不得运行下列入口、上传代码或改动服务器checkout。
 
+GLM作为命令行测试/部署执行者时必须同时遵守`GLM_VALIDATION_GUIDE.md`：它只能部署用户审阅的精确commit、运行分阶段获批命令并回传证据，不得编辑SOPPO源码或自行处理失败。
+
 ## 0. 必须先满足的门禁
 
-1. 用户已审阅当前未提交diff，并明确确认可形成服务器候选commit；commit/push不得由实现者自行执行。
+1. 用户已审阅本地候选commit及其后的任何diff，并明确指定唯一`AUTHORIZED_COMMIT`；commit存在本身不代表获批，Codex与GLM均不得自行commit/push。
 2. 已有2026-08-26只读证据确认Round2在step590停止、step580/589/590保留、第二方法未启动、两个pruner未运行；每次新的服务器动作前仍须重新核验controller/process/GPU/df，且不得删除Round2产物。
 3. 用户基于实时证据明确授权Round3服务器阶段；三个GPU必须空闲，磁盘门禁必须通过。不得修改潜在运行中的Round2 checkout，不得删除任何Round2或Round3 checkpoint。
 4. 服务器`<SERVER_BASE>/SOPPO`是唯一Git仓库并处于用户确认的clean commit；环境、cache、data、models、runs、exports和platform logs全部位于仓库外。
