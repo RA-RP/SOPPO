@@ -7,8 +7,9 @@
 - 对应理论：`../theory/current_theory.md` `r3-theory-v0.9`
 - 理论状态：用户已于2026-08-26明确批准方案B数据勘误`r3-theory-v0.9`
 - 实验状态：用户已于2026-08-26明确批准方案B：1,000 validation +997 independent test、确定性畸形审计、不从train补样
-- 当前唯一活动阶段：Round3 `CODE_IMPLEMENTATION`
-- 代码与执行：本地静态代码实现已解锁；代码交接、上传与服务器执行未解锁
+- 当前唯一活动阶段：Round3 `SERVER_EXECUTION`
+- 代码与执行：旧exact commit已通过阶段C、data v2和reference cache；两个strong-smoke attempt分别因入口`PYTHONPATH`遗漏与SSPO CUDA backward非确定性停止。deterministic诊断使预注册三项差异均为0；用户于2026-08-26明确授权commit/push v0.4、部署新exact commit、完整strong smoke通过后直接挂载formal
+- 当前运行索引：`../../exp/round3-20260826-01/README.md`、`../../exp/round3-20260826-02/README.md`
 - Round2边界：服务器只读证据确认其controller已在step590停止，step580/589/590仍保留且pruner未运行；不得删除其run/checkpoint
 - 历史设计：Round1/Round2完整基线位于Git commit `d338eb5bedef16d83a42790c3faa97f8f404315b`；设计演化见`experiment_archive.md`，当前执行证据见`../code/ROUND2_LIVE_HANDOFF.md`
 
@@ -460,4 +461,4 @@ AlpacaEval 2.0 length-controlled win rate与MT-Bench平均分登记为Round4候�
 3. Round3 experiment ID、当时3×RTX 4090实时硬件/磁盘证据、精确dependency locks、最终源码commit和数值验收摘要；
 4. strong-smoke实测的峰值显存、checkpoint/cache/staging尺寸、`projected_peak_bytes`及两倍空闲空间门禁结果。
 
-Round4和Round5登记项不阻塞Round3设计闭合，也不能在Round3代码阶段顺手实现。2026-08-25批准的`r3-theory-v0.8`/`round3-exp-v1.3`假设`test_prefs`有2,000个有效pair；服务器冻结数据审计使该假设fail closed。2026-08-26用户明确表示“我也赞成B，请你本地修改”，据此批准`r3-theory-v0.9`/`round3-exp-v1.4`的数据勘误：保持1,000 validation、使用997 independent test、确定性隔离并审计畸形行、保持split级独立性且不从train补样。当前仍为`CODE_IMPLEMENTATION`；修订代码交接、commit/push、上传、strong smoke与formal均需后续明确批准。
+Round4和Round5登记项不阻塞Round3设计闭合，也不能在Round3代码阶段顺手实现。2026-08-25批准的`r3-theory-v0.8`/`round3-exp-v1.3`假设`test_prefs`有2,000个有效pair；服务器冻结数据审计使该假设fail closed。2026-08-26用户明确表示“我也赞成B，请你本地修改”，据此批准`r3-theory-v0.9`/`round3-exp-v1.4`的数据勘误：保持1,000 validation、使用997 independent test、确定性隔离并审计畸形行、保持split级独立性且不从train补样。同日用户授权服务器推进至formal挂载；strong smoke先后暴露入口环境与CUDA非确定性实现缺陷，依照预注册门禁未放宽容差。v0.4修复现已获commit/push和重新执行授权，仍须完整strong smoke通过后才能启动formal。

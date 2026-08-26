@@ -52,6 +52,16 @@ from .queue_protocol import (
 
 
 def _seed_everything(seed: int) -> None:
+    workspace = os.environ.get("CUBLAS_WORKSPACE_CONFIG")
+    if workspace not in (None, ":4096:8"):
+        raise RuntimeError(
+            "Round3 requires CUBLAS_WORKSPACE_CONFIG=:4096:8 for deterministic replay"
+        )
+    os.environ["CUBLAS_WORKSPACE_CONFIG"] = ":4096:8"
+    torch.use_deterministic_algorithms(True)
+    torch.backends.cuda.matmul.allow_tf32 = False
+    torch.backends.cudnn.allow_tf32 = False
+    torch.backends.cudnn.benchmark = False
     random.seed(int(seed))
     np.random.seed(int(seed))
     torch.manual_seed(int(seed))

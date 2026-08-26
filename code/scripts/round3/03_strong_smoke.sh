@@ -4,6 +4,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/round3_env.sh"
 round3_require_experiment_id
+export PYTHONPATH="$CODE_ROOT:${PYTHONPATH:-}"
 bash "$SCRIPT_DIR/01_resolve_all.sh" strong_smoke
 bash "$SCRIPT_DIR/02_server_tests.sh"
 bash "$SCRIPT_DIR/02_prepare_reference_cache.sh"
@@ -19,7 +20,6 @@ for method in \
         --checkpoint "$ROUND3_RUN_ROOT/strong_smoke/$method/smoke_checkpoint/step_000001" \
         --output "$ROUND3_RUN_ROOT/control/strong_smoke/$method/checkpoint_verified.json"
 done
-export PYTHONPATH="$CODE_ROOT:${PYTHONPATH:-}"
 "$ROUND3_TRAIN_PYTHON" -m src.round3.project_storage \
     --smoke-root "$ROUND3_RUN_ROOT/strong_smoke" \
     --model-dir "$ROUND3_MODEL_DIR" \

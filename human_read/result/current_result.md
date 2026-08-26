@@ -10,7 +10,7 @@
 - 状态：`NO_CONCLUSION`；已取得停止/保留状态证据，但没有完整final evaluation或aggregate
 - 用户交接决定：2026-08-26明确指示“Round2先不管了，直接开始Round3”
 - 交接语义：用户选择不再等待Round2结果作为Round3的前置证据；后续虽确认进程已停止，仍无足够结果证据判断方法效果
-- 当前唯一活动阶段：Round3 `CODE_IMPLEMENTATION`
+- 当前唯一活动阶段：Round3 `SERVER_EXECUTION`（v0.4重新验证；本文件仍只交接Round2的`NO_CONCLUSION`结果）
 
 ## 1. 执行完整性
 

@@ -22,6 +22,7 @@ from .trainer import (
     _cosine_factor,
     _first_pass_pairs,
     _first_pass_singles,
+    _seed_everything,
     _zero_like,
 )
 
@@ -190,6 +191,10 @@ def main() -> None:
     args = parser.parse_args()
     config = load_round3_config(args.config)
     validate_round3_config(config)
+    # The registered SSPO round-trip compares independent CUDA backward passes.
+    # Configure the same deterministic backend contract as formal training
+    # before either policy is loaded or any CUDA context is initialized.
+    _seed_everything(int(config["training"]["seed"]))
     checkpoint = Path(args.checkpoint).resolve()
     policy = load_trainable_policy(config, adapter_checkpoint=str(checkpoint)).cuda().train()
     trainable, optimizer, scheduler = _optimizer_and_scheduler(policy, config)

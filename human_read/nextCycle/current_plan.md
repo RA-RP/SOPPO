@@ -8,7 +8,7 @@
 - 用户批准：2026-08-26明确指示“Round2先不管了，直接开始Round3”
 - Round3理论：`../theory/current_theory.md` `r3-theory-v0.9`，方案B勘误已批准
 - Round3实验：`../exp/current_experiment.md` `round3-exp-v1.4`，方案B勘误已批准
-- 当前唯一活动阶段：Round3 `CODE_IMPLEMENTATION`
+- 当前唯一活动阶段：Round3 `SERVER_EXECUTION`（v0.4获批重新验证，通过后直接挂载formal）
 
 ## 1. 证据摘要与理论处理
 

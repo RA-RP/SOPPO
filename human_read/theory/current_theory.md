@@ -5,9 +5,9 @@
 - Cycle：`cycle-20260818-01` / Round3
 - 当前理论版本：`r3-theory-v0.9`
 - 状态：**用户已于2026-08-26明确批准方案B数据勘误：保留1,000-pair validation，以同一冻结`test_prefs` split剩余997个有效pair作为唯一independent test**
-- 当前唯一活动阶段：Round3 `CODE_IMPLEMENTATION`
+- 当前唯一活动阶段：Round3 `SERVER_EXECUTION`
 - Round2边界：2026-08-26服务器只读证据确认controller已在step590停止、step580/589/590仍保留、两个pruner均未运行；不得删除其run/checkpoint
-- Round3下游状态：方案B对应`round3-exp-v1.4`已获明确批准，本地静态代码修订已解锁；修订后的代码交接、上传与服务器执行仍未解锁
+- Round3下游状态：方案B对应`round3-exp-v1.4`已获明确批准；阶段C、data v2与reference cache已通过。strong smoke暴露的纯实现缺陷已形成v0.4修复，用户于2026-08-26明确授权commit/push、重新部署与通过门禁后直接挂载formal；理论与实验合同不变
 - 模型：ModelScope `Qwen/Qwen3-1.7B`（post-trained Instruct/hybrid-thinking版本，不是`-Base`）；所有五个任务共享同一初始checkpoint/manifest，具体revision待resolved config冻结
 - 证据类型：SSPO论文/源码事实、官方数据预处理事实与本项目实验前设计，不包含Round3实验结果
 - 历史理论：Round1/Round2 v0.2完整正文位于Git commit `d338eb5bedef16d83a42790c3faa97f8f404315b`；变化索引见`theory_changelog.md`
