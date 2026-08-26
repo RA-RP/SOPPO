@@ -19,6 +19,13 @@ GIT_COMMIT="$(git -C "$SOPPO_ROOT" rev-parse HEAD)"
 UF_REVISION="$(round3_resolved_source_sha ultrafeedback)"
 UC_REVISION="$(round3_resolved_source_sha ultrachat)"
 MODEL_REVISION="$(round3_resolved_source_sha model)"
+case "$METHOD" in
+    dpo_1k) TRAIN_GPU=0 ;;
+    sspo_code_loss_stratified_ultrachat_2df9e9a) TRAIN_GPU=1 ;;
+    dpo_8k) TRAIN_GPU=2 ;;
+    dpo_pe_sft_rollout|dpo_pe_rollout_only) TRAIN_GPU=0 ;;
+    *) echo "ERROR: no Round3 GPU assignment for $METHOD" >&2; exit 1 ;;
+esac
 
 RUN_DIR="$ROUND3_RUN_ROOT/$MODE/$METHOD"
 RESOLVED="$ROUND3_RUN_ROOT/resolved/$MODE/$METHOD.yaml"
@@ -34,6 +41,7 @@ OVERRIDES=(
     --override "data.ultrachat_revision=$UC_REVISION"
     --override "data.data_dir=$ROUND3_DATA_DIR"
     --override "data.reference_cache_dir=$ROUND3_REFERENCE_DIR"
+    --override "training.train_gpu=$TRAIN_GPU"
     --override "training.physical_pair_subbatch=${SOPPO_ROUND3_PHYSICAL_PAIR_SUBBATCH:-1}"
     --override "rollout.artifact_dir=$RUN_DIR/rollouts"
     --override "output.run_dir=$RUN_DIR"

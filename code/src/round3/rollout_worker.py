@@ -22,6 +22,25 @@ from .queue_protocol import (
 )
 
 
+def _round3_prompt_token_ids(tokenizer, prompt: str) -> tuple[List[int], int]:
+    """Apply the shared chat/truncation contract before entering vLLM.
+
+    Text prompts let vLLM choose tokenizer defaults, including whether to add
+    special tokens.  Round3 instead shares the trainer's exact
+    ``add_special_tokens=False`` and left-truncation behavior.
+    """
+    prompt_text = tokenizer.apply_chat_template(
+        [{"role": "user", "content": prompt}],
+        tokenize=False,
+        add_generation_prompt=True,
+        enable_thinking=False,
+    )
+    raw_ids = list(tokenizer(prompt_text, add_special_tokens=False)["input_ids"])
+    if not raw_ids or any(not isinstance(token_id, int) for token_id in raw_ids):
+        raise ValueError("Round3 rollout prompt tokenization is empty or malformed")
+    return raw_ids[-1024:], len(raw_ids)
+
+
 def _validate_publication(config: Dict[str, Any], request: Dict[str, Any]) -> Path:
     checkpoint = Path(request["policy_checkpoint"]).resolve()
     for name in ("adapter_config.json", "adapter_model.safetensors", "checkpoint_meta.json", "READY.json"):
@@ -68,6 +87,7 @@ def _generation_contract(config: Dict[str, Any]) -> Dict[str, Any]:
 
 def process_request(llm, tokenizer, config: Dict[str, Any], request: Dict[str, Any], replica_id: int) -> Dict[str, Any]:
     from vllm import SamplingParams
+    from vllm.inputs import TokensPrompt
     from vllm.lora.request import LoRARequest
 
     validate_request(request)
@@ -77,19 +97,15 @@ def process_request(llm, tokenizer, config: Dict[str, Any], request: Dict[str, A
         raise ValueError("Round3 rollout request changed the generation contract")
     checkpoint = _validate_publication(config, request)
     jobs = [job for job in request["jobs"] if int(job["replica_id"]) == int(replica_id)]
-    prompts: List[str] = []
+    prompts: List[Any] = []
     sampling: List[Any] = []
     raw_prompt_tokens: List[int] = []
+    effective_prompt_ids: List[List[int]] = []
     for job in jobs:
-        prompt = tokenizer.apply_chat_template(
-            [{"role": "user", "content": job["prompt"]}],
-            tokenize=False,
-            add_generation_prompt=True,
-            enable_thinking=False,
-        )
-        raw_count = len(tokenizer(prompt, add_special_tokens=False)["input_ids"])
+        prompt_ids, raw_count = _round3_prompt_token_ids(tokenizer, job["prompt"])
         raw_prompt_tokens.append(raw_count)
-        prompts.append(prompt)
+        effective_prompt_ids.append(prompt_ids)
+        prompts.append(TokensPrompt(prompt_token_ids=prompt_ids))
         sampling.append(
             SamplingParams(
                 n=1,
@@ -101,7 +117,6 @@ def process_request(llm, tokenizer, config: Dict[str, Any], request: Dict[str, A
                 presence_penalty=float(config["rollout"]["presence_penalty"]),
                 max_tokens=1024,
                 seed=int(job["seed"]),
-                truncate_prompt_tokens=1024,
                 stop_token_ids=list(config["rollout"]["eos_token_id"]),
             )
         )
@@ -125,10 +140,10 @@ def process_request(llm, tokenizer, config: Dict[str, Any], request: Dict[str, A
         if len(item.outputs) != 1:
             raise ValueError("Every Round3 generation job must return exactly one text")
         effective_prompt_tokens = len(item.prompt_token_ids)
-        expected_prompt_tokens = min(raw_prompt_tokens[len(outputs)], 1024)
-        if effective_prompt_tokens != expected_prompt_tokens:
+        expected_prompt_ids = effective_prompt_ids[len(outputs)]
+        if list(item.prompt_token_ids) != expected_prompt_ids:
             raise ValueError(
-                "vLLM effective prompt length differs from the Round3 truncation contract"
+                "vLLM effective prompt IDs differ from the Round3 tokenization contract"
             )
         candidate = item.outputs[0]
         raw_reason = str(candidate.finish_reason)

@@ -34,14 +34,14 @@
 
 - 当前 cycle：`cycle-20260818-01`
 - 唯一活动阶段：Round3 `SERVER_EXECUTION`
-- 当前入口：`code/CODE_OVERVIEW.md`、`human_read/theory/current_theory.md` `r3-theory-v0.9`与`human_read/exp/current_experiment.md` `round3-exp-v1.4`
+- 当前入口：`code/CODE_OVERVIEW.md`、`human_read/theory/current_theory.md` `r3-theory-v1.0`与`human_read/exp/current_experiment.md` `round3-exp-v1.5`
 - 已完成门禁：原`r3-theory-v0.8`/`round3-exp-v1.3`于2026-08-25获批；冻结数据审计发现`test_prefs`只有1,997个有效pair后，用户于2026-08-26明确批准方案B及本地修改，形成`r3-theory-v0.9`/`round3-exp-v1.4`。用户同日授权服务器执行，exact commit `ed1bfca002799f11ea1bad29f6f06e2e15fdd565`已通过6项合同测试、data v2与reference cache；strong smoke随后发现入口`PYTHONPATH`遗漏和SSPO CUDA backward非确定性，按门禁返回`CODE_IMPLEMENTATION`。
 - Round2边界：2026-08-26只读核验确认`exp-20260824-05-round2-tp2`已在step590停止，step580/589/590保留，第二方法未启动，两个pruner均未运行。旧环境已删除但runs/checkpoints仍在；不得删除或覆盖。
 - 当前代码基线：服务器已测旧commit为`ed1bfca002799f11ea1bad29f6f06e2e15fdd565`；用户于2026-08-26明确允许Codex commit/push v0.4、部署其exact commit、重跑完整strong smoke，并在全部门禁通过后直接挂载formal。
 - 协作分工：用户于2026-08-26指定Codex为Round3设计与代码主责，只有Codex可以创作或修订`SOPPO/`内容；GLM只按`code/scripts/round3/GLM_VALIDATION_GUIDE.md`机械部署用户指定的exact commit、执行分阶段命令并回传证据，不得现场编辑/修复源码、commit或push。
-- Round3实现合同：Qwen3-1.7B非量化LoRA；SSPO双源类型缩放数据；DPO-1K、GitHub-loss SSPO、DPO-8K与两个动态PE共五方法；全部1 epoch/250 steps；共同1K validation selection与独立997-pair双head final test；GPU0单卡训练，动态方法在GPU1/2使用双vLLM replica与step/adapter hash/ACK屏障。PE-static与AlpacaEval/MT-Bench不在Round3实现范围。
-- 当前修复：v0.4在trainer/verifier统一启用deterministic CUDA/CUBLAS合同，并把`PYTHONPATH`前移到strong-smoke入口；服务器诊断重放已把SSPO loss/LoRA更新差异降为精确0。该修复已获commit/push、部署与重新执行授权。
-- 当前执行边界：以v0.4新exact commit和新experiment attempt从头运行完整strong smoke；只有五方法、checkpoint验证、双vLLM和存储投影全部通过，才自动启动formal。旧失败证据不得删除。
+- Round3实现合同：Qwen3-1.7B非量化LoRA；五方法全部1 epoch/250 steps；共同1K selection与独立997-pair双head test。DPO-1K/GPU0、GitHub-loss SSPO/GPU1、DPO-8K/GPU2并发；两个动态PE随后各自以GPU0训练、GPU1/2双vLLM串行独占三卡，并保持step/adapter hash/ACK屏障。PE-static与AlpacaEval/MT-Bench不在Round3实现范围。
+- 当前修复：`round3-20260826-03`已验证v0.4确定性修复，前三个静态方法通过；首个动态方法因vLLM文本入口使用默认special-token行为而停止。v0.5显式复用训练chat/tokenization/左截断合同并直接传递prompt token IDs，同时实现获批资源波次。
+- 当前执行边界：用户已授权Codex提交/推送v0.5、部署新exact commit、新attempt完整验证，并在并发静态smoke、两个动态smoke、checkpoint验证与存储投影全部通过后直接启动formal。旧失败证据不得删除。
 - 锁定阶段：Round3 `RESULT_HANDOFF`与`NEXTCYCLE_DISCUSSION`。
 - 下一阶段条件：formal完成或失败后保存白名单摘要与远程证据索引，并进入`RESULT_HANDOFF`。
 

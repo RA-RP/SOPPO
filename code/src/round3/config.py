@@ -19,6 +19,13 @@ METHODS = {
 DYNAMIC_METHODS = {"dpo_pe_sft_rollout", "dpo_pe_rollout_only"}
 DPO_METHODS = {"dpo_1k", "dpo_8k"}
 SSPO_METHOD = "sspo_code_loss_stratified_ultrachat_2df9e9a"
+METHOD_TRAIN_GPUS = {
+    "dpo_1k": 0,
+    SSPO_METHOD: 1,
+    "dpo_8k": 2,
+    "dpo_pe_sft_rollout": 0,
+    "dpo_pe_rollout_only": 0,
+}
 
 
 def load_round3_config(path: str | Path, overrides: Iterable[str] = ()) -> Dict[str, Any]:
@@ -55,9 +62,9 @@ def validate_round3_config(config: Dict[str, Any]) -> None:
     ):
         if not isinstance(config.get(section), dict):
             raise ValueError(f"Round3 config missing mapping: {section}")
-    if config["contract"].get("theory") != "r3-theory-v0.9":
+    if config["contract"].get("theory") != "r3-theory-v1.0":
         raise ValueError("Wrong Round3 theory contract")
-    if config["contract"].get("experiment") != "round3-exp-v1.4":
+    if config["contract"].get("experiment") != "round3-exp-v1.5":
         raise ValueError("Wrong Round3 experiment contract")
     _full_sha(config["provenance"].get("git_commit"), "provenance.git_commit")
     experiment_id = config["provenance"].get("experiment_id")
@@ -153,8 +160,6 @@ def validate_round3_config(config: Dict[str, Any]) -> None:
     for key, expected in floats.items():
         if float(training.get(key, float("nan"))) != expected:
             raise ValueError(f"Round3 requires training.{key}={expected}")
-    if int(training.get("train_gpu", -1)) != 0:
-        raise ValueError("All Round3 training must use physical GPU0")
     physical = int(training.get("physical_pair_subbatch", 0))
     if physical < 1:
         raise ValueError("physical_pair_subbatch is resolved by strong smoke and must be positive")
@@ -163,6 +168,11 @@ def validate_round3_config(config: Dict[str, Any]) -> None:
     name = method.get("name")
     if name not in METHODS:
         raise ValueError(f"Unsupported Round3 method: {name}")
+    expected_train_gpu = METHOD_TRAIN_GPUS[name]
+    if int(training.get("train_gpu", -1)) != expected_train_gpu:
+        raise ValueError(
+            f"Round3 {name} requires physical training GPU{expected_train_gpu}"
+        )
     required_batch = {
         "dpo_1k": (4, 0),
         SSPO_METHOD: (4, 28),

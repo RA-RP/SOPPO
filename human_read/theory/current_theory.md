@@ -3,11 +3,11 @@
 ## 0. 版本、状态与历史边界
 
 - Cycle：`cycle-20260818-01` / Round3
-- 当前理论版本：`r3-theory-v0.9`
-- 状态：**用户已于2026-08-26明确批准方案B数据勘误：保留1,000-pair validation，以同一冻结`test_prefs` split剩余997个有效pair作为唯一independent test**
+- 当前理论版本：`r3-theory-v1.0`
+- 状态：**用户已于2026-08-26明确批准方案B数据勘误，并批准3×4090采用“三个静态单卡方法并行、两个动态三卡方法串行”的资源波次**
 - 当前唯一活动阶段：Round3 `SERVER_EXECUTION`
 - Round2边界：2026-08-26服务器只读证据确认controller已在step590停止、step580/589/590仍保留、两个pruner均未运行；不得删除其run/checkpoint
-- Round3下游状态：方案B对应`round3-exp-v1.4`已获明确批准；阶段C、data v2与reference cache已通过。strong smoke暴露的纯实现缺陷已形成v0.4修复，用户于2026-08-26明确授权commit/push、重新部署与通过门禁后直接挂载formal；理论与实验合同不变
+- Round3下游状态：方案B及资源波次对应`round3-exp-v1.5`已获明确批准；阶段C、data v2与reference cache已通过。第三次strong smoke已使三个静态方法通过并暴露vLLM文本入口额外special-token问题；用户于2026-08-26明确授权修复、重新部署、持续测试并在全部门禁通过后直接挂载formal
 - 模型：ModelScope `Qwen/Qwen3-1.7B`（post-trained Instruct/hybrid-thinking版本，不是`-Base`）；所有五个任务共享同一初始checkpoint/manifest，具体revision待resolved config冻结
 - 证据类型：SSPO论文/源码事实、官方数据预处理事实与本项目实验前设计，不包含Round3实验结果
 - 历史理论：Round1/Round2 v0.2完整正文位于Git commit `d338eb5bedef16d83a42790c3faa97f8f404315b`；变化索引见`theory_changelog.md`
@@ -381,7 +381,7 @@ $$
 
 `ultrafeedback_binarized/test_prefs`固定2,000条source rows；先隔离3条空rejected畸形行，再在1,997个有效pair上按namespace `round3-paired-validation-v3`的SHA-256排序选择1,000条validation，剩余997条按独立namespace `round3-paired-independent-test-v3`排序并精确断言全部进入test。精确canonicalization、审计、去重与A/B换位合同写在experiment v1.4。
 
-Round3不运行checkpoint级SSPO/PE objective diagnostic，也不运行dynamic rollout diagnostic panel。训练时仍记录loss components、$p$熵/极端比例、SSPO threshold/pseudo-positive rate和rollout长度等聚合telemetry，但这些不是eval、不参与选点。该删除使Round3除共同selection外只保留§7的独立997-pair final test。
+Round3不运行checkpoint级SSPO/PE objective diagnostic，也不运行dynamic rollout diagnostic panel。训练时仍记录loss components、$p$熵/极端比例、SSPO threshold/pseudo-positive rate和rollout长度等聚合telemetry；SFT+rollout还记录方向对齐后的rollout-vs-anchor硬胜数/率与软正例质量，但不保存逐样本分数。这些都不是eval、不参与选点。该删除使Round3除共同selection外只保留§7的独立997-pair final test。
 
 SSPO checkpoint仍必须显式序列化并恢复`running_mean`与`running_var`；共同selection evaluator只能读取policy/reference log-prob，不调用SSPO loss、不更新running state。selection前后state hash必须完全相同，missing state在checkpoint round-trip验收时fail closed。下一batch round-trip由同一checkpoint独立重载两次：running state、scheduler/global step精确一致，loss绝对差`<=1e-7`，trainable LoRA更新后的最大绝对差`<=1e-7`且最大相对差`<=1e-6`；超限按工程失败处理，不构成调整科学合同的理由。
 
@@ -457,7 +457,8 @@ Round3是单模型、单种子的探索性比较，不能宣称统计显著性�
 - selected-checkpoint-only independent 997-pair fixed-pair test；所有模型同时报告reference-delta与raw mean-logp两种score head，并只在同head内比较；
 - AlpacaEval 2.0与MT-Bench只登记为Round4候选，Round3禁止生成、judge API调用和本地替代judge；
 - PE-static只登记为Round5消融候选，Round3禁止实现或运行；
-- Round3目标执行机器为当前3×RTX 4090服务器；五方法统一由GPU0单卡训练，两个动态方法训练时GPU1/2运行两份独立vLLM replica并由step/adapter hash/ACK屏障同步；静态方法不为占满GPU而改变训练语义；
+- Round3目标执行机器为当前3×RTX 4090服务器；第一资源波次在三个独立单卡进程中并发运行DPO-1K/GPU0、SSPO/GPU1和DPO-8K/GPU2，各自只见逻辑`cuda:0`且共享输入只读、运行目录隔离；并发波次必须通过三卡确定性重放与production-path smoke；
+- 两个动态方法随后各自独占三卡并严格串行：GPU0训练，GPU1/2运行两份独立vLLM replica并由step/adapter hash/ACK屏障同步；两个方法不得共享current-policy rollout；
 - 独立train/rollout环境、全部十个durable checkpoints保留、无自动pruner；formal前按strong-smoke实测尺寸计算projected peak，空闲空间不足两倍projected peak时fail closed且不删除Round2产物。
 
 执行前解析：
@@ -466,4 +467,4 @@ Round3是单模型、单种子的探索性比较，不能宣称统计显著性�
 - ModelScope下载实际resolved revision与模型/tokenizer文件manifest；
 - Round3 experiment ID、服务器实测3×4090硬件证据、精确dependency lock、源码commit与projected storage peak。
 
-用户已明确确认补回DPO/PE合同、共同checkpoint-selection与双score-head final test口径、保持GitHub SSPO初始化并指定3×4090目标服务器；又明确采用SSPO官方双源类型和本项目缩放数量、从Round3删除PE-static并登记到Round5。2026-08-25批准的`r3-theory-v0.8`/`round3-exp-v1.3`因冻结数据实际只有1,997个有效held-out pairs而触发fail-closed。2026-08-26用户明确表示“我也赞成B，请你本地修改”，据此方案B形成并批准`r3-theory-v0.9`/`round3-exp-v1.4`：保持1,000 validation、改用997 independent test、畸形行确定性审计且不从train补样。本地静态修订已解锁；修订后的代码交接、commit/push、上传、strong smoke与formal仍须另行明确批准。
+用户已明确确认补回DPO/PE合同、共同checkpoint-selection与双score-head final test口径、保持GitHub SSPO初始化并指定3×4090目标服务器；又明确采用SSPO官方双源类型和本项目缩放数量、从Round3删除PE-static并登记到Round5。2026-08-25批准的`r3-theory-v0.8`/`round3-exp-v1.3`因冻结数据实际只有1,997个有效held-out pairs而触发fail-closed。2026-08-26用户明确表示“我也赞成B，请你本地修改”，据此形成`r3-theory-v0.9`/`round3-exp-v1.4`：保持1,000 validation、改用997 independent test、畸形行确定性审计且不从train补样。同日用户进一步明确认可三个静态方法并发、两个动态方法三卡串行的资源安排，并授权Codex修复、持续测试直到formal挂载；据此形成并批准`r3-theory-v1.0`/`round3-exp-v1.5`。

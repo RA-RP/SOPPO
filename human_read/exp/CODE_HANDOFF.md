@@ -1,18 +1,18 @@
 # 当前代码交接：Round3五方法实现
 
-> 当前唯一活动阶段为Round3 `SERVER_EXECUTION`。服务器strong smoke暴露入口与CUDA确定性实现缺陷后已停止；用户于2026-08-26明确允许Codex commit/push `round3-code-candidate-v0.4`、部署其exact commit、从新attempt重跑完整strong smoke，并在全部门禁通过后直接挂载formal。
+> 当前唯一活动阶段为Round3 `SERVER_EXECUTION`。第三次strong smoke已使三个静态方法通过，并在首个动态方法暴露vLLM tokenization边界；用户于2026-08-26明确批准`round3-code-candidate-v0.5`资源波次与修复，要求Codex持续测试并在全部门禁通过后直接挂载formal。
 
 ## Round3交接状态
 
-- 代码版本：服务器已测v0.3 exact commit为`ed1bfca002799f11ea1bad29f6f06e2e15fdd565`；v0.4 diff已获commit/push授权，本次提交产生的HEAD即待部署exact commit
-- 获批实验：`round3-exp-v1.4`，用户于2026-08-26明确批准方案B及本地修改
+- 代码版本：v0.4 exact commit `14c0292cba2e0322d93a62330bd99d1f8471f174`已测；v0.5 diff已获commit/push授权，本次提交产生的HEAD即待部署exact commit
+- 获批实验：`round3-exp-v1.5` / `r3-theory-v1.0`，用户于2026-08-26明确批准方案B、三静态并发/两动态串行及本地修改
 - 方案B：冻结`test_prefs`选择前隔离3条empty-rejected；保持1K validation，剩余997条全部作为独立test，不从train补样
 - 当前实现：隔离的`src/round3/`、`configs/round3/`、`scripts/round3/`；完整映射见`../../code/CODE_OVERVIEW.md`
 - 覆盖范围：双源确定性数据与malformed audit、Qwen3-1.7B非量化LoRA、DPO-1K、GitHub-loss SSPO、DPO-8K、两个双vLLM动态PE、完整训练态checkpoint、共同1K selection与独立997-pair双head final test
 - 明确排除：PE-static、AlpacaEval/MT-Bench、QLoRA、自动pruner及Round1/Round2观测入口
-- 当前验证：v0.3已通过两个环境、6项合同测试、data v2与reference cache；两个strong-smoke attempt分别在入口模块路径与SSPO数值重放门禁停止。deterministic诊断使loss、LoRA最大绝对差和最大相对差全部为0
-- 当前修复：v0.4把`PYTHONPATH`置于strong-smoke所有Python调用之前，并在trainer/verifier进入CUDA前强制`CUBLAS_WORKSPACE_CONFIG=:4096:8`、PyTorch deterministic algorithms、TF32关闭；科学合同与容差未改变
-- 运行证据：见`../../exp/round3-20260826-01/README.md`和`../../exp/round3-20260826-02/README.md`；五方法strong smoke、双vLLM与storage projection仍无完整通过证据
+- 当前验证：两个环境、data v2/reference cache与6项旧合同测试通过；第三次attempt验证DPO-1K/SSPO/DPO-8K及checkpoint重放，首个动态方法在optimizer step前因文本prompt的special-token默认值不一致而停止
+- 当前修复：v0.5保留v0.4确定性后端，显式执行与trainer相同的chat template、`add_special_tokens=False`和末端1024 IDs截断，以vLLM `TokensPrompt`传入并逐ID核对；同时把三个静态方法固定到GPU0/1/2并发，两个动态方法仍串行独占三卡
+- 运行证据：见`../../exp/round3-20260826-01/README.md`、`../../exp/round3-20260826-02/README.md`和`../../exp/round3-20260826-03/README.md`；五方法完整strong smoke与storage projection仍待新attempt
 - Round2保护：只读证据确认其正式任务在step590停止且step580/589/590保留，两个pruner未运行；本交接不授权删除或覆盖其checkpoint
 - 测试分工：Codex独占`SOPPO/`设计与内容修订权限；GLM只按`../../code/scripts/round3/GLM_VALIDATION_GUIDE.md`机械部署exact reviewed commit、执行命令并回传证据，禁止现场编辑源码或自行处理失败
 

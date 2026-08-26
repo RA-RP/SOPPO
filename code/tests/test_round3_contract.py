@@ -5,9 +5,38 @@ import copy
 
 import torch
 
-from src.round3.losses import GitHubSSPOState, github_sspo_objective, joint_dpo_pe_objective, pe_objective
+from src.round3.losses import (
+    GitHubSSPOState,
+    github_sspo_objective,
+    joint_dpo_pe_objective,
+    pe_objective,
+    rollout_anchor_statistics,
+)
 from src.round3.queue_protocol import route_replica, rollout_seed
 from src.round3.data import VIEW_COUNTS, _paired_record, _unpaired_record
+from src.round3.rollout_worker import _round3_prompt_token_ids
+
+
+class _PromptTokenizerStub:
+    def apply_chat_template(self, messages, **kwargs):
+        assert messages == [{"role": "user", "content": "prompt"}]
+        assert kwargs == {
+            "tokenize": False,
+            "add_generation_prompt": True,
+            "enable_thinking": False,
+        }
+        return "templated"
+
+    def __call__(self, text, **kwargs):
+        assert text == "templated"
+        assert kwargs == {"add_special_tokens": False}
+        return {"input_ids": list(range(1100))}
+
+
+def test_rollout_prompt_ids_match_training_left_truncation_contract():
+    effective, raw_count = _round3_prompt_token_ids(_PromptTokenizerStub(), "prompt")
+    assert raw_count == 1100
+    assert effective == list(range(76, 1100))
 
 
 def test_malformed_source_rows_are_quarantined_without_text_or_exception():
@@ -84,6 +113,19 @@ def test_exact_28_pair_pe_and_normalized_joint_weight():
     assert torch.allclose(joint, (torch.tensor(2.0) + 0.1 * pe) / 1.1)
     joint.backward()
     assert torch.isfinite(score_a.grad).all() and torch.isfinite(score_b.grad).all()
+
+
+def test_rollout_anchor_telemetry_is_source_aligned_after_ab_swaps():
+    score_a = torch.tensor([1.0, -1.0] * 14)
+    score_b = -score_a
+    rollout_is_a = torch.tensor([True, False] * 14)
+    info = rollout_anchor_statistics(score_a, score_b, rollout_is_a)
+    assert info["comparisons"] == 28
+    assert info["rollout_hard_wins"] == 28
+    assert info["sft_hard_wins"] == 0
+    assert info["ties"] == 0
+    assert info["rollout_hard_win_rate"] == 1.0
+    assert info["rollout_soft_win_probability_mean"] > 0.999
 
 
 def test_rollout_route_and_seed_are_stable_and_draw_specific():

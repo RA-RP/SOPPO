@@ -276,3 +276,12 @@
 - 路径：新合同使用仓库外`dual_source_v2`与对应v2 reference cache；失败遗留空`dual_source_v1`保留，不删除、不覆盖。
 - 不变项：五方法、训练数据与steps、共同1K validation selection、checkpoint、SSPO/PE定义、GPU角色、评价head、Round4/5延期和两倍磁盘门禁均不变。
 - 执行边界：服务器当时只有环境/revision/model证据，data v1为空、strong smoke未开始；服务器GLM留下的单文件dirty补丁不构成实现。修订必须从本地完成并重新交接，未经批准不commit/push或上传执行。
+
+### `cycle-20260818-01` / Round3资源波次与token入口修复 / 设计版本 v1.5 — 2026-08-26
+
+- 状态：用户明确批准；对应理论`r3-theory-v1.0`，唯一活动阶段为`SERVER_EXECUTION`。
+- 调度：DPO-1K/GPU0、SSPO/GPU1、DPO-8K/GPU2作为第一波独立单卡任务并发；DPO+PE-SFT+rollout与DPO+PE-rollout-only随后分别以GPU0训练、GPU1/2双vLLM串行独占三卡。
+- 等价性：只改变无依赖子实验的资源调度，不改变任一方法的数据、loss、logical batch、seed、optimizer、250 steps、checkpoint selection或final test。
+- 新门禁：三卡分别完成确定性checkpoint重放；strong smoke按formal并发拓扑运行；共享输入只读、输出目录隔离；动态方法仍要求双ACK完整population且禁止跨方法复用生成。
+- 失败证据：`round3-20260826-03`前三个静态smoke通过，首个动态方法因vLLM文本tokenizer默认special-token行为与训练`add_special_tokens=False`合同不一致而停止；修复必须显式预tokenize、左截断并传递token IDs。
+- 授权：用户要求Codex持续修改和服务器测试，全部smoke、checkpoint与两倍空间门禁通过后直接启动formal；任何新失败仍fail closed且保留独立attempt。

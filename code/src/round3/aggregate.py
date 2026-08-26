@@ -69,7 +69,7 @@ def main() -> None:
         }
     aggregate = {
         "schema_version": "round3.aggregate.v1",
-        "experiment_contract": "round3-exp-v1.4",
+        "experiment_contract": "round3-exp-v1.5",
         "single_seed_exploratory": True,
         "methods": {method: results[method] for method in METHODS},
         "same_head_only_comparisons": comparisons,

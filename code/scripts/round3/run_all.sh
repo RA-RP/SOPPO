@@ -44,12 +44,28 @@ export PYTHONPATH="$CODE_ROOT:${PYTHONPATH:-}"
     --config "$ROUND3_RUN_ROOT/resolved/formal/dpo_1k.yaml" \
     --output "$ROUND3_RUN_ROOT/formal_storage_gate.json"
 
-for method in \
-    dpo_1k \
-    sspo_code_loss_stratified_ultrachat_2df9e9a \
-    dpo_8k \
-    dpo_pe_sft_rollout \
-    dpo_pe_rollout_only; do
+static_methods=(
+    dpo_1k
+    sspo_code_loss_stratified_ultrachat_2df9e9a
+    dpo_8k
+)
+static_pids=()
+failed_stage=formal_static_parallel
+update_controller running "$failed_stage"
+for method in "${static_methods[@]}"; do
+    bash "$SCRIPT_DIR/run_method.sh" "$method" formal &
+    static_pids+=("$!")
+done
+static_failed=0
+for index in "${!static_pids[@]}"; do
+    if ! wait "${static_pids[$index]}"; then
+        echo "ERROR: concurrent Round3 formal method failed: ${static_methods[$index]}" >&2
+        static_failed=1
+    fi
+done
+(( static_failed == 0 ))
+
+for method in dpo_pe_sft_rollout dpo_pe_rollout_only; do
     failed_stage="formal_$method"
     update_controller running "$failed_stage"
     bash "$SCRIPT_DIR/run_method.sh" "$method" formal

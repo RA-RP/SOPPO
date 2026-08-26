@@ -3,13 +3,13 @@
 ## 0. 当前状态与授权边界
 
 - Cycle：`cycle-20260818-01` / Round3
-- 实现候选：`round3-code-candidate-v0.4`
-- 获批理论/实验：`r3-theory-v0.9` / `round3-exp-v1.4`
+- 实现候选：`round3-code-candidate-v0.5`
+- 获批理论/实验：`r3-theory-v1.0` / `round3-exp-v1.5`
 - 当前唯一活动阶段：`SERVER_EXECUTION`
 - 用户批准：用户于2026-08-26明确批准方案B数据勘误与本地修改，即1,000 validation +997 independent test、畸形行确定性审计且不从train补样
-- 代码交接：**用户于2026-08-26明确允许Codex commit/push v0.4、部署新exact commit、完整strong smoke通过后直接挂载formal**
-- 版本：阶段C/data/reference验证的旧服务器commit为`ed1bfca002799f11ea1bad29f6f06e2e15fdd565`；v0.4 exact commit由本次获批提交产生。physical subbatch与存储投影仍须由完整strong smoke解析
-- 本地边界：本地只静态编辑源码、YAML、shell与Markdown，没有在本地安装/import依赖或运行Python、pytest、数据、模型、训练、评价、聚合或GPU任务。阶段C测试只在4090-3服务器执行；Codex没有commit/push
+- 代码交接：**用户于2026-08-26明确批准v1.5资源波次，并要求Codex修复、commit/push、服务器持续测试直到formal挂载**
+- 版本：v0.4 exact commit `14c0292cba2e0322d93a62330bd99d1f8471f174`已在第三次attempt验证前三个静态方法；v0.5修复显式prompt token IDs并把静态三方法改为三卡并发。physical subbatch与存储投影仍须由完整strong smoke解析
+- 本地边界：本地只静态编辑源码、YAML、shell与Markdown；依赖、Python测试、数据、模型、训练、评价、聚合与GPU任务只在4090-3服务器执行
 - Round2边界：只读证据确认正式任务已在step590停止，step580/589/590保留、第二方法未启动、两个pruner未运行；旧环境已删除但runs/checkpoints不得删除或覆盖
 
 当前实现严格隔离在`src/round3/`、`configs/round3/`与`scripts/round3/`。第一轮和Round2入口保持历史语义，不作为Round3 trainer或rollout worker。
@@ -26,7 +26,7 @@ dpo_pe_sft_rollout
 dpo_pe_rollout_only
 ```
 
-共同模型是非量化ModelScope `Qwen/Qwen3-1.7B` post-trained版本，native non-thinking、BF16 forward/autocast、FP32 LoRA/optimizer state。所有方法均为1 epoch/250 optimizer steps，每25步保存一次，共10个durable checkpoints/方法。GPU0单进程训练；只有两个动态PE方法在GPU1/2各启动一个独立vLLM replica。
+共同模型是非量化ModelScope `Qwen/Qwen3-1.7B` post-trained版本，native non-thinking、BF16 forward/autocast、FP32 LoRA/optimizer state。所有方法均为1 epoch/250 optimizer steps，每25步保存一次，共10个durable checkpoints/方法。DPO-1K/GPU0、SSPO/GPU1和DPO-8K/GPU2作为独立单卡任务并发；两个动态PE方法随后分别以GPU0训练、GPU1/2双vLLM串行独占三卡。
 
 明确没有实现：
 
@@ -111,7 +111,7 @@ durable checkpoint固定为steps `25..250`每25步一次。每个目录包含：
 
 动态current-policy staging adapter与durable checkpoint分开。staging目录按step不可变发布并在运行期间保留；当前实现没有自动删除逻辑。任何后续清理都必须在结果与保留策略批准后另行执行。
 
-每个durable checkpoint只在共同1,000-pair validation上计算reference-DPO beta .1 NLL。SSPO selection前后state SHA必须相同；non-finite checkpoint记录无效但不替代数值，十个全部无效则方法工程失败。`selection.py`再次按原始`(loss, earlier_step)`复核`best.json`。
+每个durable checkpoint只在共同1,000-pair validation上计算reference-DPO beta .1 NLL。SSPO selection前后state SHA必须相同；non-finite checkpoint记录无效但不替代数值，十个全部无效则方法工程失败。`selection.py`再次按原始`(loss, earlier_step)`复核`best.json`。SFT+rollout训练telemetry另按response source对齐A/B，记录每步rollout硬胜SFT数量/率及软正例质量，避免把位置均值误读成来源胜率；该量不参与loss或选点。
 
 final evaluation只加载每方法`best.json`指向的一个checkpoint以及frozen base，在独立997 pair上同时输出：
 
@@ -137,13 +137,13 @@ final evaluation只加载每方法`best.json`指向的一个checkpoint以及froz
 | rollout | temp`.7`/top-p`.8`/top-k20/min-p0/repetition1/presence0，max new1024 |
 | seed | data/train base seed42；rollout另绑定step/sample/draw |
 | deterministic backend | `CUBLAS_WORKSPACE_CONFIG=:4096:8`、PyTorch deterministic algorithms、TF32关闭；用于formal训练与checkpoint重放一致性 |
-| GPU | train GPU0；dynamic replicas GPU1、GPU2 |
+| GPU | 静态波次：DPO-1K/GPU0、SSPO/GPU1、DPO-8K/GPU2并发；动态波次：train GPU0、replicas GPU1/2串行 |
 
 source YAML中的`physical_pair_subbatch=1`是待服务器production-path strong smoke确认的保守候选，不是本地验证事实。formal resolved config必须携带strong-smoke投影的`projected_peak_bytes`。
 
 ## 7. 服务器阶段入口与逐项门禁
 
-当前重新进入`SERVER_EXECUTION`。阶段A/C、data v2与reference cache已形成服务器证据并保留；v0.4已获commit/push与重新部署授权，但以下入口仍必须按“完整strong smoke成功后才启动formal”的顺序执行：
+当前处于`SERVER_EXECUTION`。阶段A/C、data v2与reference cache已形成服务器证据并保留；v0.5已获commit/push与重新部署授权，但以下入口仍必须按“完整strong smoke成功后才启动formal”的顺序执行：
 
 ```text
 00_prepare_data.sh
@@ -153,7 +153,7 @@ run_all.sh / start_all.sh
 04_evaluate.sh / 05_aggregate.sh
 ```
 
-环境、模型、dataset revisions与experiment ID全部要求显式输入。`03_strong_smoke.sh`对五方法各执行一个完整logical population的production step，写出完整训练态代表checkpoint；两个动态方法同时覆盖双replica ACK与staging handoff。`project_storage.py`据实际checkpoint/staging/queue尺寸、最大生成文本上界、数据源parquet/Arrow cache、保留的strong-smoke产物和平台日志投影完整Round3 peak。formal只在一次性`free_bytes >= 2*projected_peak_bytes`门禁通过后解析配置；门禁和脚本都不删除Round2或其他产物。
+环境、模型、dataset revisions与experiment ID全部要求显式输入。`03_strong_smoke.sh`先以formal相同拓扑并发运行三个静态方法，并在各自物理GPU完成checkpoint验证；随后串行运行两个三卡动态方法，覆盖双replica ACK、显式prompt token IDs与staging handoff。`project_storage.py`据实际checkpoint/staging/queue尺寸、最大生成文本上界、数据源parquet/Arrow cache、保留的strong-smoke产物和平台日志投影完整Round3 peak。formal只在一次性`free_bytes >= 2*projected_peak_bytes`门禁通过后解析配置；门禁和脚本都不删除Round2或其他产物。
 
 `status_all.sh`只读controller、五个state/best、metrics尾部、`nvidia-smi`和`df`，并明确显示自动pruner关闭。`stop_all.sh`默认仅预览；即使将来明确授权`--execute`，也只向本experiment记录且重新核对的controller进程组发送TERM，不删除checkpoint。
 
@@ -163,7 +163,7 @@ GLM执行服务器工作时另以`scripts/round3/GLM_VALIDATION_GUIDE.md`为操�
 
 ## 8. 静态复核与服务器待验证
 
-方案B服务器阶段C、data v2和reference cache已通过。`round3-20260826-01`的DPO-1K smoke训练成功后因入口未导出`PYTHONPATH`而无法调用verifier；保留失败证据后，`round3-20260826-02`的DPO-1K及checkpoint验证通过，SSPO单步训练/checkpoint成功但独立重放的LoRA更新最大绝对/相对差为`1.3404528544924688e-6`/`1.99992835521698`，超过`1e-7`/`1e-6`合同，后续方法与formal未启动。服务器诊断在不改loss/batch/容差下启用deterministic algorithms和CUBLAS workspace后，loss、参数绝对/相对差均为0；据此形成v0.4修复。
+方案B服务器阶段C、data v2和reference cache已通过。`round3-20260826-01`因verifier入口`PYTHONPATH`停止；`round3-20260826-02`因SSPO CUDA更新重放超容差停止；v0.4确定性修复后，`round3-20260826-03`的DPO-1K、SSPO、DPO-8K及checkpoint验证通过，首个动态方法在optimizer step前因vLLM文本tokenizer默认special-token行为与训练`add_special_tokens=False`不一致而停止。v0.5改为训练侧显式chat tokenization、末端1024 IDs截断，并以`TokensPrompt`交给vLLM后逐ID核对；未改变长度、sampling、loss或batch。
 
 服务器代码交接后必须依序验证：
 
@@ -176,7 +176,7 @@ GLM执行服务器工作时另以`scripts/round3/GLM_VALIDATION_GUIDE.md`为操�
 7. checkpoint optimizer/scheduler/RNG resume、十个durable保留且无pruner；
 8. projected storage及两倍free门禁。
 
-当前是**获批重新部署、尚待完整生产路径验证的实现候选**。v0.4在trainer与verifier进入CUDA前统一确定性后端，并修复strong-smoke verifier的模块路径；未放宽预注册容差、未改变loss、batch、长度或方法。用户已授权在新exact commit、新experiment attempt从头验证，并在五方法strong smoke、双vLLM与存储投影全部通过后直接启动formal。
+当前是**获批重新部署、尚待完整生产路径验证的实现候选**。v0.5保留v0.4确定性后端，修复显式prompt IDs，并实现静态三卡并发、动态三卡串行；未放宽预注册容差、未改变loss、logical batch、长度、sampling或方法。用户已授权在新exact commit/new attempt从头验证，并在五方法strong smoke、双vLLM与存储投影全部通过后直接启动formal。
 
 ## 9. Round1/Round2历史实现（非当前入口）
 

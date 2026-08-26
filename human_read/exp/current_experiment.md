@@ -3,13 +3,13 @@
 ## 0. 版本、状态与历史边界
 
 - Cycle：`cycle-20260818-01` / Round3
-- 设计版本：`round3-exp-v1.4`
-- 对应理论：`../theory/current_theory.md` `r3-theory-v0.9`
-- 理论状态：用户已于2026-08-26明确批准方案B数据勘误`r3-theory-v0.9`
-- 实验状态：用户已于2026-08-26明确批准方案B：1,000 validation +997 independent test、确定性畸形审计、不从train补样
+- 设计版本：`round3-exp-v1.5`
+- 对应理论：`../theory/current_theory.md` `r3-theory-v1.0`
+- 理论状态：用户已于2026-08-26明确批准方案B数据勘误与3×4090资源波次`r3-theory-v1.0`
+- 实验状态：用户已明确批准1,000 validation +997 independent test及“三静态单卡并发、两动态三卡串行”执行安排
 - 当前唯一活动阶段：Round3 `SERVER_EXECUTION`
-- 代码与执行：旧exact commit已通过阶段C、data v2和reference cache；两个strong-smoke attempt分别因入口`PYTHONPATH`遗漏与SSPO CUDA backward非确定性停止。deterministic诊断使预注册三项差异均为0；用户于2026-08-26明确授权commit/push v0.4、部署新exact commit、完整strong smoke通过后直接挂载formal
-- 当前运行索引：`../../exp/round3-20260826-01/README.md`、`../../exp/round3-20260826-02/README.md`
+- 代码与执行：三个失败attempt均保留；第三次attempt已使DPO-1K、SSPO、DPO-8K及checkpoint verification通过，在首个动态方法因vLLM文本入口tokenization不等同于训练合同而停止。用户已授权修复、提交部署、持续测试并在全部门禁通过后直接挂载formal
+- 当前运行索引：`../../exp/round3-20260826-01/README.md`、`../../exp/round3-20260826-02/README.md`、`../../exp/round3-20260826-03/README.md`
 - Round2边界：服务器只读证据确认其controller已在step590停止，step580/589/590仍保留且pruner未运行；不得删除其run/checkpoint
 - 历史设计：Round1/Round2完整基线位于Git commit `d338eb5bedef16d83a42790c3faa97f8f404315b`；设计演化见`experiment_archive.md`，当前执行证据见`../code/ROUND2_LIVE_HANDOFF.md`
 
@@ -24,14 +24,12 @@ Round3作为ModelScope `Qwen/Qwen3-1.7B`、单种子的exploratory validation，
 3. 更高paired-label预算的DPO reference与有限标签方法之间有多大差距；
 4. 固定公开单回复锚点+current rollout与rollout-only是否不同。
 
-五个任务及正式顺序固定为：
+五个任务按三个资源波次执行：
 
 ```text
-DPO-1K
-→ SSPO-code-loss-stratified-ultrachat@2df9e9a
-→ DPO-8K
-→ DPO+PE-SFT+rollout
-→ DPO+PE-rollout-only
+Wave 1: DPO-1K || SSPO-code-loss-stratified-ultrachat@2df9e9a || DPO-8K
+Wave 2: DPO+PE-SFT+rollout
+Wave 3: DPO+PE-rollout-only
 ```
 
 单模型、单种子结果只能解释为探索性趋势，不能宣称统计显著性或最终理论确认。
@@ -298,7 +296,7 @@ $$
 
 所有方法统一使用冻结初始Qwen3-1.7B reference、$\beta_{\mathrm{DPO}}=0.1$和response总log-prob。该loss只负责选点，不改变SSPO或PE的训练loss。reference log-prob允许对冻结validation view预计算一次，但必须绑定model/tokenizer/template/data manifest并在服务器交接时通过直接复算抽查。
 
-Round3不计算checkpoint级`eval_sspo_loss`、`eval_pe_loss`或`eval_joint_loss`，也不运行dynamic rollout diagnostic panel。训练过程仍按step记录loss components、$p$熵/极端比例、SSPO threshold/pseudo-positive rate和rollout长度等无样本级聚合telemetry；这些是训练完整性证据，不是eval、不参与选点或方法排序。
+Round3不计算checkpoint级`eval_sspo_loss`、`eval_pe_loss`或`eval_joint_loss`，也不运行dynamic rollout diagnostic panel。训练过程仍按step记录loss components、$p$熵/极端比例、SSPO threshold/pseudo-positive rate和rollout长度等无样本级聚合telemetry；SFT+rollout额外把A/B方向对齐到来源，记录28个pair中的`rollout_hard_wins/rate`与`rollout_soft_positive_mass/mean`，不保存逐样本$p_i$。这些是训练完整性证据，不是eval、不参与选点或方法排序。
 
 ### 6.2 Selection与non-finite policy
 
@@ -418,9 +416,11 @@ AlpacaEval 2.0 length-controlled win rate与MT-Bench平均分登记为Round4候�
 
 ### 9.1 3×RTX 4090固定职责
 
-- 五个方法都由GPU0上的单训练进程负责forward/backward/optimizer，不使用DDP或跨卡loss分片；
-- DPO-1K、SSPO与DPO-8K运行时GPU1/2保持空闲，不为占满资源而改变方法语义；
+- 第一波并发启动三个相互独立的单GPU训练进程：DPO-1K固定物理GPU0、SSPO固定GPU1、DPO-8K固定GPU2；每个进程内部只见逻辑`cuda:0`，不使用DDP或跨卡loss分片；
+- 三个静态方法只共享只读model/data/reference cache；resolved config、optimizer、RNG、run/log/checkpoint目录完全隔离。formal前必须以相同并发拓扑完成production-path strong smoke和各卡checkpoint重放；
+- 静态波次以三方法全部进入终态为barrier；任一共享preflight/provenance/存储错误使整个formal fail closed，方法局部失败不得覆盖其他方法证据；
 - 两个动态PE方法运行时，GPU1运行vLLM replica 0，GPU2运行vLLM replica 1；GPU0顺序收集完整28-pair logical population，再以两遍或代数等价方式计算精确PE梯度；
+- 两个动态方法分别独占三卡并严格串行，不得互相并发、共享adapter或复用另一方法/step的生成文本；
 - 物理subbatch大小只能由production-path strong smoke在不改变logical batch的前提下解析；DPO/selection在完整logical batch上精确聚合sample mean后才更新，SSPO必须在完整4 chosen、4 rejected、28 unpaired上各计算一次statistics并只按chosen→rejected→unpaired各更新running state一次。可用两遍重算或代数等价聚合，不得将物理subbatch当成新SSPO batch或中途optimizer step；
 - rollout样本按`SHA256("round3-rollout-replica-v1\0" || method_id || "\0" || optimizer_step || "\0" || sample_id || "\0" || draw_index)`的摘要末位bit确定副本；每条文本只由一个副本生成，两副本不共享已生成文本；
 - 每个optimizer step生成前，两副本都必须显式ACK同一`(method_id, optimizer_step, adapter_sha256)`。任一ACK缺失、不匹配或使用stale adapter都使该step fail closed，不得混合返回值继续训练。
@@ -461,4 +461,4 @@ AlpacaEval 2.0 length-controlled win rate与MT-Bench平均分登记为Round4候�
 3. Round3 experiment ID、当时3×RTX 4090实时硬件/磁盘证据、精确dependency locks、最终源码commit和数值验收摘要；
 4. strong-smoke实测的峰值显存、checkpoint/cache/staging尺寸、`projected_peak_bytes`及两倍空闲空间门禁结果。
 
-Round4和Round5登记项不阻塞Round3设计闭合，也不能在Round3代码阶段顺手实现。2026-08-25批准的`r3-theory-v0.8`/`round3-exp-v1.3`假设`test_prefs`有2,000个有效pair；服务器冻结数据审计使该假设fail closed。2026-08-26用户明确表示“我也赞成B，请你本地修改”，据此批准`r3-theory-v0.9`/`round3-exp-v1.4`的数据勘误：保持1,000 validation、使用997 independent test、确定性隔离并审计畸形行、保持split级独立性且不从train补样。同日用户授权服务器推进至formal挂载；strong smoke先后暴露入口环境与CUDA非确定性实现缺陷，依照预注册门禁未放宽容差。v0.4修复现已获commit/push和重新执行授权，仍须完整strong smoke通过后才能启动formal。
+Round4和Round5登记项不阻塞Round3设计闭合，也不能在Round3代码阶段顺手实现。2026-08-25批准的`r3-theory-v0.8`/`round3-exp-v1.3`假设`test_prefs`有2,000个有效pair；服务器冻结数据审计使该假设fail closed。2026-08-26用户批准方案B形成`r3-theory-v0.9`/`round3-exp-v1.4`：保持1,000 validation、使用997 independent test、确定性隔离审计且不从train补样。三次strong-smoke attempt随后依次暴露入口路径、CUDA确定性和vLLM tokenizer默认值问题，均按门禁停止并保留。用户同日明确认可三静态并发/两动态串行，形成并批准`r3-theory-v1.0`/`round3-exp-v1.5`，并授权修复、重新执行与通过全部门禁后直接挂载formal。

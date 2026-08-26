@@ -171,3 +171,11 @@
 - 数据质量合同：所有source在选择前确定性schema审计；畸形行不进入view，也不加入跨view排除集，写入无原始文本的server-only source-index/reason audit并绑定SHA。冻结source totals、valid/malformed totals和reason aggregates变化即fail closed。
 - 不变项：五方法、1K/8K paired train、7K UltraChat、250 steps、共同1K selection、两个score heads、GPU布局及Round4/5延期均不变；最终指标必须显式报告`N=997`。
 - 门禁：当前仍为`CODE_IMPLEMENTATION`；v0.9/v1.4本地修订不授权commit/push、服务器checkout修改、数据重跑、strong smoke或formal。
+
+### Round3 `r3-theory-v1.0` / 3×4090资源波次批准 — 2026-08-26
+
+- 用户批准：用户明确认可将三个单卡静态方法并发运行，并要求Codex修复已发现问题、持续测试直到formal挂载。
+- 资源变化：DPO-1K、SSPO、DPO-8K分别固定到物理GPU0/1/2并发；两个动态PE方法随后分别独占三卡串行运行，GPU0训练、GPU1/2双vLLM生成。
+- 不变项：数据、模型、loss、batch、seed、250 steps、checkpoint、selection、997-pair test和两个动态方法的current-policy/ACK合同均不变；并发只改变无依赖任务的墙钟调度。
+- 工程门禁：静态并发必须在三张卡上分别通过确定性checkpoint重放和并发production-path strong smoke；共享model/data/reference只读，各run/config/log/checkpoint目录隔离。动态方法不得并发或共享rollout。
+- 执行授权：用户已授权本轮修复的commit/push、服务器新attempt和完整门禁，并在全部strong smoke与两倍存储门禁通过后直接挂载formal。

@@ -40,6 +40,7 @@ from .losses import (
     github_sspo_objective,
     joint_dpo_pe_objective,
     pe_objective,
+    rollout_anchor_statistics,
 )
 from .queue_protocol import (
     atomic_write_json,
@@ -423,7 +424,7 @@ def _run() -> None:
     config = load_round3_config(args.config)
     validate_round3_config(config)
     if os.environ.get("CUDA_VISIBLE_DEVICES") != str(config["training"]["train_gpu"]):
-        raise RuntimeError("Round3 trainer requires CUDA_VISIBLE_DEVICES=0")
+        raise RuntimeError("Round3 trainer CUDA_VISIBLE_DEVICES differs from its resolved physical GPU")
     _seed_everything(int(config["training"]["seed"]))
     device = torch.device("cuda:0")
     dtype = DTYPES[config["model"]["torch_dtype"]]
@@ -617,6 +618,21 @@ def _run() -> None:
             labels = torch.tensor([row["label"] for row in labeled_examples], device=device)
             dpo_loss, dpo_info = dpo_objective(labeled_a, labeled_b, ref_a, ref_b, labels)
             pe_loss, pe_info = pe_objective(dynamic_a, dynamic_b)
+            rollout_vs_sft = None
+            if method == "dpo_pe_sft_rollout":
+                rollout_is_a = []
+                for row in dynamic_pairs:
+                    if {row["response_a_source"], row["response_b_source"]} != {
+                        "sft",
+                        "rollout_0",
+                    }:
+                        raise ValueError("Round3 SFT+rollout pair source contract changed")
+                    rollout_is_a.append(row["response_a_source"] == "rollout_0")
+                rollout_vs_sft = rollout_anchor_statistics(
+                    dynamic_a,
+                    dynamic_b,
+                    torch.tensor(rollout_is_a, device=device, dtype=torch.bool),
+                )
             loss = joint_dpo_pe_objective(dpo_loss, pe_loss, float(config["method"]["lambda_pe"]))
             coefficients = torch.autograd.grad(loss, (labeled_a, labeled_b, dynamic_a, dynamic_b))
             _backward_pairs(
@@ -634,6 +650,7 @@ def _run() -> None:
                 "loss_joint": float(loss.detach()),
                 **dpo_info,
                 "pe": pe_info,
+                **({"rollout_vs_sft": rollout_vs_sft} if rollout_vs_sft is not None else {}),
                 "rollout": {
                     **rollout_statistics,
                     "response_tokens_mean": float(np.mean(token_counts)),

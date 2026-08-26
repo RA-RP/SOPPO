@@ -1,6 +1,6 @@
-# Round3 3×4090服务器执行手册（当前未授权）
+# Round3 3×4090服务器执行手册
 
-本手册对应`r3-theory-v0.9`、`round3-exp-v1.4`和五方法Round3方案B实现。它只定义代码交接后的执行顺序；当前仍处于`CODE_IMPLEMENTATION`，未经用户明确确认修订代码版本并另行授权`SERVER_EXECUTION`，不得运行下列入口、上传代码或改动服务器checkout。
+本手册对应`r3-theory-v1.0`、`round3-exp-v1.5`和五方法Round3方案B实现。当前为`SERVER_EXECUTION`；用户已授权Codex修复、提交部署、持续测试，并在全部门禁通过后直接挂载formal。
 
 GLM作为命令行测试/部署执行者时必须同时遵守`GLM_VALIDATION_GUIDE.md`：它只能部署用户审阅的精确commit、运行分阶段获批命令并回传证据，不得编辑SOPPO源码或自行处理失败。
 
@@ -56,15 +56,13 @@ strong smoke后只读检查至少包括：
 bash code/scripts/round3/start_all.sh
 ```
 
-控制器依次完成formal config解析、一次性`free >= 2 × projected_peak`门禁、五方法串行训练、共同1K validation选点、独立997-pair双head final test和sample-free聚合。方法顺序固定为：
+控制器依次完成formal config解析、一次性`free >= 2 × projected_peak`门禁、三个资源波次、共同1K validation选点、独立997-pair双head final test和sample-free聚合：
 
-1. `dpo_1k`
-2. `sspo_code_loss_stratified_ultrachat_2df9e9a`
-3. `dpo_8k`
-4. `dpo_pe_sft_rollout`
-5. `dpo_pe_rollout_only`
+1. 并发：`dpo_1k`/GPU0、`sspo_code_loss_stratified_ultrachat_2df9e9a`/GPU1、`dpo_8k`/GPU2；
+2. 串行独占三卡：`dpo_pe_sft_rollout`，GPU0训练、GPU1/2双vLLM；
+3. 串行独占三卡：`dpo_pe_rollout_only`，GPU0训练、GPU1/2双vLLM。
 
-所有方法在GPU0训练；只有两个动态方法在GPU1/2各启动一个vLLM副本。每方法保留steps 25–250的十个durable checkpoints；dynamic staging adapter也在结果保留决策前全部保留。没有keep-N pruner或自动清理。
+静态进程共享输入只读且输出目录隔离，控制器等待三者全部退出后才取得三张卡；任一静态失败都会保留其他已完成证据并阻断动态波次。每方法保留steps 25–250的十个durable checkpoints；dynamic staging adapter也在结果保留决策前全部保留。没有keep-N pruner或自动清理。
 
 ## 4. 只读状态与精确停止
 

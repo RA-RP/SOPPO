@@ -26,11 +26,11 @@
 - Cycle ID：`cycle-20260818-01`
 - 唯一活动阶段：Round3 `SERVER_EXECUTION`
 - Round2交接：2026-08-26只读核验确认正式experiment已在step590停止，step580/589/590保留、第二方法未启动、两个pruner未运行；旧环境已删除但runs/checkpoints保留，不得清理或覆盖。
-- Round3激活：`nextCycle/current_plan.md` `round3-activation-plan-v0.1`已通过；冻结数据审计后，用户于2026-08-26明确批准方案B，对应`theory/current_theory.md` `r3-theory-v0.9`与`exp/current_experiment.md` `round3-exp-v1.4`。
-- 当前实现范围：Qwen3-1.7B、SSPO双源类型缩放数据、DPO-1K/GitHub-loss SSPO/DPO-8K/两个动态PE、统一250 steps、共同1K selection、独立997-pair双head test、GPU0单卡训练与GPU1–2双vLLM replica。PE-static与AlpacaEval/MT-Bench不在本轮实现范围。
+- Round3激活：`nextCycle/current_plan.md` `round3-activation-plan-v0.1`已通过；用户于2026-08-26先批准方案B，随后明确批准三静态并发/两动态串行，对应`theory/current_theory.md` `r3-theory-v1.0`与`exp/current_experiment.md` `round3-exp-v1.5`。
+- 当前实现范围：Qwen3-1.7B、SSPO双源类型缩放数据、五方法统一250 steps、共同1K selection、独立997-pair双head test；DPO-1K/SSPO/DPO-8K分别在GPU0/1/2并发，两个动态PE各自以GPU0训练和GPU1–2双vLLM串行。PE-static与AlpacaEval/MT-Bench不在本轮实现范围。
 - 本地代码边界：本地只编辑与静态文本复核，不import/运行/测试项目；未经用户审阅不commit/push。
 - 服务器事实：exact commit `ed1bfca002799f11ea1bad29f6f06e2e15fdd565`已通过阶段C、data v2和reference cache；`round3-20260826-01`因strong-smoke入口缺少`PYTHONPATH`停止，`round3-20260826-02`在SSPO checkpoint数值重放门禁停止，证据见`../exp/round3-20260826-01/README.md`与`../exp/round3-20260826-02/README.md`。
-- 当前授权：用户于2026-08-26明确允许Codex commit/push v0.4、部署新exact commit、创建第三个attempt重跑完整strong smoke，并在所有门禁通过后直接挂载formal。
+- 当前授权：用户于2026-08-26明确要求Codex修复vLLM token入口与并发调度、commit/push、部署新exact commit并持续服务器测试，在所有门禁通过后直接挂载formal。
 - Round3 `RESULT_HANDOFF`与`NEXTCYCLE_DISCUSSION`：锁定
 
 ## 阅读顺序

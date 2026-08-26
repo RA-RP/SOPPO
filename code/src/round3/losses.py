@@ -70,6 +70,41 @@ def pe_objective(
     }
 
 
+def rollout_anchor_statistics(
+    mean_logp_a: torch.Tensor,
+    mean_logp_b: torch.Tensor,
+    rollout_is_a: torch.Tensor,
+    beta: float = 10.0,
+) -> Dict[str, float | int]:
+    """Source-aligned, sample-free telemetry for SFT-anchor comparisons."""
+    if (
+        mean_logp_a.numel() != 28
+        or mean_logp_b.numel() != 28
+        or rollout_is_a.numel() != 28
+    ):
+        raise ValueError("Round3 rollout/SFT telemetry requires exactly 28 pairs")
+    probability_a = torch.sigmoid(
+        float(beta) * (mean_logp_a.detach() - mean_logp_b.detach())
+    )
+    rollout_probability = torch.where(
+        rollout_is_a.to(device=probability_a.device, dtype=torch.bool),
+        probability_a,
+        1.0 - probability_a,
+    )
+    rollout_wins = int((rollout_probability > 0.5).sum().item())
+    sft_wins = int((rollout_probability < 0.5).sum().item())
+    ties = int((rollout_probability == 0.5).sum().item())
+    return {
+        "comparisons": 28,
+        "rollout_hard_wins": rollout_wins,
+        "sft_hard_wins": sft_wins,
+        "ties": ties,
+        "rollout_hard_win_rate": rollout_wins / 28.0,
+        "rollout_soft_positive_mass": float(rollout_probability.sum().item()),
+        "rollout_soft_win_probability_mean": float(rollout_probability.mean().item()),
+    }
+
+
 def joint_dpo_pe_objective(
     dpo_loss: torch.Tensor, pe_loss: torch.Tensor, lambda_pe: float = 0.1
 ) -> torch.Tensor:
@@ -218,4 +253,3 @@ def github_sspo_objective(
             (chosen_mean_logps.detach() > rejected_mean_logps.detach()).float().mean()
         ),
     }
-

@@ -1,6 +1,6 @@
 contract:
-  theory: "r3-theory-v0.9"
-  experiment: "round3-exp-v1.4"
+  theory: "r3-theory-v1.0"
+  experiment: "round3-exp-v1.5"
 
 provenance:
   git_commit: null

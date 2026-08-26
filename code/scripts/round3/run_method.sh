@@ -11,6 +11,7 @@ CONFIG="$ROUND3_RUN_ROOT/resolved/$MODE/$METHOD.yaml"
 [[ -f "$CONFIG" ]] || { echo "ERROR: resolved Round3 config missing: $CONFIG" >&2; exit 1; }
 RUN_DIR="$(round3_resolved_value "$CONFIG" output.run_dir)"
 ROLLOUT_ENABLED="$(round3_resolved_value "$CONFIG" rollout.enabled)"
+TRAIN_GPU="$(round3_resolved_value "$CONFIG" training.train_gpu)"
 CONTROL_DIR="$ROUND3_RUN_ROOT/control/$MODE/$METHOD"
 STATUS="$CONTROL_DIR/status.json"
 PREFLIGHT="$CONTROL_DIR/preflight.json"
@@ -131,7 +132,7 @@ fi
 
 update_status running training
 set +e
-CUDA_VISIBLE_DEVICES=0 "$ROUND3_TRAIN_PYTHON" -m src.round3.trainer \
+CUDA_VISIBLE_DEVICES="$TRAIN_GPU" "$ROUND3_TRAIN_PYTHON" -m src.round3.trainer \
     --config "$CONFIG" > "$LOG_DIR/train.log" 2>&1
 train_status=$?
 set -e

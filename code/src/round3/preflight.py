@@ -456,7 +456,7 @@ def _data_evidence(config: Dict[str, Any], require_reference_cache: bool) -> Dic
     return result
 
 
-def _gpu_evidence() -> Dict[str, Any]:
+def _gpu_evidence(config: Dict[str, Any]) -> Dict[str, Any]:
     visible = os.environ.get("CUDA_VISIBLE_DEVICES")
     if visible != "0,1,2":
         raise RuntimeError("Round3 preflight requires CUDA_VISIBLE_DEVICES=0,1,2")
@@ -475,7 +475,31 @@ def _gpu_evidence() -> Dict[str, Any]:
                 "capability": list(torch.cuda.get_device_capability(index)),
             }
         )
-    processes = subprocess.run(
+    gpu_rows = subprocess.run(
+        [
+            "nvidia-smi",
+            "--query-gpu=index,uuid",
+            "--format=csv,noheader,nounits",
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip().splitlines()
+    gpu_uuids = {}
+    for row in gpu_rows:
+        fields = [field.strip() for field in row.split(",", 1)]
+        if len(fields) != 2 or not fields[0].isdigit():
+            raise RuntimeError("Round3 preflight could not map physical GPU UUIDs")
+        gpu_uuids[int(fields[0])] = fields[1]
+    if set(gpu_uuids) != {0, 1, 2}:
+        raise RuntimeError("Round3 preflight requires physical GPU indices 0,1,2")
+
+    method = config["method"]["name"]
+    owned_gpu_ids = {int(config["training"]["train_gpu"])}
+    if method in DYNAMIC_METHODS:
+        owned_gpu_ids.update(int(value) for value in config["rollout"]["gpu_ids"])
+    owned_uuids = {gpu_uuids[index] for index in owned_gpu_ids}
+    process_rows = subprocess.run(
         [
             "nvidia-smi",
             "--query-compute-apps=gpu_uuid,pid,process_name,used_memory",
@@ -484,10 +508,30 @@ def _gpu_evidence() -> Dict[str, Any]:
         check=True,
         capture_output=True,
         text=True,
-    ).stdout.strip()
-    if processes:
-        raise RuntimeError("Round3 preflight found existing GPU compute processes; it will not stop them")
-    return {"cuda_visible_devices": visible, "torch_cuda": torch.version.cuda, "devices": devices, "compute_processes": []}
+    ).stdout.strip().splitlines()
+    owned_processes = []
+    non_owned_process_count = 0
+    for row in process_rows:
+        fields = [field.strip() for field in row.split(",", 3)]
+        if len(fields) != 4:
+            raise RuntimeError("Round3 preflight could not parse GPU compute processes")
+        if fields[0] in owned_uuids:
+            owned_processes.append(row)
+        else:
+            non_owned_process_count += 1
+    if owned_processes:
+        raise RuntimeError(
+            "Round3 preflight found existing compute processes on GPUs owned by this method; "
+            "it will not stop them"
+        )
+    return {
+        "cuda_visible_devices": visible,
+        "torch_cuda": torch.version.cuda,
+        "devices": devices,
+        "owned_physical_gpu_ids": sorted(owned_gpu_ids),
+        "owned_compute_processes": [],
+        "non_owned_compute_process_count": non_owned_process_count,
+    }
 
 
 def _storage_evidence(config: Dict[str, Any], global_evidence_path: Path | None) -> Dict[str, Any]:
@@ -572,7 +616,7 @@ def main() -> None:
         },
         "source_resolution": _source_resolution_evidence(config),
         "data": _data_evidence(config, require_reference_cache=args.phase == "method"),
-        "gpus": _gpu_evidence(),
+        "gpus": _gpu_evidence(config),
         "storage": _storage_evidence(
             config,
             Path(args.global_storage_evidence).resolve()
@@ -580,7 +624,7 @@ def main() -> None:
             else None,
         ),
         "gpu_roles": {
-            "training": [0],
+            "training": [int(config["training"]["train_gpu"])],
             "rollout": [1, 2] if config["method"]["name"] in DYNAMIC_METHODS else [],
         },
     }
