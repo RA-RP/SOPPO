@@ -1,20 +1,193 @@
-# SOPPO 第一轮 MVP 代码总览与第二轮 rollout 边界
+# SOPPO Round3 五方法实现总览
 
-## 0. 状态
+## 0. 当前状态与授权边界
 
-- Cycle：`cycle-20260818-01`
+- Cycle：`cycle-20260818-01` / Round3
+- 实现候选：`round3-code-candidate-v0.2`
+- 获批理论/实验：`r3-theory-v0.8` / `round3-exp-v1.3`
+- 当前唯一活动阶段：`CODE_IMPLEMENTATION`
+- 用户批准：理论与实验内容于2026-08-25获整体确认；用户于2026-08-26明确要求直接开始Round3代码
+- 代码交接：**本地静态实现与复核已完成，等待用户审阅；服务器执行未授权**
+- 版本：当前是未提交worktree，不能用本地HEAD冒充本实现commit；experiment ID、dataset/model resolved revision、服务器commit、physical subbatch和dependency lock均不得猜测
+- 本地边界：本次只静态编辑源码、YAML、shell与Markdown；没有安装/import依赖，没有运行Python、pytest、数据、模型、训练、评价、聚合或GPU任务，也没有commit/push
+- Round2边界：Round2只作行政性`NO_CONCLUSION`归档，其服务器现场仍未知；Round3代码和脚本不会停止Round2、修改其checkout或删除其checkpoint
+
+当前实现严格隔离在`src/round3/`、`configs/round3/`与`scripts/round3/`。第一轮和Round2入口保持历史语义，不作为Round3 trainer或rollout worker。
+
+## 1. 实现范围
+
+Round3实现五个且仅五个方法：
+
+```text
+dpo_1k
+sspo_code_loss_stratified_ultrachat_2df9e9a
+dpo_8k
+dpo_pe_sft_rollout
+dpo_pe_rollout_only
+```
+
+共同模型是非量化ModelScope `Qwen/Qwen3-1.7B` post-trained版本，native non-thinking、BF16 forward/autocast、FP32 LoRA/optimizer state。所有方法均为1 epoch/250 optimizer steps，每25步保存一次，共10个durable checkpoints/方法。GPU0单进程训练；只有两个动态PE方法在GPU1/2各启动一个独立vLLM replica。
+
+明确没有实现：
+
+- `DPO+PE-static`：只登记到Round5；
+- AlpacaEval/MT-Bench generation、judge或API调用：只登记到Round4；
+- SSPO paper-v3 KDE、Bayes threshold、threshold EMA或joint reward statistics；
+- QLoRA、DDP、TP、三卡loss分片、keep-N或自动checkpoint pruner；
+- Round1/Round2的`C_epsilon`/`C_gamma`观测。Round3获批设计没有该观测，不能顺手迁入。
+
+## 2. 规范到模块的映射
+
+| 获批合同 | 当前实现 |
+| --- | --- |
+| 双源数据、独立namespace与确定性隔离 | `src/round3/data.py` |
+| 显式Git ref解析为不可变full SHA | `scripts/round3/00_resolve_revisions.sh`、`preflight.py` |
+| Qwen3-1.7B不可变文件/revision manifest | `src/round3/model_manifest.py`及公共`src/model/model_manifest.py`的兼容验证分支 |
+| 五方法配置与fail-closed超参 | `src/round3/config.py`、`validate_config.py`、`configs/round3/*.yaml` |
+| DPO total-response-logp beta .1 | `src/round3/losses.py::dpo_objective` |
+| PE mean-response-logp beta10、exact 28、L1、denominator不断梯度 | `src/round3/losses.py::pe_objective`及公共`src/model/pe_loss.py` |
+| GitHub commit `2df9e9a` SSPO code loss | `GitHubSSPOState`、`github_sspo_objective` |
+| 单GPU逻辑population两遍精确梯度 | `src/round3/trainer.py` |
+| 双replica路由、step/adapter SHA/ACK屏障 | `queue_protocol.py`、`rollout_worker.py` |
+| 当前policy原子staging adapter | `checkpoint.py::publish_staging_adapter` |
+| 10个完整训练态checkpoint与resume | `checkpoint.py::save_durable_checkpoint/load_training_state` |
+| 冻结reference cache | `reference_cache.py` |
+| 共同1K DPO selection与更早step tie-break | trainer内selection、`selection.py`独立复核 |
+| independent 1K双head final test | `final_evaluate.py` |
+| sample-free同head聚合 | `aggregate.py` |
+| 3×4090、clean commit、数据/模型/磁盘门禁 | `preflight.py`、`storage_gate.py` |
+| 五方法strong smoke与projected peak | `scripts/round3/03_strong_smoke.sh`、`project_storage.py` |
+| standalone长链与只读状态 | `scripts/round3/run_all.sh`、`start_all.sh`、`status_all.sh` |
+
+## 3. 数据与模型流
+
+`data.py`只允许在服务器读取两个显式full commit SHA：
+
+```text
+ultrafeedback_binarized/train_prefs
+  ├─ SHA排序8,000 master ── 前1,000 limited
+  └─ 不直接提供validation/test
+
+ultrafeedback_binarized/test_prefs
+  ├─ 独立namespace先选1,000 validation
+  └─ 排除后再选1,000 independent test
+
+ultrachat_200k/train_sft
+  └─ 排除全部paired prompt并去重后选7,000 singles
+```
+
+`sample_id`严格包含dataset ID、resolved revision、split、prompt ID和source row index；排序key是`SHA256(namespace || NUL || 42 || NUL || sample_id)`。paired A/B位置使用独立hash，test公开文件没有label，私有label单独留在服务器。preflight重算文件SHA、行数、1K前缀嵌套、public/private ID连接和四个view的canonical prompt零交叉。
+
+模型下载脚本要求调用者显式提供resolved revision。manifest记录所有顶层模型/tokenizer文件SHA、Qwen3类型、层数和special-token摘要；配置、preflight和rollout sampling再次核对revision、pad/eos ID与文件manifest。
+
+冻结reference对8K train、1K train、1K validation和1K test预计算response-token总log-prob；cache manifest绑定模型文件、tokenization contract、数据文件SHA和代码commit。原始cache是服务器产物，不回传本地。
+
+## 4. 一个optimizer step
+
+### DPO-1K / DPO-8K
+
+依次消费4/32个pair。第一遍按服务器strong smoke确认的physical subbatch收集完整logical batch的policy total response logp；在小型leaf tensor上计算精确DPO系数；第二遍逐physical subbatch做vector-Jacobian product，clip后只执行一次optimizer update。
+
+### GitHub-loss SSPO
+
+每步固定4 labeled pairs+28 UltraChat singles，共36条response。实现先收集完整4 chosen、4 rejected、28 unpaired mean logp，再严格按chosen→rejected→unpaired调用同一running state：首次chosen直接初始化，之后momentum .95，population variance加`1e-8`，normalized值clamp `[-5,5]`。threshold是本步normalized chosen最小值且保留GitHub源码中的梯度路径；不存在KDE或threshold EMA。目标是`gamma_t*SimPO+(1-gamma_t)*unpaired risk`，首步`t=0`。
+
+### 两个动态PE
+
+训练先原子发布current LoRA staging adapter。每个generation job按`method/step/sample_id/draw_index`稳定路由到replica 0或1；两个replica都必须先核对并回传相同`(method_id, optimizer_step, adapter_sha256)`，缺任一ACK即fail closed。SFT+rollout每source生成1条；rollout-only按两个独立draw/seed生成2条，不能复制文本或跨方法/step共享。
+
+训练收齐28个candidate pairs后，同时在4个labeled pair上计算reference-DPO、在完整28-pair logical population上计算PE，联合为`(DPO+0.1*PE)/1.1`。第一遍求完整目标对response score的系数，第二遍累计到同一个optimizer update；physical subbatch不能创建额外statistics更新或optimizer step。
+
+## 5. Checkpoint、选择和final test
+
+durable checkpoint固定为steps `25..250`每25步一次。每个目录包含：
+
+- PEFT adapter/tokenizer与resolved run config；
+- optimizer、scheduler、Python/NumPy/Torch CPU/CUDA RNG和global step；
+- SSPO额外`running_mean/running_var`及固定state超参；
+- adapter和training-state SHA-256、base/model manifest/commit/config绑定。
+
+动态current-policy staging adapter与durable checkpoint分开。staging目录按step不可变发布并在运行期间保留；当前实现没有自动删除逻辑。任何后续清理都必须在结果与保留策略批准后另行执行。
+
+每个durable checkpoint只在共同1,000-pair validation上计算reference-DPO beta .1 NLL。SSPO selection前后state SHA必须相同；non-finite checkpoint记录无效但不替代数值，十个全部无效则方法工程失败。`selection.py`再次按原始`(loss, earlier_step)`复核`best.json`。
+
+final evaluation只加载每方法`best.json`指向的一个checkpoint以及frozen base，在独立1,000 pair上同时输出：
+
+- `dpo_reference_delta_beta_0.1`；
+- `raw_mean_logp_delta_beta_10`。
+
+每个head含tie-half-credit Accuracy、report-only clamp NLL、Brier、ECE-15、固定分位数/confidence/collapse描述项和概率和。逐样本双head预测与private labels留在服务器；`aggregate.py`只输出无样本聚合，并只做同head差值，不生成综合分数。
+
+## 6. 配置与固定超参
+
+| 项 | Round3值 |
+| --- | --- |
+| 模型 | `Qwen/Qwen3-1.7B` post-trained，non-thinking |
+| LoRA | r8/alpha16/dropout0，q/k/v/o/gate/up/down，非量化 |
+| precision | BF16 forward/autocast，FP32 trainable/optimizer |
+| optimizer | AdamW，lr `1e-5`，betas `.9/.999`，eps `1e-8`，wd0 |
+| scheduler | cosine，warmup `.1`，clip1 |
+| 长度 | total2048，prompt1024左截断，completion1024右截断 |
+| steps/checkpoint | 250；每25步保存/eval |
+| DPO | total response logp，reference beta `.1` |
+| PE | mean response logp，beta10，epsilon `1e-8`，L1，denominator不detach，lambda `.1` |
+| SSPO | SimPO beta10/margin2，prior `.5`，EMA `.95`，clip5，gamma floor `.125`/decay `.001` |
+| rollout | temp`.7`/top-p`.8`/top-k20/min-p0/repetition1/presence0，max new1024 |
+| seed | data/train base seed42；rollout另绑定step/sample/draw |
+| GPU | train GPU0；dynamic replicas GPU1、GPU2 |
+
+source YAML中的`physical_pair_subbatch=1`是待服务器production-path strong smoke确认的保守候选，不是本地验证事实。formal resolved config必须携带strong-smoke投影的`projected_peak_bytes`。
+
+## 7. 服务器阶段入口（当前禁止执行）
+
+以下脚本已经编写，但当前`CODE_IMPLEMENTATION`阶段不得上传或运行：
+
+```text
+00_setup_envs.sh
+00_resolve_revisions.sh
+00_download_model.sh
+00_prepare_data.sh
+03_strong_smoke.sh
+run_all.sh / start_all.sh
+status_all.sh
+```
+
+环境、模型、dataset revisions与experiment ID全部要求显式输入。`03_strong_smoke.sh`对五方法各执行一个完整logical population的production step，写出完整训练态代表checkpoint；两个动态方法同时覆盖双replica ACK与staging handoff。`project_storage.py`据实际checkpoint/staging/queue尺寸、最大生成文本上界、数据源parquet/Arrow cache、保留的strong-smoke产物和平台日志投影完整Round3 peak。formal只在一次性`free_bytes >= 2*projected_peak_bytes`门禁通过后解析配置；门禁和脚本都不删除Round2或其他产物。
+
+`status_all.sh`只读controller、五个state/best、metrics尾部、`nvidia-smi`和`df`，并明确显示自动pruner关闭。`stop_all.sh`默认仅预览；即使将来明确授权`--execute`，也只向本experiment记录且重新核对的controller进程组发送TERM，不删除checkpoint。
+
+完整服务器阶段顺序与二次授权门禁见`scripts/round3/EXECUTION_GUIDE.md`。该手册当前只是静态交接材料，不构成上传、测试、strong smoke或正式运行授权。
+
+## 8. 静态复核与服务器待验证
+
+本地已完成的复核仅包括全部Round3 shell的`bash -n`、`git diff --check`、可执行位、路径/旧接口与禁止项静态搜索，均通过；没有用本地Python import/compile/test冒充服务器证据。
+
+服务器代码交接后必须依序验证：
+
+1. candidate依赖安装、`pip check`、实际版本与environment freeze；
+2. dataset/model resolved revision、source/cache/file SHA和canonical隔离；
+3. CPU loss/config/protocol tests；
+4. 五方法完整logical-population strong smoke、最长真实样本、finite loss/gradient与显存；
+5. SSPO save/load缺失state fail-closed、selection state不变和下一batch数值round-trip（loss绝对差`<=1e-7`，LoRA参数最大绝对/相对差`<=1e-7/1e-6`）；
+6. 两个vLLM副本对同一adapter ACK、draw路由、独立生成与LoRA卸载；
+7. checkpoint optimizer/scheduler/RNG resume、十个durable保留且无pruner；
+8. projected storage及两倍free门禁。
+
+当前仍是**未验证实现草案**。特别是vLLM的per-request `SamplingParams`列表、当前candidate依赖组合、PEFT LoRA staging加载、实际最大显存、SSPO下一batch数值round-trip和投影空间只能由获批服务器tests/strong smoke确认。任何失败先回`CODE_IMPLEMENTATION`修复；改变科学语义则退回`EXP_DISCUSSION`。
+
+## 9. Round1/Round2历史实现（非当前入口）
+
+以下内容保留用于追溯旧代码，不描述Round3授权或当前服务器实时状态。
+
+### 历史状态
+
 - 第一轮 Experiment：`exp-20260819-01-mvp`（冻结基线，只读引用）
-- 第二轮默认 Experiment：`exp-20260823-01-round2-tp2`；正式运行时必须换成新的唯一 ID
-- 设计依据：`../human_read/exp/current_experiment.md` v0.6；当前文档将第一轮 MVP 代码说明与第二轮 rollout 新增边界分开记录
-- 当前阶段：`CODE_IMPLEMENTATION`（第四次服务器启动通过第一条strong smoke，第二条暴露vLLM最坏长度门禁不足，返回代码阶段修复）
-- 已确认代码：第二轮 TP=2 + 单卡 vLLM commit `c2c9069a0b1a1187c8e709729b33b15aaec8c454` 已于2026-08-24获用户明确确认；服务器 clean checkout 与两个环境已核验
-- 已执行代码：用户提交的 `d03a116954b619749e3f1267cffc293406b5e093` 在 `exp-20260824-04-round2-tp2` 完成SFT+rollout的真实TP2 optimizer step，验证兼容层、adapter handoff、在线PE反传与每rank约8.65GB峰值；rollout-only在112条候选生成后因至少一条不足512 token而被smoke长度门禁拒绝，正式训练未启动
-- 当前代码版本：`d03a116` 上有未提交smoke-only长度修复，显式冻结`ignore_eos=true/min_tokens=512/max_tokens=512`；formal仍为`ignore_eos=false/min_tokens=0/max_tokens=512`，不改变正式采样分布。待用户审阅
-- 服务器执行：当前修复形成clean commit并获确认前暂时 `LOCKED`；失败experiment保留，只能用新ID重启
+- Round2 TP=2 + 单vLLM实现与现场交接见`../human_read/code/ROUND2_LIVE_HANDOFF.md`
+- Round2服务器真实experiment ID、commit、step、PID与pruner状态仍只能从实时服务器证据读取，不能从下文历史快照推断
 
 第一轮本地只编辑纯文本源码、配置和说明。没有在本地安装/import 项目依赖，没有运行 pytest、数据、模型、训练、评价或 GPU 任务。第一轮运行正确性必须由获批后的服务器 tests/strong smoke 证明。第二轮不得改写第一轮 MVP 代码语义，只能复用公共模块并新增 rollout 相关入口、配置和脚本。
 
-## 1. 第一轮冻结实现范围
+### 9.1 第一轮冻结实现范围
 
 第一轮已实现 Qwen3-4B、30k UltraFeedback、seed42 的八条最终 LoRA 轨迹；这些轨迹属于冻结基线，第二轮只读引用，不重跑、不覆盖：
 
@@ -28,7 +201,7 @@ SOPPO-PE-static lambda = 0.1 / 0.3 / 0.5 / 1.0
 
 旧 SFT、hard-static、Pseudo-target、DPO-style PE、linear/exp-warmup lambda 和全参 FSDP 路径已删除。保留数据隔离、Qwen manifest、DPO reference cache、独立 test、L18 `C_epsilon` 和 fail-closed 顺序任务图。`scripts/cluster/` 保留旧 Slurm 适配；`scripts/standalone/` 只替换平台层并复用同一批 stage worker、Python 入口和冻结配置。
 
-## 1.1 第二轮新增范围
+### 9.2 第二轮新增范围
 
 第二轮只新增两条 rollout 相关 PE 实验：
 
@@ -39,7 +212,7 @@ SOPPO-PE-rollout-only-exp
 
 DPO-10、DPO-100、SSPO-hard-exp、第一轮静态 PE 与第一轮 `SOPPO-PE-exp` 均作为冻结基线只读引用。第二轮必须使用独立 experiment_id、独立输出根目录和独立命令入口，最终合并阶段只读取两轮各自导出的聚合结果。
 
-## 1.2 round2 TP=2 训练与独立 rollout 边界
+### 9.3 Round2 TP=2训练与独立rollout边界
 
 第二轮不再依赖未提供的外部 Megatron/rollout entrypoint，也不复用第一轮 DDP trainer。4090 专用实现把三张卡固定分成两个资源池：
 
@@ -64,9 +237,9 @@ Transformers 5.4/PEFT TP-LoRA同时包含本地sharded LoRA张量与跨rank repl
 
 round2 执行入口位于 `scripts/round2/`，配置位于 `configs/round2/`。`start_all.sh` 在独占服务器后台依次完成锚点生成/复核、server tests、两种方法的生产路径 strong smoke、正式训练、validation-selected 独立 test 评价与 sample-free Round2 聚合导出；`status_all.sh` 同时只读展示总链、strong smoke与formal子状态。每个vLLM worker运行在独立进程组中，正常/失败退出都先写STOP，超时后只对该worker组TERM/KILL，避免EngineCore残留；`stop_all.sh` 仍只终止整个experiment记录的控制器进程组。完整服务器命令见 `scripts/round2/EXECUTION_GUIDE.md`。
 
-## 2. 关键实现
+### 9.4 关键实现
 
-### 2.1 配置合同
+#### 历史配置合同
 
 `src/config.py` 递归加载 YAML、应用 dotted override，并 fail-closed 验证：
 
@@ -79,7 +252,7 @@ round2 执行入口位于 `scripts/round2/`，配置位于 `configs/round2/`。`
 
 smoke 明确设置 `training.smoke_mode=true`，只缩小数据量和 optimizer step；序列上限与精度保持正式 bf16/2048，并构造 logical batch>backward subbatch 来覆盖显存分块路径，不改变损失定义。
 
-### 2.2 LoRA 与 checkpoint
+#### 历史LoRA与checkpoint
 
 `src/model/model_utils.py`：
 
@@ -92,7 +265,7 @@ smoke 明确设置 `training.smoke_mode=true`，只缩小数据量和 optimizer 
 
 adapter 不含 optimizer/scheduler state，`--init-checkpoint` 可继续微调参数，但不是 bit-exact resume；hard threshold EMA 也会重新初始化。
 
-### 2.3 第一轮损失实现
+#### 第一轮损失实现
 
 - `src/model/dpo_loss.py`：response-only token-sum logp、response-token mean logp、任意 A/B label DPO。
 - `src/model/sspo_loss.py`：SimPO labeled loss、margin-free PE pair probability、paper gamma、normalized fixed lambda、Gaussian KDE Bayes threshold、mean/std/threshold EMA 和 single-response hard logistic risk。
@@ -101,7 +274,7 @@ adapter 不含 optimizer/scheduler state，`--init-checkpoint` 可继续微调�
 
 SSPO-hard 对 unlabeled pair 的 A/B 独立打 hard label；PE 对 A/B 形成一个 direction-unknown pair probability。两者都看不到 hidden label。第二轮可复用 `pe_loss.py` 的 PE 公共实现，但必须新增 rollout candidate construction，不得改变第一轮静态 pair 语义。
 
-### 2.4 Trainer 与 batch
+#### 历史trainer与batch
 
 `src/training/trainer.py` 提供统一 CLI。它从实际 `torchrun` world size 解析1/2/4卡执行档位，并在写出 resolved config 前重新冻结设备相关字段。三种档位为：
 
@@ -121,7 +294,7 @@ hard 第一遍收集全局 labeled winning/losing 与全部 response reward并�
 
 validation：DPO 用 reference delta；SSPO/PE 用 margin-free SimPO mean-logp delta。best 依次按更高 accuracy、更低 Brier；每次 metrics 都保留 score type、loss weights、global batch与 hard/PE诊断。
 
-### 2.5 选择、评价与观测
+#### 历史选择、评价与观测
 
 - `src/training/selectors.py`：共同 raw mean-logp score 下 DPO-10 对训练前显式禁用 adapter 的冻结 base 的 .05 headroom gate，并核对前后 score type/样本数；四条 static lambda validation-only selector。DPO-100只作为 oracle。
 - `src/evaluation/evaluator.py`：独立 adapter 加载；只有 DPO 读取 reference cache，只有此入口读取 test private labels。
@@ -131,7 +304,7 @@ validation：DPO 用 reference delta；SSPO/PE 用 margin-free SimPO mean-logp d
 - `src/data/audit_prepared_data.py`：提交前重验30k行数、SHA-256、跨 split ID、公开隐藏标签和私有标签精确连接；审计摘要进入回传白名单。
 - `observe/.../GetSlice/utils/model_utils.py`：相对原工具唯一的当前项目兼容改动是 adapter-aware offline load + in-memory safe merge。
 
-## 3. 第一轮冻结超参
+### 9.5 第一轮冻结超参
 
 | 项 | DPO-10 / DPO-100 | SSPO-hard / SOPPO-PE |
 | --- | ---: | ---: |
@@ -148,7 +321,7 @@ validation：DPO 用 reference delta；SSPO/PE 用 margin-free SimPO mean-logp d
 
 SSPO/PE exp：`gamma0=1`、`gamma_min=2700/26700`、`decay=.01`。PE static使用 normalized lambda `{.1,.3,.5,1.0}`。hard：prior.5、EMA.95、KDE grid200、Scott bandwidth。PE：epsilon1e-8、L1、denominator不detach。
 
-## 4. 第一轮服务器入口与不重复的八条训练
+### 9.6 第一轮服务器入口与不重复的八条训练
 
 旧共享集群入口保留在 `scripts/cluster/EXECUTION_GUIDE.md`：环境、模型、数据准备后由 `submit_all.sh` 提交 Slurm `afterok` DAG；每次提交从指定Git commit导出一个不含`.git`的源码快照并记录全文件SHA-256 manifest，worker只运行该快照，因此不同commit的DAG可以并存而不共享可变checkout。节点级故障恢复继续使用registry-scoped `cancel_pipeline.sh`与`submit_from_dpo.sh`，不得按共享账户整批取消任务。
 
@@ -175,7 +348,7 @@ tests -> strong smoke -> oracle/reference
 
 stage03/04/05 合计正好八条 first-round final trajectories，都写在 `runs/<experiment>/main/`，不存在预实验后重复训练。第二轮不得复用该 experiment_id 或输出目录。
 
-## 5. checkpoint、产物与空间
+### 9.7 历史checkpoint、产物与空间
 
 - DPO：每20 step及 final；DPO-10预计约42 steps，保留20/40/final。
 - SSPO/PE：每40 step及 final；全部为小型 LoRA adapter，显著小于旧全模型 checkpoint估算。
@@ -183,7 +356,7 @@ stage03/04/05 合计正好八条 first-round final trajectories，都写在 `run
 - server 保存 data/model/cache/adapters/raw logs/private predictions/C_epsilon raw。
 - 本地只回传 summary JSON/CSV/Markdown、聚合图表、配置、manifest、环境摘要、registry 与路径索引。
 
-## 6. strong smoke
+### 9.8 历史strong smoke
 
 `03_smoke.sh` 从正式 split 中选取字符长度最大的真实样本，以正式 bf16/2048 压测；它使用与正式训练相同的1/2/4进程档位，并随 world size 扩展 fixture。旧集群要求所选数量的A800，standalone 默认要求每卡至少79000 MiB。tokenization gate 要求 labeled-train 与 unlabeled-train 都至少有一个序列实际达到2048截断上限，validation只记录长度而不强制截断：
 
@@ -200,7 +373,7 @@ stage03/04/05 合计正好八条 first-round final trajectories，都写在 `run
 
 随后运行独立的 `round2/02_strong_smoke.sh`。它不复用第一轮五方法 smoke，而是让两条 rollout 方法各自完成一个生产路径 optimizer step：真实 TP=2 Qwen3 LoRA、8+56 完整 population、物理 pair subbatch=1、最长真实 labeled 样本的 2048 backward、每条 rollout 强制512 token、adapter 保存/哈希/vLLM回载、在线候选构造、PE反传、optimizer step、adapter 再发布与8条最长 validation评价。它必须在正式两条轨迹之前成功，且服务器仍须验证实际 wall time 与峰值显存。
 
-## 7. 静态复核与服务器待验证
+### 9.9 历史静态复核与服务器待验证
 
 本地复核范围：shell `bash -n`、`git diff --check`、旧接口/方法/路径静态搜索、第一轮入口未被改写、第二轮只有两种方法。根据本地边界，不运行 Python import、pytest、数据、模型或 GPU。服务器已验证tests、GPU等待和vLLM base ready；修复后的checkpoint-backed TP shape门禁、PEFT TP-LoRA保存/optimizer/clip、vLLM adapter回载、失败清理、24GB峰值显存、数值、512-token rollout和完整长链仍必须由新strong smoke验证。
 
@@ -221,4 +394,4 @@ stage03/04/05 合计正好八条 first-round final trajectories，都写在 `run
 - 第二轮 adapter 每 step 都必须发布给在线 rollout，因此会保留大量 LoRA checkpoint；当前不保存 optimizer/scheduler state，不支持 bit-exact 热恢复。
 - 第二轮固定锚点、采样四元组、依赖、GPU等待、vLLM ready和失败清理已获服务器证据；当前需完成PEFT 0.19.1 / Transformers 5.4.0 TP-hook兼容修复的代码交接。
 
-旧 Slurm 路径的静态复核与部分服务器门禁已有证据；Round2 两个环境、server tests、GPU wait、vLLM base ready及SFT+rollout单步TP/PE已有服务器证据，但rollout-only strong smoke尚未完成optimizer step，正式训练未执行，不能把单arm启动成功写成完整训练验证成功。
+以下是Round2某一历史attempt当时的静态复核快照：旧Slurm路径与部分服务器门禁已有证据，SFT+rollout完成过单步TP/PE，而当时rollout-only尚未完成optimizer step。后续Round2状态曾继续推进，但当前最终状态仍未知；本段不能当作实时运行或Round3验证证据。

@@ -55,6 +55,37 @@ def build_manifest(model_dir: Path) -> Dict:
 
 def verify_manifest(model_dir: Path, manifest_path: Path) -> None:
     recorded = json.loads(manifest_path.read_text(encoding="utf-8"))
+    if recorded.get("schema_version") == "round3.model_manifest.v1":
+        if recorded.get("repo_id") != "Qwen/Qwen3-1.7B":
+            raise ValueError("Round3 model manifest has the wrong repo_id")
+        if not isinstance(recorded.get("resolved_revision"), str) or not recorded["resolved_revision"]:
+            raise ValueError("Round3 model manifest lacks a resolved revision")
+        config_path = model_dir / "config.json"
+        tokenizer_path = model_dir / "tokenizer_config.json"
+        if not config_path.is_file() or not tokenizer_path.is_file():
+            raise FileNotFoundError("Round3 model config/tokenizer files are incomplete")
+        config = json.loads(config_path.read_text(encoding="utf-8"))
+        tokenizer_config = json.loads(tokenizer_path.read_text(encoding="utf-8"))
+        if config.get("model_type") != EXPECTED_MODEL_TYPE:
+            raise ValueError("Round3 model manifest does not describe Qwen3")
+        if not isinstance(tokenizer_config.get("chat_template"), str) or not tokenizer_config[
+            "chat_template"
+        ].strip():
+            raise ValueError("Round3 model manifest does not describe a post-trained chat model")
+        files = {}
+        for path in sorted(item for item in model_dir.iterdir() if item.is_file()):
+            if path.name == "model_manifest.json":
+                continue
+            files[path.name] = {"bytes": path.stat().st_size, "sha256": sha256_file(path)}
+        if not list(model_dir.glob("*.safetensors")):
+            raise FileNotFoundError("Round3 model directory has no safetensors weights")
+        if recorded.get("files") != files:
+            raise ValueError("Round3 model manifest mismatch; weights are mutable or incomplete")
+        if recorded.get("model_type") != config.get("model_type"):
+            raise ValueError("Round3 model type/config mismatch")
+        if int(recorded.get("num_hidden_layers", -1)) != int(config.get("num_hidden_layers", -2)):
+            raise ValueError("Round3 model layer-count/config mismatch")
+        return
     if recorded != build_manifest(model_dir):
         raise ValueError("Model manifest mismatch; refuse mutable or incomplete weights")
 

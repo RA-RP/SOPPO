@@ -24,21 +24,20 @@
 ## 当前状态
 
 - Cycle ID：`cycle-20260818-01`
-- 唯一活动阶段：`CODE_IMPLEMENTATION`
-- 当前实现依据：`exp/current_experiment.md` v0.6 SSPO-aligned 30k MVP
-- 理论通过状态：v0.2 已明确通过（2026-08-19）
-- 实验设计通过状态：v0.6 已逐项确认，用户已明确要求开始编码（2026-08-21）
-- 代码交接状态：用户提交的 `d03a116` 已用于第四次尝试；SFT+rollout完成真实TP2/PE optimizer step，rollout-only因至少一条候选未达到512 token而被最坏长度门禁拒绝。当前smoke-only `ignore_eos=true`与finish-reason汇总保持未提交、待审阅
-- 服务器执行状态：第二轮暂时 `LOCKED`；当前长度修复形成并获用户明确确认的新clean commit后，才允许保留旧失败目录并使用新experiment ID重启
-- `RESULT_HANDOFF` 与 `NEXTCYCLE_DISCUSSION`：锁定
+- 唯一活动阶段：Round3 `CODE_IMPLEMENTATION`
+- Round2交接：2026-08-26用户要求不再等待Round2证据、直接开始Round3；`result/current_result.md`与`result/result_archive.md`已以`NO_CONCLUSION`行政关闭。服务器experiment ID、commit、step、PID、final metrics与keep-20 pruner状态均未知，且没有停止进程、修改checkout或删除checkpoint。
+- Round3激活：`nextCycle/current_plan.md` `round3-activation-plan-v0.1`已于2026-08-26获用户明确通过；`theory/current_theory.md` `r3-theory-v0.8`与`exp/current_experiment.md` `round3-exp-v1.3`已于2026-08-25获明确整体批准。
+- 当前实现范围：Qwen3-1.7B、SSPO双源类型缩放数据、DPO-1K/GitHub-loss SSPO/DPO-8K/两个动态PE、统一250 steps、共同1K selection、独立1K双head test、GPU0单卡训练与GPU1–2双vLLM replica。PE-static与AlpacaEval/MT-Bench不在本轮实现范围。
+- 本地代码边界：本地只编辑与静态文本复核，不import/运行/测试项目；未经用户审阅不commit/push。
+- Round3 `SERVER_EXECUTION`、`RESULT_HANDOFF`与`NEXTCYCLE_DISCUSSION`：锁定
 
 ## 阅读顺序
 
-1. `theory/current_theory.md`：当前最完整的理论与可证伪预测。
-2. 理论明确通过后，`exp/current_experiment.md`：与用户讨论用于检验理论的实验设计。
-3. 实验设计明确通过后，`../code/CODE_OVERVIEW.md` 与 `../code/`：核对实验规范到代码、配置和服务器脚本的逐项映射。
-4. 代码交接获用户明确确认后，通过服务器执行；随后在 `result/current_result.md` 与用户讨论结果与解释。
-5. 结果交接获用户明确确认后，`nextCycle/current_plan.md`：讨论由结果推导出的下一步。
+1. 当前Round3实现：`theory/current_theory.md`与`exp/current_experiment.md`是已批准规范；当前入口是`../code/CODE_OVERVIEW.md`。
+2. Round1/Round2历史：读取`theory/theory_changelog.md`、`exp/experiment_archive.md`和Git历史，不再从两个`current_*`混读。
+3. Round2不完整结果交接：读取`result/current_result.md`与`code/ROUND2_LIVE_HANDOFF.md`；后续服务器操作前必须重新获取实时证据。
+4. Round3当前只实现获批规范；实质偏离时返回`EXP_DISCUSSION`重新批准。
+5. 代码交接获用户明确确认后才可执行；结果与下一轮仍按状态机顺序推进。
 
 各子目录的 `AGENTS.md` 规定具体字段和更新动作。
 

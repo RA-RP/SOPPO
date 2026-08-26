@@ -1,0 +1,125 @@
+contract:
+  theory: "r3-theory-v0.8"
+  experiment: "round3-exp-v1.3"
+
+provenance:
+  git_commit: null
+  experiment_id: null
+
+execution:
+  mode: "formal"
+  smoke_max_steps: null
+
+model:
+  repo_id: "Qwen/Qwen3-1.7B"
+  name_or_path: null
+  manifest_path: null
+  resolved_revision: null
+  torch_dtype: "bfloat16"
+  attention_implementation: "sdpa"
+  quantized: false
+  enable_thinking: false
+  use_cache: false
+  gradient_checkpointing: true
+  max_length: 2048
+  max_prompt_length: 1024
+  max_completion_length: 1024
+  lora:
+    r: 8
+    alpha: 16
+    dropout: 0.0
+    bias: "none"
+    task_type: "CAUSAL_LM"
+    target_modules:
+      - q_proj
+      - k_proj
+      - v_proj
+      - o_proj
+      - gate_proj
+      - up_proj
+      - down_proj
+
+data:
+  ultrafeedback_repo: "HuggingFaceH4/ultrafeedback_binarized"
+  ultrafeedback_revision: null
+  ultrachat_repo: "HuggingFaceH4/ultrachat_200k"
+  ultrachat_revision: null
+  data_dir: null
+  reference_cache_dir: null
+  paired_master: 8000
+  paired_limited: 1000
+  unpaired_train: 7000
+  validation: 1000
+  test: 1000
+  seed: 42
+
+training:
+  epochs: 1
+  optimizer_steps: 250
+  save_steps: 25
+  eval_steps: 25
+  seed: 42
+  train_gpu: 0
+  physical_pair_subbatch: 1
+  optimizer: "adamw_torch"
+  learning_rate: 0.00001
+  weight_decay: 0.0
+  adam_beta1: 0.9
+  adam_beta2: 0.999
+  adam_epsilon: 0.00000001
+  lr_scheduler_type: "cosine"
+  warmup_ratio: 0.1
+  max_grad_norm: 1.0
+  dpo_beta: 0.1
+  pe_beta: 10.0
+  pe_epsilon: 0.00000001
+
+method:
+  name: null
+  labeled_pairs: null
+  unpaired_units: null
+  lambda_pe: null
+
+rollout:
+  enabled: false
+  engine: "vllm"
+  do_sample: true
+  replicas: 2
+  gpu_ids: [1, 2]
+  artifact_dir: null
+  temperature: 0.7
+  top_p: 0.8
+  top_k: 20
+  min_p: 0.0
+  repetition_penalty: 1.0
+  presence_penalty: 0.0
+  max_model_len: 2048
+  max_num_seqs: 32
+  gpu_memory_utilization: 0.85
+  enforce_eager: false
+  eos_token_id: [151645, 151643]
+  pad_token_id: 151643
+  poll_interval_seconds: 1.0
+  request_timeout_seconds: 7200
+
+evaluation:
+  selection_pairs: 1000
+  selection_batch_size: 4
+  selection_dpo_beta: 0.1
+  test_pairs: 1000
+  ece_bins: 15
+  test_heads:
+    - "dpo_reference_delta_beta_0.1"
+    - "raw_mean_logp_delta_beta_10"
+  alpacaeval: "deferred_round4"
+  mt_bench: "deferred_round4"
+  pe_static: "deferred_round5"
+
+output:
+  run_dir: null
+  retain_all_durable_checkpoints: true
+  automatic_pruner: false
+
+storage:
+  projected_peak_bytes: null
+  require_free_multiplier: 2.0

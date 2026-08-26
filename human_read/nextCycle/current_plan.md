@@ -1,46 +1,38 @@
-# 当前下一步规划
+# Round3激活规划：跳过Round2证据等待
 
-## 版本信息
+## 0. 状态
 
-- 来源 Cycle ID：待建立
-- 目标 Cycle ID：待建立
-- 当前阶段：未进入；当前活动阶段为 `SERVER_EXECUTION`
-- 状态：`LOCKED`；历史预置草案，不是当前有效规划
-- 进入条件：当前结果完成归档，且用户明确确认 `RESULT_HANDOFF` 已完成
-- 进入条件状态：未满足
-- 规划通过状态：未讨论、未批准
-- 用户确认日期：待确认
-- 对应结果：`../result/current_result.md`
-- 最近更新：2026-08-21（仅同步当前阶段；规划仍锁定）
+- 来源Cycle/Round：`cycle-20260818-01` / Round2
+- 目标：同一研究cycle中已批准的Round3
+- 规划版本：`round3-activation-plan-v0.1`
+- 用户批准：2026-08-26明确指示“Round2先不管了，直接开始Round3”
+- Round3理论：`../theory/current_theory.md` `r3-theory-v0.8`，已批准
+- Round3实验：`../exp/current_experiment.md` `round3-exp-v1.3`，已批准
+- 当前唯一活动阶段：Round3 `CODE_IMPLEMENTATION`
 
-> 下文保留目录初始化时的候选行动，供未来追溯，不代表已进入下一轮讨论或已经选定行动。当前不得依据本文件修改理论、设计新实验或执行任务。
+## 1. 证据摘要与理论处理
 
-## 1. 证据摘要
+Round2没有可核验的最终白名单证据，因此对Round2保持`NO_CONCLUSION`，不用它支持、反驳或修改理论。Round3不冒充“由Round2结果驱动”；它是用户在独立阅读SSPO源码、数据与评价合同后批准的新研究路线。
 
-当前尚无已执行实验。不得在结果产生前预设理论已得到支持。
+## 2. 选定行动
 
-## 2. 对理论的处理
+1. 在本地仅编辑`code/`下的Round3源码、配置、服务器脚本与`CODE_OVERVIEW.md`；
+2. 实现五方法：DPO-1K、GitHub-loss SSPO、DPO-8K、DPO+PE-SFT+rollout、DPO+PE-rollout-only；
+3. 实现SSPO双源数据manifest、共同1K validation selection、独立1K双head final test、SSPO state round-trip和双vLLM replica ACK协议；
+4. 实现独立Round3 train/rollout环境文本与3×4090服务器入口，但在代码交接获用户确认前不上传、不创建服务器环境、不测试或运行；
+5. 完成实现映射和静态文本复核后，向用户交接diff及服务器待验收清单。
 
-- 决策：待定（保留 / 修订 / 放弃 / 补充证据）。
-- 依据：待填写。
-- 受影响的理论章节：待填写。
+## 3. 成功条件与资源边界
 
-## 3. 候选行动与优先级
+- 每条获批实验合同都能追踪到配置、实现符号、输出和服务器验收项；
+- Round3实现不修改Round1/Round2旧入口的冻结语义，不覆盖旧配置/产物；
+- 本地不安装依赖，不import项目，不运行formatter/linter/test、数据、模型、评价或GPU任务；
+- 未经用户审阅不`git commit`、不`git push`；
+- 后续服务器阶段必须先只读核验Round2潜在运行、GPU和磁盘；有冲突时fail closed，不停止或删除Round2产物。
 
-| 优先级 | 行动 | 解决的问题 | 所需证据/资源 | 风险 |
-| --- | --- | --- | --- | --- |
-| P0 | 从原始想法提炼首版可检验理论 | 建立研究闭环起点 | `../../../idea/` | 需核对原始语义 |
-| P0 | 整理 `C_{\gamma}` 的定义与观测流程 | 确定关键观测能否用于当前理论 | `../../../observe/` | 既有材料尚待核验 |
-| P1 | 基于理论设计首个最小实验 | 验证核心机制而非只比较最终性能 | theory 与 code 总览 | 指标和基线待定 |
+## 4. 规划交接
 
-## 4. 选定行动
-
-- 历史预置选择（当前无效）：先完成首版理论及 `C_{\gamma}` 定义核验，再设计实验。
-- 选择理由：实验问题、观测量与判断标准需要由理论明确给出。
-- 放弃/推迟的候选及原因：待填写。
-
-## 5. 下一轮成功条件
-
-- `../theory/current_theory.md` 具有明确的任务定义、核心假设和至少一条可证伪预测。
-- `C_{\gamma}` 的数学定义、计算输入、解释和局限完成来源核验。
-- 新的 `../exp/current_experiment.md` 能将预测映射到指标、对照和预先判断标准。
+- 规划已归档：是，见`plan_archive.md`
+- 用户明确通过：是
+- 确认日期：2026-08-26
+- 下一入口：`../../code/CODE_OVERVIEW.md`

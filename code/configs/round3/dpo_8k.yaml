@@ -1,0 +1,7 @@
+_base_: base.yaml
+
+method:
+  name: "dpo_8k"
+  labeled_pairs: 32
+  unpaired_units: 0
+

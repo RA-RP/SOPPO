@@ -2,6 +2,8 @@
 
 本文件记录每轮 theory 讨论完成后的核心结论。每完成一轮三阶段 QA 后更新。
 
+旧`theory_qa_current.md`的完整357行Round1/Round2问答快照固定于Git commit `d338eb5bedef16d83a42790c3faa97f8f404315b`。2026-08-25起，current QA只呈现Round3仍有效的决定与未决项；该结构整理不改写旧回答。
+
 ---
 
 ## `cycle-20260818-01` 理论 v0.2

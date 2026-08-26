@@ -1,0 +1,18 @@
+_base_: base.yaml
+
+method:
+  name: "sspo_code_loss_stratified_ultrachat_2df9e9a"
+  labeled_pairs: 4
+  unpaired_units: 28
+  sspo:
+    source_commit: "2df9e9a1d5fb9202a583cb66eb081e0cb60e873d"
+    beta: 10.0
+    margin: 2.0
+    prior: 0.5
+    reward_norm_momentum: 0.95
+    reward_clip_range: 5.0
+    running_state_initialization: "none"
+    threshold: "min_normalized_chosen"
+    gamma_min: 0.125
+    gamma_decay: 0.001
+

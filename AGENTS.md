@@ -33,13 +33,14 @@
 ## 当前活动阶段
 
 - 当前 cycle：`cycle-20260818-01`
-- 唯一活动阶段：`CODE_IMPLEMENTATION`
-- 当前入口：`human_read/exp/current_experiment.md` v0.6 的第二轮 rollout 扩展；当前实现目标为3×4090上 GPU0–1 native TP-LoRA、GPU2独立vLLM
-- 已完成门禁：第一轮既有理论/实验/代码与执行记录保持冻结；用户已于2026-08-24明确确认 Round2 commit `c2c9069a0b1a1187c8e709729b33b15aaec8c454`，服务器 clean checkout 和 train/rollout 两个环境已核验。
-- 最近服务器证据：用户提交并运行 commit `d03a116954b619749e3f1267cffc293406b5e093` 的 `exp-20260824-04-round2-tp2`；SFT+rollout strong smoke已完成真实TP2 LoRA/PE optimizer step，峰值每rank约8.65GB allocated/10.4GB reserved。rollout-only的112条候选中至少一条未达到512 token，触发最坏长度smoke门禁；该arm停在initializing/step0，vLLM与TP进程均被完整回收，正式训练未启动。
-- 当前代码状态：`d03a116` 上有未提交smoke长度修复：resolved smoke显式设置vLLM `ignore_eos=true`并保留`min_tokens=max_tokens=512`，formal固定`ignore_eos=false/min_tokens=0`；response另记录sample-free finish-reason计数。活动阶段保持 `CODE_IMPLEMENTATION`。
-- 锁定阶段：`SERVER_EXECUTION`、`RESULT_HANDOFF`、`NEXTCYCLE_DISCUSSION`
-- 下一解锁条件：用户审阅当前smoke-only长度修复 diff，手工形成并明确确认新的 clean commit；保留四个失败experiment并使用新ID重启server tests与strong smoke。
+- 唯一活动阶段：Round3 `CODE_IMPLEMENTATION`
+- 当前入口：`code/CODE_OVERVIEW.md`、`human_read/theory/current_theory.md` `r3-theory-v0.8`与`human_read/exp/current_experiment.md` `round3-exp-v1.3`
+- 已完成门禁：Round3理论与实验内容已于2026-08-25获用户明确整体批准；2026-08-26用户明确要求不再等待Round2证据并直接开始Round3，`result/current_result.md`已按`NO_CONCLUSION`归档，`nextCycle/current_plan.md`已记录并通过Round3激活规划。
+- Round2边界：服务器真实experiment ID、commit、step、PID、final metrics与keep-20 pruner状态均未知。阶段切换不代表该任务已停止；未运行停止、服务器checkout修改或checkpoint删除。后续Round3服务器阶段必须先只读核验GPU、磁盘与Round2潜在运行。
+- 当前本地代码基线：HEAD `d338eb5bedef16d83a42790c3faa97f8f404315b`；worktree含用户既有及当前文档变更，未经用户审阅不commit/push。
+- Round3实现合同：Qwen3-1.7B非量化LoRA；SSPO双源类型缩放数据；DPO-1K、GitHub-loss SSPO、DPO-8K与两个动态PE共五方法；全部1 epoch/250 steps；共同1K validation selection与独立1K双head final test；GPU0单卡训练，动态方法在GPU1/2使用双vLLM replica与step/adapter hash/ACK屏障。PE-static与AlpacaEval/MT-Bench不在Round3实现范围。
+- 锁定阶段：Round3 `SERVER_EXECUTION`、`RESULT_HANDOFF`与`NEXTCYCLE_DISCUSSION`。
+- 下一阶段条件：Round3实现、`CODE_OVERVIEW.md`追踪映射与本地静态复核完成，且用户明确确认当前代码版本可提交服务器。
 
 ## 标识与交叉引用
 

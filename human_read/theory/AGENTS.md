@@ -1,9 +1,15 @@
 # `theory/`：理论
 
-本目录只维护两个内容文件：
+本目录的当前主线只维护两个权威内容文件：
 
 - `current_theory.md`：最新且自洽的完整理论版本。
 - `theory_changelog.md`：按 cycle ID 追加理论变化过程。
+
+辅助/历史文件：
+
+- `theory_qa_current.md`：当前Round3决定与未决项的快速索引，不替代完整理论；
+- `theory_qa_archive.md`：旧轮QA历史；
+- `EXP_HANDOFF.md`：Round1/Round2已经完成的历史Theory→Exp交接，不是Round3入口。
 
 ## 阶段门禁
 

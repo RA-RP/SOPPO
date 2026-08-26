@@ -20,5 +20,17 @@
 
 ## 归档记录
 
-暂无。
+### `cycle-20260818-01` / Round2 experiment ID未知 — 2026-08-26 — `COMPLETE_WITHOUT_RESULT_EVIDENCE`
 
+- 对应设计版本：Round2 v0.6历史合同，见`../exp/experiment_archive.md`与`../code/ROUND2_LIVE_HANDOFF.md`
+- 原始证据目录：未回传；服务器experiment ID、commit、step和PID未知
+- 代码与配置版本：未从服务器`controller.json`解析，不从本地HEAD猜测
+- 执行完整性与偏差：只有2026-08-24中途快照；两条formal、evaluation、aggregate与keep-20 pruner的最终状态均未知
+- 关键观察及不确定性：没有可核验的final metrics；用户于2026-08-26指示“Round2先不管了，直接开始Round3”
+- 与预先判断标准的比较：证据不足，所有预测均无法判断
+- `C_{\gamma}`观察：Round2未预注册该阶段，也没有回传数据
+- 当前解释：这是用户选择不再等待证据的行政关闭，不是科学成功/失败判定
+- 替代解释/混杂：服务器任务可能已完成、失败或仍在运行；本地没有实时证据区分
+- 结论边界：Round2不向论文主张提供可用实证结论；Round3是用户独立审阅并批准的新方案
+- 后续勘误或复现情况：若未来取得Round2白名单证据，只追加新记录；不覆盖本次`NO_CONCLUSION`快照
+- 服务器安全边界：本次未运行停止、修改checkout或删除checkpoint操作

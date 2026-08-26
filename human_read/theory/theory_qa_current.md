@@ -1,357 +1,48 @@
-# Theory QA - 实时记录
-
-**Cycle ID**: `cycle-20260818-01`  
-**理论版本**: v0.1  
-**QA 轮次**: 第 1/3 轮  
-**日期**: 2026-08-19  
-**状态**: 进行中
-
----
-
-## 第1轮：Theory → User
-
-### Q1: 标签隐藏的实现细节与泄漏风险
-
-当前理论提出在第一阶段人为隐藏 80% 训练数据的偏好标签，只保留回复对。但 UltraFeedback 等数据集通常有以下特征：
-- 回复对在文件中可能有固定的 `chosen`/`rejected` 字段顺序
-- 两个回复的长度、质量、风格可能有系统性差异
-- 某些 prompt 类型的偏好方向可能高度一致
-
-**问题**：
-1. 您是否认为需要在数据预处理阶段**随机交换回复位置**，确保模型无法从位置推断方向？
-A：是的需要
-2. 是否需要在划分 $D_L / D_U / D_{\text{test}}$ 时，确保同一 prompt 的不同回复对不跨集合？A：是的
-3. 如何验证"标签确实被隐藏"？是否需要一个 baseline 实验（只用 $D_U$ 不用 $D_L$）来检验无监督下的偏好准确率是否接近随机？A：是的
-
----
-
-### Q2: 梯度路径与 responsibility 的数值稳定性
-
-理论第 5 节定义的编码估计中，$p_i$ 同时参与：
-- 作为 soft responsibility 权重：$\sum_i p_i \mathbf{q}_i$
-- 作为预测编码的组成部分：$\mathbf{q}_i = [p_i, 1-p_i]^T$
-
-$$
-\widehat{\mathbf{e}}_+ = \frac{\sum_i p_i \mathbf{q}_i}{\sum_i p_i}
-$$
-
-**问题**：
-1. 您的初始倾向是让梯度**穿过** responsibility $p_i$，还是对分母 $\sum_i p_i$ 使用 `stop_gradient`？A：这个我不是很懂，我希望你能够详细的跟我解释下。
-2. 如果某个 mini-batch 中所有样本的 $p_i$ 都接近 0.5（高度不确定），或都接近 1（高度偏向一侧），编码估计会退化。您认为应该：
-   - 加入数值稳定项 $\varepsilon$（如 $\sum_i p_i + \varepsilon$）？
-   - 要求 mini-batch 必须包含最小样本数？
-   - 还是先不处理，观察训练动态？
-A：我还要考虑，是不是DAPO处理的就是GRPO中类似的采样问题？我们能借鉴吗？
----
-
-### Q3: Pseudo-target baseline 的公平实现
-
-理论第 6.1 节提出对照组之一是 "Pseudo-target"。为了确保比较公平，需要明确：
-
-**问题**：
-1. Pseudo-target 应该是：
-   - **硬标签**：$\widetilde{z}_i = \mathbb{1}[p_i > 0.5]$，然后用标准 DPO 训练？
-   - **软标签**：直接用 $p_i$ 作为目标概率，loss 形式为 $-z_i \log p_i - (1-z_i)\log(1-p_i)$？
-   - 还是两种都要实现作为独立 baseline？
-   A：我认为使用硬标签就好
-2. Pseudo-target 的生成时机应该是：
-   - 在 $D_L$ 上训练后**一次性**为 $D_U$ 生成伪标签，然后固定？
-   - 还是**每个 epoch** 重新生成？
-   - 还是使用 self-training 的迭代生成（类似 SPIN）？
-   A：这个应该和我们的方法对齐，我们现在是如何？每次计算loss都是在更新过的权重上，采样一部分D_U计算PE吗？如果是这样pseudo-target我认为也应该是实时采样一部分作为正反例
-
-3. 如果 Pseudo-target 在某个合理的实现下表现很好，是否仍然可以声称"结构监督更优"？A：这个我认为不是当前MVP的任务，pseudo-target对比其实目前的MVP不算是特别刚需，应该是后续的任务。
-
----
-
-### Q4: $C_{\gamma}$ 的定义与验证优先级
-
-理论第 10 节明确指出 $C_{\gamma}$ 目前定义不清，需要从 `../../../observe/` 核验。但全局 AGENTS.md 提到它是"需要重点继承和核验的观测方法"。
-
-**问题**：
-1. 您认为在**第一阶段 MVP 开始前**，$C_{\gamma}$ 的定义核验是：
-   - **阻塞性前置条件**（必须先明确定义才能设计实验）？
-   - **并行任务**（可以在 MVP 实验运行的同时核验，作为备用观测量）？
-   - **第二优先级**（只有 MVP 核心机制成立后才值得投入）？
-   A：第二优先级
-
-2. 如果 $C_{\gamma}$ 目前的角色不清晰，是否应该在本轮 theory 讨论中**暂时移除**对它的提及，等核验完成后再加入？
-A：是的，暂时先不用了
-
----
-
-### Q5: 成功标准的量化阈值
-
-理论第 6.3 节定义了定性的成功标准，但没有给出具体的判断阈值。
-
-**问题**：
-1. 对于"DPO + PE 稳定优于 DPO-10%"，您认为：
-   - 需要在多少个随机种子上重复？（3/5/10？）
-   A：先3个吧
-   - 准确率提升多少才算"稳定优于"？（绝对提升 >1%？相对提升 >5%？统计显著性 p < 0.05？）
-   A：统计显著性不错
-   
-2. 对于"DPO + PE 稳定优于 Pseudo-target"：
-   - 如果 Acc 更高但 Brier 更差（或反之），如何判断？
-   A：我认为分别报告吧，两者都挺重要
-   - 如果差异在 1% 以内，是否认为"没有实质差异"？A：可以
-
-3. 是否需要在实验设计阶段**预注册**这些阈值，避免实验后调整标准？A：预注册，但是我后续能够更具具体情况考量要不要修改。
-
----
-
-### Q6: 第一阶段的模型与数据选择约束
-
-理论提到"具体数据版本、过滤、划分和模型选择属于实验设计，必须在运行前固定"，但没有给出选择原则。
-
-**问题**：
-1. 模型选择：
-   - 您倾向于使用**小模型**（如 Llama-3-8B, Gemma-2-9B）快速验证核心机制？
-   - 还是直接使用**中等模型**（如 Llama-3.1-70B）以接近真实应用场景？
-   - SFT base 模型应该是我们自己训练，还是使用公开的 instruct 模型？
-   A：我期望使用小模型在instruct模型上训练，8B还大了一些，qwen3-4B以及不错了。值得注意的一点，我想先进行小DPO观测模型还有没有headroom
-
-2. 数据集选择：
-   - UltraFeedback 是否是最佳选择？它的偏好标注质量、多样性是否足够？
-   - 是否需要同时在多个数据集上验证（如 HH-RLHF, Anthropic Helpful），还是先专注单一数据集？
-   A：现在MVP先专注UltraFeedback
-
----
-
-### Q7: 理论适用边界的预判
-
-理论第 11 节列出了多项风险，但没有明确哪些是"预期内可接受的局限"，哪些是"致命缺陷"。
-
-**问题**：
-1. 如果实验发现 $L_{\text{PE}}$ **主要推动置信度变尖**（$p_i$ 向 0/1 两端集中），但**两类方向覆盖不均衡**（如 90% 样本的 $p_i > 0.8$），您会：
-   - 认为这是方法失败，需要重新设计损失？
-   - 认为这是数据特性（真实偏好方向确实不平衡），可以接受？
-   - 需要加入额外的平衡约束（如类别比例正则）？
-   A：这不就会导致ACC等下降吗？我们随机打乱过的呀，而且我们讨论的不一直是偏好对，而不是直接讨论回答本身的偏好吗？
-
-2. 如果 DPO + PE 在 Acc 上优于 DPO-10%，但在 AlpacaEval 等生成质量评估上**没有提升甚至下降**，您会如何解释和处理？
-A：这个留到后续进行分析
----
-
-## 第1轮总结
-
-**关键决策**：
-- 数据预处理：随机交换回复位置，prompt 不跨集合，需要无监督 baseline 验证标签隐藏
-- Pseudo-target：使用硬标签，实时采样（与 DPO+PE 对齐），但**不作为 MVP 刚需**
-- $C_{\gamma}$：第二优先级，暂时从理论中移除
-- 成功标准：3 个随机种子，统计显著性 p<0.05，预注册但可后续调整
-- 模型数据：Qwen2.5-4B-Instruct + UltraFeedback，先做小 DPO 观测 headroom
-
-**待澄清问题**：
-1. Q2.1：梯度路径（responsibility 的 stop_gradient）— 用户需要详细解释
-2. Q2.2：数值稳定性处理 — 用户提出 DAPO/GRPO 的采样借鉴思路
-3. Q3.2：我们当前方法的训练流程（每步都重新计算 $p_i$ 吗？）
-4. Q7.1：用户质疑"覆盖不均衡"场景的合理性
-
----
-
-## 第2轮：User → Theory
-
-**User 反馈**：
-- 对 Q1（梯度路径）的解释认可
-- 对 Q2（DAPO/GRPO 借鉴）的建议认可
-- 对 Q3（训练流程对齐）的说明认可
-- 对 Q7（覆盖不均衡场景）的修正理解
-- 暂无其他问题
-
----
-
-## 第3轮：Theory → User（最终确认）
-
-基于前两轮讨论，以下是我认为**必须在进入实验设计前最终确认**的剩余问题：
-
-### Q8: Pseudo-target baseline 的优先级最终确认
-
-您在 Q3.3 中提到"pseudo-target 对比不算是特别刚需，应该是后续的任务"。
-
-但这与理论 v0.1 第 6.1 节的核心命题有冲突：
-> **核心贡献条件**：DPO + PE 稳定优于公平调参的 Pseudo-target，说明群体结构监督比逐样本伪目标更可靠。
-
-**问题**：
-1. 如果 MVP 阶段**不实现 Pseudo-target baseline**，我们只能证明"DPO + PE 优于 DPO-10%"（即无标签数据有用），但**无法证明核心论点**（结构监督优于伪目标）。您是否接受这一取舍？
-
-2. 还是您认为应该：
-   - **降级核心论点**：MVP 只证明"无标签偏好对可以通过结构监督利用"，不声称优于伪目标方法
-   - **保留 Pseudo-target**：即使不是刚需，也应实现以支撑完整论点
-   - **延后对比**：先验证 DPO + PE vs DPO-10%，如果成功再补充 Pseudo-target 对比
-
-**我的建议**：考虑到实现成本不高（与 DPO+PE 共享大部分代码，只是 loss 不同），建议**保留 Pseudo-target 作为 baseline**，但可以设置为**非阻塞**：即使 Pseudo-target 实验失败或结果不符合预期，不阻止我们继续分析 DPO+PE 的核心机制。
-
----
-
-### Q9: "小 DPO 观测 headroom" 的实验设计
-
-您在 Q6.1 中提到"先进行小 DPO 观测模型还有没有 headroom"。
-
-**问题**：
-1. 这个观测是否应该作为**预实验**，在正式 MVP 之前完成？即：
-   - 先在 UltraFeedback 的完整训练集上做标准 DPO
-   - 观测测试集 Acc/Brier，判断模型是否已经饱和
-   - 如果已经接近 100% Acc，说明没有改进空间，需要换模型或数据集
-
-2. 还是"观测 headroom"指的是：在 MVP 实验中，通过 **DPO-100% baseline** 来判断上界？
-
-**我的理解**：您可能担心 Qwen2.5-4B-Instruct 在 UltraFeedback 上已经很强，留给 DPO 的提升空间有限。如果是这样，建议：
-- **预实验**：用 1k 样本快速验证 DPO-100% 的 Acc 是否显著高于 SFT baseline（如 Instruct 模型直接评估）
-- 如果 headroom < 5%，考虑换成 Qwen2.5-1.5B 或使用更难的数据子集
-
----
-
-### Q10: 训练预算与超参数搜索范围
-
-当前理论没有明确训练预算和超参数调优策略。
-
-**问题**：
-1. MVP 阶段的训练预算约束：
-   - 每个方法（DPO-10%, DPO+PE, Pseudo-target, DPO-100%）× 3 个随机种子
-   - 是否需要对每个方法做超参数搜索（如 $\beta, \lambda$），还是固定一组"合理"的超参数？
-   
-2. 如果需要搜索，搜索范围是：
-   - $\beta$：DPO 温度参数，常见范围 [0.1, 0.5]
-   - $\lambda$：PE 损失权重，建议范围 [0.1, 1.0]？
-   - Learning rate, batch size, epochs 等
-
-3. 如果 DPO+PE 在某组超参数下表现好，但 DPO-10% / Pseudo-target 没有搜索相同范围，比较是否公平？
-
-**我的建议**：
-- 先用文献常见值固定 $\beta=0.1$（或 0.5）
-- 对 $\lambda$ 做小范围搜索（如 [0.1, 0.3, 0.5, 1.0]），在 **validation set**（从 $D_L$ 划出 10%）上选择
-- 所有方法共享相同的 lr, batch size, epochs
-- 预注册这些选择，避免实验后调优
-
----
-
-### Q11: 数据划分的具体比例与绝对数量
-
-理论建议 10%:80%:10% 的 $D_L:D_U:D_{\text{test}}$ 划分，但没有明确绝对数量。
-
-UltraFeedback 完整数据集约有 60k+ 偏好对。
-
-**问题**：
-1. 是否使用完整 60k，还是先在子集（如 10k）上快速验证？
-2. 如果用完整数据：
-   - $D_L$ = 6k（10%）
-   - $D_U$ = 48k（80%）
-   - $D_{\text{test}}$ = 6k（10%）
-   
-   这个 $D_L$ 规模对于"少量真实偏好锚定"是否太大？是否应该测试更极端的比例（如 5%:85%:10% 或 2%:88%:10%）？
-
-3. 还是 MVP 阶段先固定 10%，后续再做 label efficiency 的消融？
-
-**我的建议**：MVP 先用 **10k 子集**（1k:8k:1k），快速迭代。如果核心机制成立，再扩展到完整数据和不同比例。
-
----
-
-### Q12: 实验失败的撤退标准
-
-理论第 6.3 节定义了成功标准，但没有明确"何时放弃"。
-
-**问题**：
-如果 MVP 实验发现：
-- DPO+PE 与 DPO-10% **没有显著差异**（p > 0.05），甚至略差
-- 重复 3 个种子后结果一致
-
-您会：
-1. **立即撤退**：承认静态结构监督在偏好学习中无效，不继续第二阶段
-2. **诊断分析**：深入分析为什么失效（梯度、数值稳定性、数据特性），尝试修复
-3. **调整假设**：修改 $L_{\text{PE}}$ 的形式（如换成 $L_2$、加入熵正则等），再次验证
-4. **转向第二阶段**：放弃静态 MVP，直接尝试动态 SFT 候选对（认为问题在于数据而非机制）
-
-**我的建议**：预先约定**诊断分析的时间盒**（如 1-2 周）。如果在此期间找不到明确的失效原因或修复方案，则撤退。避免无限调试。
-
----
-
-## User 最终回答（Q8-Q12）
-
-### A8: Pseudo-target baseline
-**保留 Pseudo-target**：即使不是刚需，也应实现以支撑完整论点
-
-### A9: Headroom 预实验
-**作为预实验**：
-- 用 1k 样本快速验证 DPO-100% 的 Acc 是否显著高于 SFT baseline（Instruct 模型直接评估）
-- 如果 headroom < 5%，考虑换成 Qwen2.5-1.5B 或使用更难的数据子集
-
-### A10: 超参数策略
-**基础方案认可**：
-- 固定 $\beta = 0.1$（或 0.5）
-- 对 $\lambda$ 做小范围搜索（[0.1, 0.3, 0.5, 1.0]），在 validation set（从 $D_L$ 划出 10%）上选择
-- 所有方法共享相同的 lr, batch size, epochs
-- 预注册这些选择
-
-**User 额外提出**：
-> 是不是 $\lambda$ 需要使用一个从小到大的比率？而不是固定的？我记得相关工作中有类似的，比如 SimPO：$\gamma_t = \max\{\gamma_{\min}, \gamma_0 e^{-\lambda t}\}$
-> 
-> 需要将这个作为一个**对比项**观察是不是有用。
-
-### A11: 数据规模
-**MVP 先用 10k 子集**（1k:8k:1k），快速迭代。如果核心机制成立，再扩展到完整数据和不同比例。
-
-### A12: 撤退标准
-**预先约定诊断分析的时间盒**（如 1-2 周）。如果在此期间找不到明确的失效原因或修复方案，则撤退。避免无限调试。
-
----
-
-## Theory 对 A10 补充问题的回应
-
-关于 $\lambda$ scheduler，这是一个很好的观察。让我分析：
-
-### SimPO 的 $\gamma$ scheduler 动机
-
-SimPO 使用**指数衰减**的 $\gamma_t$（reward margin）：
-$$\gamma_t = \max\{\gamma_{\min}, \gamma_0 e^{-\lambda t}\}$$
-
-**原因**：早期需要大的 margin 拉开 chosen/rejected 差距，后期减小 margin 避免过度惩罚接近的样本。
-
-### 我们的 $\lambda$ 与 SimPO 的 $\gamma$ 不同
-
-- SimPO 的 $\gamma$：控制**偏好判别的强度**（直接影响 loss 的 margin）
-- 我们的 $\lambda$：控制**两个 loss 的相对权重**（$L_{\text{DPO}}$ vs $L_{\text{PE}}$）
-
-### $\lambda$ scheduler 的潜在动机
-
-**从小到大（warm-up）**：
-- 早期：模型依赖少量真实标签（$D_L$）建立基础判别能力
-- 后期：逐渐增加无标签结构信号（$D_U$）的权重
-- 类似 semi-supervised learning 中"先有监督，再加无监督"
-
-**从大到小（annealing）**：
-- 早期：利用大量无标签数据快速探索结构
-- 后期：更依赖可靠的真实标签精调
-- 避免后期被不确定的 $D_U$ 信号干扰
-
-### 实验设计建议
-
-我认为应该设置**三组对比**：
-
-1. **Fixed-λ**（baseline）：固定 $\lambda$（从 validation 选出的最佳值，如 0.3）
-2. **Warmup-λ**：$\lambda_t = \lambda_{\text{max}} \cdot \min\{1, t/T_{\text{warmup}}\}$
-   - 例如从 0 线性增长到 0.3（前 20% steps）
-3. **Decay-λ**：$\lambda_t = \max\{\lambda_{\text{min}}, \lambda_0 e^{-\alpha t}\}$
-   - 例如从 1.0 衰减到 0.1
-
-**验证优先级**：
-- MVP 核心：先用 **Fixed-λ** 证明机制有效
-- 如果 Fixed-λ 成功：补充 Warmup/Decay 作为改进消融
-- 如果 Fixed-λ 失败：scheduler 也无法挽救
-
-**我的建议**：
-- 在实验设计阶段（`EXP_DISCUSSION`）将 scheduler 列为**可选消融项**
-- 主实验用 Fixed-λ
-- 如果时间和计算允许，补充 Warmup-λ 对比
-
----
-
-## 第3轮完成，等待最终确认
-
-现在所有关键问题已回答。我将：
-
-1. **更新 `current_theory.md` → v0.2**，整合所有决策
-2. **更新 `theory_qa_archive.md`**，记录本轮精简结论
-3. **等待您明确表态**："我确认理论 v0.2 通过"
-
-完成后，`EXP_DISCUSSION` 阶段将解锁。
+# Round3 Theory QA：当前决定与执行时解析项
+
+## 状态
+
+- 理论版本：`r3-theory-v0.8`
+- 实验草案：`round3-exp-v1.3`
+- 日期：2026-08-26
+- 状态：用户已整体通过`r3-theory-v0.8`与`round3-exp-v1.3`，并明确要求直接开始Round3；当前唯一活动阶段为Round3 `CODE_IMPLEMENTATION`
+- 完整理论：`current_theory.md`
+- 历史QA：`theory_qa_archive.md`及Git commit `d338eb5bedef16d83a42790c3faa97f8f404315b`
+
+本文只做Round3快速问答索引，不重复完整推导。
+
+## 已讨论清楚
+
+| 问题 | 当前决定 |
+| --- | --- |
+| SSPO论文与源码是否相同 | 不同；paper-v3使用KDE/Bayes threshold/threshold EMA，GitHub commit `2df9e9a`使用sequential running statistics、clamp和min-chosen threshold |
+| Round3实际运行哪个SSPO | 只运行`SSPO-code-loss-stratified-ultrachat@2df9e9a`；不运行paper-v3或旧`pair-derived` profile |
+| 数据源与数量 | 8K `ultrafeedback_binarized/train_prefs` paired master，其内嵌1K limited view；7K `ultrachat_200k/train_sft` singles；`test_prefs`确定性分为1K validation +1K independent test |
+| 如何冻结子集 | full dataset revision在获批服务器preflight解析；使用独立namespace、seed 42和SHA-256排序；1K labeled是8K master的真子集 |
+| `4 labeled +28 unpaired`来自哪里 | 是本项目Round3的固定分层sampler，不是论文或GitHub原始固定数字 |
+| SSPO GitHub初始化 | momentum .95，running mean/var为`None`；首次chosen batch直接初始化，batch variance用`unbiased=False`并加$10^{-8}$；之后chosen→rejected→unpaired顺序EMA，clamp $[-5,5]$；首步$t=0$ |
+| SSPO scheduler | $\gamma_{min}=1000/(1000+7000)=0.125$，decay .001；250步内floor不会触发，但不为增大unpaired权重而修改GitHub语义 |
+| Round3有几个方法 | 五个：DPO-1K、GitHub-loss SSPO、DPO-8K、DPO+PE-SFT+rollout、DPO+PE-rollout-only |
+| epoch与steps | 五方法均1 epoch /250 optimizer steps；每25步保存，各保留10个durable checkpoints |
+| PE-static | 从Round3删除，登记到Round5消融；本轮不设计第二candidate、不实现、不运行 |
+| DPO精确定义 | response总log-prob、冻结初始Qwen reference、$\beta_{DPO}=0.1$；PE方法labeled branch也用该DPO，不用SimPO替换 |
+| PE精确定义 | mean-response-logp、margin-free $\beta_{PE}=10$、L1、epsilon $10^{-8}$、denominator不detach；完整28-pair logical population精确梯度；normalized $\lambda_{PE}=0.1$ |
+| checkpoint如何选择 | 五方法都在同一冻结1K-pair validation上用reference-DPO beta .1的`eval_selection_loss`选点；不用PE/joint/SSPO objective loss |
+| 是否运行方法内checkpoint diagnostics | 不运行SSPO/PE objective eval或dynamic rollout panel；只保留训练telemetry，不参与选点 |
+| Selection loss并列/非有限 | 只在finite checkpoints中按原始`(eval_selection_loss,step)`排序，完全并列选较早step；全无效或train loss/gradient非有限是工程失败 |
+| Round3最终评价 | 只使用independent 1K fixed-pair test；五个selected checkpoints与frozen base同时报reference-delta/raw mean-logp两个head的Accuracy、NLL、Brier、ECE-15等，只在同head内比较 |
+| Test是否再次rollout | 不；直接评分冻结的有标签A/B preference pairs |
+| base/DPO-1K headroom | 不能用初始时恒为0.5的DPO reference-delta；辅助比较使用共同raw mean-logp delta beta10，不参与选点 |
+| AlpacaEval/MT-Bench | Round3只登记不运行；不生成回答、不调用judge API、不运行本地替代judge；延后到Round4重新设计和审批 |
+| Qwen3与优化 | ModelScope `Qwen/Qwen3-1.7B` post-trained版本，native non-thinking template；五方法共享resolved revision/manifest；非量化LoRA r8/alpha16/dropout0、lr $10^{-5}$、BF16 mixed precision |
+| 3×4090如何分工 | 五方法都在GPU0单卡训练；两个动态PE时GPU1/2分别运行独立vLLM replica，并以`method_id/step/adapter_sha256` ACK屏障防止stale policy |
+| 存储策略 | 五方法共50个durable checkpoints全部保留，不启用自动pruner；formal要求空闲空间至少为strong-smoke投影峰值的2倍，不删除Round2产物 |
+
+## 只能在获批服务器阶段解析
+
+- UltraFeedback/UltraChat repository的resolved full commit SHA、源parquet SHA-256、构造后manifest SHA-256与隔离审计；
+- ModelScope实际下载的Qwen3-1.7B resolved revision与model/tokenizer/template manifest；
+- Round3 experiment ID、当时3×4090实时硬件/磁盘证据、精确dependency locks、最终源码commit和数值验收摘要；
+- strong-smoke实测的显存峰值、产物尺寸、projected storage peak与两倍空闲空间门禁。
+
+这些是执行时resolved facts，不应由实现者猜测，也不需要在本地伪造结果。`r3-theory-v0.8`和`round3-exp-v1.3`的内容批准及Round3 `CODE_IMPLEMENTATION`激活均已记录；当前允许本地静态实现，仍禁止代码交接前上传或进入服务器执行。Round2仅作行政性`NO_CONCLUSION`归档，不得以本次阶段切换为由触碰潜在仍运行的服务器任务。

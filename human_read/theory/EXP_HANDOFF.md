@@ -1,4 +1,6 @@
-# Theory → Exp 交接文档
+# 历史交接：Round1/Round2 Theory v0.2 → Exp
+
+> 本文件是2026-08-19已经完成的历史交接，不是当前Round3入口。Round3的`r3-theory-v0.8`与`round3-exp-v1.3`已于2026-08-25获整体通过，并于2026-08-26进入`CODE_IMPLEMENTATION`；当前入口为`../../code/CODE_OVERVIEW.md`与`../exp/CODE_HANDOFF.md`。下文只保留Round1/Round2历史内容。
 
 **生成时间**: 2026-08-19  
 **Cycle ID**: `cycle-20260818-01`  
@@ -122,7 +124,7 @@ $$\boxed{L = L_{\text{DPO}}(D_L) + \lambda L_{\text{PE}}(D_U)}$$
 
 ## 你的任务
 
-1. **阅读完整理论**：`/Users/rarp/Desktop/ICLR/SOPPO/human_read/theory/current_theory.md`
+1. **阅读历史完整理论**：Git commit `d338eb5bedef16d83a42790c3faa97f8f404315b`中的`human_read/theory/current_theory.md`
 2. **设计预实验**：Headroom 验证（1k 样本 DPO-100% vs SFT baseline）
 3. **设计主实验**：
    - 数据处理流程（隐藏标签、随机交换、划分、验证）
@@ -146,7 +148,7 @@ $$\boxed{L = L_{\text{DPO}}(D_L) + \lambda L_{\text{PE}}(D_U)}$$
 
 ## 关键文件路径
 
-- 理论完整版：`../theory/current_theory.md`
+- 理论完整版：Git commit `d338eb5bedef16d83a42790c3faa97f8f404315b`中的`human_read/theory/current_theory.md`
 - 理论 QA 记录：`../theory/theory_qa_current.md` 和 `theory_qa_archive.md`
 - 实验设计文件：`current_experiment.md`（你需要创建/更新）
 - 下一阶段代码说明：`../../code/CODE_OVERVIEW.md`
@@ -166,4 +168,4 @@ $$\boxed{L = L_{\text{DPO}}(D_L) + \lambda L_{\text{PE}}(D_U)}$$
 
 ---
 
-祝实验设计顺利！如果有任何理论相关的问题，可以随时参考 `current_theory.md` 或询问用户。
+本历史交接如需复核，应读取上述固定commit或`theory_changelog.md`，不要用当前Round3 `current_theory.md`反向解释旧实验。

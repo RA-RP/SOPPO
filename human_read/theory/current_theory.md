@@ -1,413 +1,465 @@
-# 当前理论：有限偏好监督下的 Label-Encoding 结构监督
+# 当前理论：Round3 的 GitHub-loss SSPO 比例分层适配
 
-## 版本信息
+## 0. 版本、状态与历史边界
 
-- Cycle ID：`cycle-20260818-01`
-- 理论版本：**v0.2**
-- 当前阶段：`THEORY_DISCUSSION` → **已完成，通过**
-- 状态：**用户已明确确认通过**
-- 用户确认状态：**已通过**
-- 用户确认日期：**2026-08-19**
-- 下游门禁：**`EXP_DISCUSSION` 已解锁**；`CODE_IMPLEMENTATION`、上传、`SERVER_EXECUTION`、`RESULT_HANDOFF` 与 `NEXTCYCLE_DISCUSSION` 仍锁定
-- 最近更新：2026-08-19（整合 QA 决策，更新为 v0.2；MVP 静态 PE 已归入第一轮，后续第二轮只做动态 rollout 相关实验）
-- 上一版本：v0.1（初始理论草稿）
-- 证据等级：方法假设与实验前推导，尚无本项目实验结果
-- 原始来源：
-  - `../../../idea/基于有限偏好监督的动态偏好优化方法.docx`
-  - 用户提供的 LERM 结构监督与 MVP 重定位附件；其内容已随工作草稿保存在 `../../../idea/理论与MVP工作草稿.md`
-- QA 记录：`theory_qa_current.md` 与 `theory_qa_archive.md`
+- Cycle：`cycle-20260818-01` / Round3
+- 当前理论版本：`r3-theory-v0.8`
+- 状态：**用户已于2026-08-25明确整体通过`r3-theory-v0.8`内容，并于2026-08-26明确要求忽略Round2等待、直接开始Round3**
+- 当前唯一活动阶段：Round3 `CODE_IMPLEMENTATION`
+- Round2边界：仅作行政性`NO_CONCLUSION`归档；其服务器实时状态仍未知，本次阶段切换不授权停止任务、修改checkout或删除checkpoint
+- Round3下游状态：`round3-exp-v1.3`内容已获明确整体通过，本地静态代码实现已解锁；代码交接、上传与服务器执行仍未解锁
+- 模型：ModelScope `Qwen/Qwen3-1.7B`（post-trained Instruct/hybrid-thinking版本，不是`-Base`）；所有五个任务共享同一初始checkpoint/manifest，具体revision待resolved config冻结
+- 证据类型：SSPO论文/源码事实、官方数据预处理事实与本项目实验前设计，不包含Round3实验结果
+- 历史理论：Round1/Round2 v0.2完整正文位于Git commit `d338eb5bedef16d83a42790c3faa97f8f404315b`；变化索引见`theory_changelog.md`
 
-## 1. 一句话理论
+本文件只表达当前Round3主线；早期版本的完整内容只从历史索引读取，不在本文混排。
 
-在偏好标签有限时，与其把模型对每个无标签回复对的当前预测转化为硬或软伪目标，不如只用这些预测在群体层面估计两类偏好方向的 label encoding，并用少量真实偏好对锚定方向。MVP 已经用静态 PE 完成第一轮验证；后续第二轮只围绕 rollout 相关信息展开，检验 SFT+rollout 与 rollout-only 是否带来额外增益。
+## 1. Round3研究问题与方法定位
 
-## 2. 研究问题与核心定位
+Round3在同一个ModelScope `Qwen/Qwen3-1.7B`、同一冻结数据合同和单种子资源约束下，比较五种训练任务：`DPO-1K`、GitHub-loss SSPO、`DPO-8K`高标签reference，以及两种动态rollout PE。
 
-高质量成对偏好数据昂贵，而监督微调数据通常只包含单个参考回复，无法直接作为标准偏好对使用。本研究希望用少量可靠偏好标签学习方向锚点，再从大量方向未知的回复对中提取不依赖逐样本伪标签的训练信号。
+核心问题是：在1,000条paired preference监督与7,000条独立UltraChat single-response数据下，SSPO的单回复伪标注机制和动态PE的群体结构机制能否利用无标签数据；固定公开单回复锚点是否相对于纯rollout提供额外信息；8,000条paired监督能给出多大的label-budget headroom。
 
-当前最核心、也最先需要回答的问题是：
+`DPO+PE-static`从Round3删除。UltraChat一条记录只提供一个公开assistant response，强行补造第二条固定candidate会引入新的生成器或数据源混杂；该方法登记到Round5消融阶段重新设计，当前不实现、不运行，也不作为Round3缺失结果。
 
-> 不给无标签回复对分配 instance-level pseudo target，仅利用其整体 label-encoding structure，能否改善 preference learning？
+本轮SSPO仍只计划运行一个GitHub code-loss profile，不运行paper-v3 profile。由于unpaired数据从旧pair-derived方案改回作者仓库的UltraChat来源，旧method ID
 
-这里的核心贡献候选不是笼统地“把 LERM 当作先验”，而是把监督单位从单个样本的目标，改为无标签回复对群体的偏好编码结构：
+`SSPO-code-loss-stratified-pair-derived@2df9e9a`
+
+已撤回，不得进入resolved config。本版数据分支已关闭，实际method ID固定为
+
+`SSPO-code-loss-stratified-ultrachat@2df9e9a`。
+
+名称的三个限定不能省略：
+
+- `code-loss`：采用作者GitHub trainer的实际loss，而不是论文v3的KDE/threshold-EMA机制；
+- `stratified`：采用本项目固定1:7的two-stream batch，而不是仓库随机合并池sampler；
+- `ultrachat`：unpaired singles来自作者仓库相同的`HuggingFaceH4/ultrachat_200k`来源，不再从UltraFeedback hidden pairs派生。
+
+## 2. 共同数据、模型与公平性合同
+
+作者GitHub commit `2df9e9a`的通用任务不是单一数据集，而是双源合同：paired preference来自`HuggingFaceH4/ultrafeedback_binarized`的`train_prefs/test_prefs`，unpaired single-response来自`HuggingFaceH4/ultrachat_200k`的`train_sft`。预处理脚本分别按`--fb`和`--ch`保留子集，再合并shuffle；论文通用设置报告10% UltraFeedback约6,113个paired records（含validation）和10% UltraChat约20,786个unpaired records。[GitHub preprocessing](https://github.com/MLAI-Yonsei/SSPO/blob/2df9e9a1d5fb9202a583cb66eb081e0cb60e873d/preprocessing_data/preprocessing_ultrachat.py#L260-L314)，[paper training data](https://arxiv.org/html/2511.00040v3#S5.SS1)。
+
+2026-08-25用户明确关闭数据分支：Round3保持SSPO官方双源**类型**，只缩放数量。paired preference固定来自`HuggingFaceH4/ultrafeedback_binarized`，unpaired single-response固定来自`HuggingFaceH4/ultrachat_200k/train_sft`；不再考虑严格零UltraFeedback，也不再从UltraFeedback hidden pair派生unpaired数据。
+
+旧“从冻结30k UltraFeedback抽取统一hidden-pair池”的方案永久退出Round3。当前规模合同为：
+
+| role | 固定数量 | 来源与用途 |
+| --- | ---: | --- |
+| paired train master | 8,000 pairs | `ultrafeedback_binarized/train_prefs`；`DPO-8K`使用全部 |
+| limited labeled view | 1,000 pairs | 上述8,000的确定性前缀子集；DPO-1K、SSPO与两个动态PE共享 |
+| unpaired train | 7,000 singles | `ultrachat_200k/train_sft`；SSPO与两个动态PE共享source IDs |
+| paired validation | 1,000 pairs | `ultrafeedback_binarized/test_prefs`；五方法共同checkpoint selection |
+| paired independent test | 1,000 pairs | `ultrafeedback_binarized/test_prefs`；selected-checkpoint-only test |
+
+`DPO-1K`与`DPO-8K`替代含混的`DPO-10`/`DPO-100`名称：1K是8K master pool的真子集，8K只是本轮高标签reference，不冒充UltraFeedback全量100%。数据仓库完整revision在获批后的服务器preflight解析为不可变full commit SHA并写入manifest；在此之前不从本地猜SHA，也不允许`main`漂移进入正式运行。
+
+### 2.1 模型、模板与依赖边界
+
+模型来源固定为ModelScope `Qwen/Qwen3-1.7B`，完整下载命令为：
+
+```bash
+modelscope download --model Qwen/Qwen3-1.7B --local_dir ./dir
+```
+
+命令中不得追加`README.md`，否则语义变成单文件下载。该模型是Qwen3经过post-training的对话模型，支持thinking/non-thinking切换；Round3统一使用原生Qwen3 chat template并显式设置`enable_thinking=false`，以匹配通用assistant回复并控制rollout长度。[Qwen3-1.7B model card](https://huggingface.co/Qwen/Qwen3-1.7B)。
+
+所有方法必须共享同一resolved model revision、模型文件SHA-256、tokenizer/chat-template文件SHA-256和special-token manifest。Qwen3要求`transformers>=4.51.0`，而SSPO仓库原始requirements固定到`transformers==4.46.1`；因此“采用GitHub SSPO实现”解释为移植并保持commit `2df9e9a`的loss/trainer语义，不能原封不动沿用其不兼容依赖栈。[Qwen config](https://huggingface.co/Qwen/Qwen3-1.7B/blob/main/config.json)，[SSPO requirements](https://github.com/MLAI-Yonsei/SSPO/blob/2df9e9a1d5fb9202a583cb66eb081e0cb60e873d/requirements.txt)。
+
+### 2.2 DPO精确定义
+
+对应用chat template后的response tokens定义序列总log-prob
 
 $$
-\text{instance-level pseudo target}
-\quad\longrightarrow\quad
-\text{population-level label-encoding structural supervision}.
+s_\theta(x,y)=\sum_{t\in\mathrm{response}}\log\pi_\theta(y_t\mid x,y_{<t}).
 $$
 
-需要精确说明的是：结构方法仍然使用每个样本的预测概率作为 soft responsibility，但不把这个概率或其阈值结果当作该样本应拟合的目标。训练约束来自按 responsibility 聚合后的类别编码。
-
-## 3. 研究路线：两轮实验与 rollout 消融
-
-两份初始材料描述的是同一研究方向的两个实验层次，但这里要明确区分：**第一轮 MVP 已完成静态 PE**，后续第二轮只补 rollout 相关实验，不再把静态 PE 当作新的主项。
-
-1. **第一轮：静态 PE MVP。** 在已有完整标签的 preference dataset 上人为隐藏大部分训练标签，只检验 label-encoding 结构监督本身是否提供有效信息。本轮不引入 on-policy 采样，只使用静态无标签回复对；它已经承担了“无 rollout 的结构监督能否工作”的验证。
-2. **第二轮主线：动态 SFT+rollout。** 在同一理论框架下，使用 SFT 参考回复与当前策略在线生成回复构造方向未知候选对，并按同样的 PE 规则计算群体级编码与联合损失；这回答“rollout 带来的动态候选信息是否提供额外增益”。
-3. **第二轮消融：rollout-only。** 进一步去掉 SFT 参考回复，只保留 rollout 生成的候选回复，用来检验 SFT 参考锚点是否必要。该消融用于回答“PE 是否必须依赖 SFT+rollout，而不是纯 rollout”。
-
-这种并置式设计保留了 rollout 相关的动态信息，同时明确把静态 PE 视为已完成的 MVP 部分，避免把数据来源、采样策略和损失函数的变化混为一谈。
-
-## 4. 统一符号与偏好概率
-
-### 4.1 模型与隐式偏好得分
-
-以监督微调模型初始化待优化策略 $\pi_{\theta}$，并保留冻结的参考模型 $\pi_{\mathrm{ref}}$。对输入 $x$ 和回复 $y=(y_1,\ldots,y_T)$，序列对数概率为
+reference固定为与五方法共同初始化完全相同、从不更新的Qwen3-1.7B。对随机A/B位置和标签$z_i\in\{0,1\}$（$z_i=1$表示A更优），定义
 
 $$
-\log \pi_{\theta}(y\mid x)
+d_i^{\mathrm{DPO}}
 =
-\sum_{t=1}^{T}\log \pi_{\theta}(y_t\mid x,y_{<t}).
-$$
-
-定义相对参考模型的隐式偏好得分
-
-$$
-r_{\theta}(x,y)
-=
-\beta\left[
-\log\pi_{\theta}(y\mid x)
--
-\log\pi_{\mathrm{ref}}(y\mid x)
+\beta_{\mathrm{DPO}}
+\left[
+(s_\theta(x_i,y_{iA})-s_{\mathrm{ref}}(x_i,y_{iA}))
+-(s_\theta(x_i,y_{iB})-s_{\mathrm{ref}}(x_i,y_{iB}))
 \right],
+\qquad \beta_{\mathrm{DPO}}=0.1,
 $$
 
-其中 $\beta>0$ 控制偏好区分尺度与策略偏离参考模型的程度。
-
-对任意回复对 $(x_i,y_{i1},y_{i2})$，定义
-
 $$
-\Delta_i
+L_{\mathrm{DPO}}
 =
-r_{\theta}(x_i,y_{i1})-r_{\theta}(x_i,y_{i2}),
-\qquad
-p_i
-=
-\sigma(\Delta_i)
-=
-P_{\theta}(y_{i1}\succ y_{i2}\mid x_i).
-$$
-
-对应的二维预测编码为
-
-$$
-\mathbf q_i
-=
-\begin{bmatrix}
-p_i\\
-1-p_i
-\end{bmatrix}.
-$$
-
-### 4.2 数据划分与静态候选对
-
-第一轮 MVP 已完成静态 PE；合并后的主实验这里只把它作为已验证的基线，并从带有真实方向的 preference dataset 构造
-
-$$
-D=D_L\cup D_U\cup D_{\mathrm{test}},
-$$
-
-其中：
-
-- $D_L$ 保留少量真实偏好方向，用于 DPO 锚定；
-- $D_U$ 在静态 PE 主线中只暴露已有回复对，不生成新回复；它提供 label-encoding 所需的静态候选对；
-- $D_{\mathrm{test}}$ 的真实方向仅用于最终评价。
-
-初始建议比例为 $10\%:80\%:10\%$，但它是首轮实验提案而不是理论常数。划分时必须防止 prompt 或近重复样本跨集合泄漏；隐藏标签后还应随机化回复位置，避免原数据的 chosen/rejected 排列泄漏方向。
-
-真实偏好锚定损失写为
-
-$$
-L_{\mathrm{DPO}}(D_L)
-=
--\mathbb E_{(x,y^w,y^l)\sim D_L}
-\log\sigma\left[
-r_{\theta}(x,y^w)-r_{\theta}(x,y^l)
+\operatorname{mean}_i\left[
+-z_i\log\sigma(d_i^{\mathrm{DPO}})
+-(1-z_i)\log\sigma(-d_i^{\mathrm{DPO}})
 \right].
 $$
 
-## 5. Label-Encoding 结构监督
+DPO-1K、DPO-8K和两个动态PE方法的labeled分支都使用这一相同定义；不得把SSPO的reference-free SimPO labeled loss代入PE方法。
 
-将两个偏好方向的理想编码定义为
+### 2.3 PE精确定义
+
+对方向未知candidate pair使用reference-free、response-length-normalized得分
 
 $$
-\mathbf e_+
-=
-\begin{bmatrix}1\\0\end{bmatrix},
-\qquad
-\mathbf e_-
-=
-\begin{bmatrix}0\\1\end{bmatrix}.
+q_\theta(x,y)=\operatorname{mean\_response\_logp}_\theta(y\mid x),
 $$
 
-对无标签批次中的样本，以 $p_i$ 与 $1-p_i$ 作为属于两个方向的 soft responsibility，估计条件编码
+并固定margin-free概率
+
+$$
+p_i=\sigma\!\left(\beta_{\mathrm{PE}}[q_\theta(x_i,y_{iA})-q_\theta(x_i,y_{iB})]\right),
+\qquad \beta_{\mathrm{PE}}=10.
+$$
+
+令$\mathbf q_i=[p_i,1-p_i]^\top$、$\mathbf e_+=[1,0]^\top$、$\mathbf e_-=[0,1]^\top$，则
 
 $$
 \widehat{\mathbf e}_+
-=
-\frac{\sum_i p_i\mathbf q_i}{\sum_i p_i},
+=\frac{\sum_i p_i\mathbf q_i}{\sum_i p_i+\epsilon},
 \qquad
 \widehat{\mathbf e}_-
-=
-\frac{\sum_i(1-p_i)\mathbf q_i}{\sum_i(1-p_i)}.
+=\frac{\sum_i(1-p_i)\mathbf q_i}{\sum_i(1-p_i)+\epsilon},
+\qquad \epsilon=10^{-8},
 $$
 
-定义偏好编码结构损失
-
 $$
-L_{\mathrm{PE}}(D_U)
-=
-\frac{1}{2}
-\left(
-\left\|\widehat{\mathbf e}_+-\mathbf e_+\right\|_1
-+
-\left\|\widehat{\mathbf e}_--\mathbf e_-\right\|_1
+L_{PE}
+=\frac12\left(
+\lVert\widehat{\mathbf e}_+-\mathbf e_+\rVert_1
++\lVert\widehat{\mathbf e}_--\mathbf e_-\rVert_1
 \right).
 $$
 
-合并后的主线总目标为
+denominator不detach；$p_i$同时作为soft responsibility和编码分量，但不是instance-level target。$L_{PE}$必须在一次optimizer step完整的28个candidate pairs上精确计算，不能分别在物理microbatch计算后取平均。若执行使用多卡或顺序subbatch，必须通过两遍或代数等价方式得到同一个logical-population梯度。
+
+两个动态PE方法统一使用
 
 $$
-\boxed{
-L
+L_{\mathrm{joint}}
 =
-L_{\mathrm{DPO}}(D_L)
-+
-\lambda L_{\mathrm{PE}}(D_U)
-},
+\frac{L_{\mathrm{DPO}}+0.1L_{PE}}{1.1}.
 $$
 
-其中 $D_U$ 在第一轮 MVP 中表示已有无标签回复对；在第二轮中则分别表示 SFT+rollout 候选对与纯 rollout 候选对。$L_1$ 距离是初始方案，最终是否优于 $L_2$、KL 或其他结构距离需要由消融验证。
+### 2.4 共同优化与PE权重
 
-### 5.1 与伪目标方法的本质差异
+五个任务统一使用非量化LoRA，不使用QLoRA：
 
-硬伪标签会把
+| 项目 | Round3固定值 |
+| --- | --- |
+| LoRA | rank 8，alpha 16，dropout 0 |
+| target modules | `q_proj,k_proj,v_proj,o_proj,gate_proj,up_proj,down_proj`；排除embedding与`lm_head` |
+| optimizer | `adamw_torch`，weight decay 0，betas $(0.9,0.999)$，epsilon $10^{-8}$ |
+| scheduler | cosine，warmup ratio 0.1，max grad norm 1.0 |
+| learning rate | 五方法统一$10^{-5}$ |
+| precision | BF16 forward/autocast；`fp16=false`、`pure_bf16=false`，LoRA trainable weights与optimizer state保留FP32 |
 
-$$
-\widetilde z_i=\mathbb{1}[p_i>0.5]
-$$
+LoRA rank 8、all-linear target、$10^{-5}$、cosine、warmup 0.1与clip 1来自SSPO仓库设置；alpha 16、dropout 0和AdamW其余默认值来自其固定LLaMA-Factory/Transformers语义。五方法统一学习率是本项目在不做method-specific sweep时的公平性选择，不冒充SSPO论文对不同方法分别调参的原始方案。[SSPO config generator](https://github.com/MLAI-Yonsei/SSPO/blob/2df9e9a1d5fb9202a583cb66eb081e0cb60e873d/examples/train/make_yaml.py)。
 
-作为单个样本的目标；soft-target 方法仍会要求样本拟合某个连续目标。二者都可能把早期错误固化为 confirmation bias。
+两个动态PE方法固定§2.3的normalized $\lambda_{PE}=0.1$，有效权重约为$0.9091/0.0909$。该值是本项目预注册选择，不是SSPO、Qwen、UltraFeedback或UltraChat给出的参数；它与SSPO的scheduler decay $\lambda=0.001$是两个完全不同的量。
 
-本方法不声明“第 $i$ 个回复对一定属于哪一侧”，而是要求无标签回复对总体形成可分的两类偏好编码结构。它使用了个体预测来计算 responsibility，因此不是完全不依赖个体预测；更准确的说法是：**不信任个体预测足以成为监督目标，只把它用于构造群体级结构约束。**
+### 2.5 序列与rollout支持
 
-## 6. 合并式实验框架：第一轮静态 PE 已完成，第二轮聚焦 rollout
-
-### 6.1 对照组
-
-第一轮 MVP 已经包含 DPO-10%、Pseudo-target/SSPO 类基线、静态 PE 与 DPO-100% 等参照。第二轮**不重跑这些已有臂**，只新增两条 rollout 相关 PE 实验：
-
-1. **DPO + PE（SFT+rollout）**：对每个 SFT prompt 由当前策略在线生成 $y_j^o$，构造 $D_U(\theta)=\{(x_j,y_j^s,y_j^o)\}$，并在该动态候选集合上计算同样的 $L_{\mathrm{PE}}$。
-2. **DPO + PE（rollout-only）**：进一步去掉 $y_j^s$，只保留 rollout 生成的候选回复，用来检验 SFT 参考锚点是否必要。
-
-DPO-10%、DPO-100%、静态 PE 与 Pseudo-target/SSPO 等均作为第一轮冻结基线只读引用，不作为第二轮新任务。第二轮的目的不是再验证静态 PE 或重新建立上下界，而是把“rollout 是否提供关键增量”“SFT 参考是否必要”放在同一条主线里比较，并与第一轮结果分离存储、分离命名。
-
-第一轮可使用一个完整标注的 preference dataset，例如附件提出的 UltraFeedback。具体数据版本、过滤、划分和模型选择属于实验设计，必须在运行前固定。
-
-### 6.2 核心指标
-
-测试集偏好方向准确率为
+五方法统一使用：
 
 $$
-\operatorname{Acc}
+L_{\max}=2048,\qquad L_{\mathrm{prompt}}\leq1024,\qquad L_{\mathrm{completion}}\leq1024.
+$$
+
+`2048`是本项目为降低固定UltraFeedback chosen/rejected截断率所作的稳健性选择。当前官方UltraFeedback Binarized数据卡定义数据构造、字段和split，但不规定最大序列长度；SSPO仓库示例和Zephyr DPO recipe均使用1024，因此不能把本轮2048写成其官方设定。[UltraFeedback Binarized card](https://huggingface.co/datasets/HuggingFaceH4/ultrafeedback_binarized)，[Zephyr DPO recipe](https://github.com/huggingface/alignment-handbook/blob/main/recipes/zephyr-7b-beta/dpo/config_full.yaml)。
+
+固定chosen/rejected、SSPO single和UltraChat固定anchor均在应用同一chat template后遵守总长2048、prompt 1024、completion 1024的上限，loss只作用于response tokens。prompt超限时保留末端1024 tokens，completion超限时保留前端1024 tokens；两类截断必须分别计数。
+
+动态rollout不允许先超长生成再静默裁剪。生成前先把formatted prompt限制为1024，再设置
+
+$$
+\texttt{max\_new\_tokens}=\min\{1024,\,2048-L_{\mathrm{prompt}}\}.
+$$
+
+遇到EOS时自然结束；达到长度上限的回复仍可进入loss，但必须标记`finish_reason=length`。训练与selection分别汇总prompt truncation、completion cap-hit、EOS和实际response-token统计；长度上限相同不代表五方法token compute相同。
+
+## 3. 必须分别记录的两种SSPO
+
+### 3.1 共用符号
+
+定义
+
+$$
+D_L=\{(x^{(i)},y_w^{(i)},y_l^{(i)})\}_{i=1}^{n_L},
+\qquad
+D_U=\{(x_u^{(j)},y_u^{(j)})\}_{j=1}^{n_U}.
+$$
+
+SSPO使用reference-free、长度归一化的policy log-prob：
+
+$$
+q_\theta(x,y)=\operatorname{mean\_response\_logp}_\theta(y\mid x).
+$$
+
+$q_\theta$或由它缩放得到的$r_\theta$是单条response得分；$R_{D_L}$和$R_{D_U}$分别是labeled与unpaired数据上的平均risk，不能把risk和reward混称。
+
+### 3.2 `SSPO-paper-v3`：只作论文事实记录
+
+论文labeled risk为SimPO：
+
+$$
+R_{D_L}(f_\theta)
 =
-\frac{1}{|D_{\mathrm{test}}|}
-\sum_i
-\mathbb{1}\!\left[(p_i>0.5)=z_i\right].
+\frac{1}{n_L}\sum_i
+-\log\sigma\!\left(
+r_\theta(x^{(i)},y_w^{(i)})
+-r_\theta(x^{(i)},y_l^{(i)})
+-\Delta
+\right),
 $$
 
-概率质量使用 Brier score：
+其中$r_\theta=\beta q_\theta$。论文Algorithm 1每步分别抽取$B_L\subset D_L$和$B_U\subset D_U$，但没有规定固定的数字比例；因此Round3的`4+28`不是论文原始设定。[SSPO v3 Eq. (4)](https://arxiv.org/html/2511.00040v3#S3.E4)，[Algorithm 1](https://arxiv.org/html/2511.00040v3#A3.SS4)。
+
+论文v3对当前labeled winning/losing和unpaired rewards使用joint batch mean/std并做EMA；在标准化winning/losing rewards上分别做Gaussian KDE，通过prior-weighted Bayes risk选择threshold，再对threshold做EMA。unpaired response以
 
 $$
-\operatorname{Brier}
+\widetilde s_k=\mathbb I\{z_k>\widehat\delta_t\}
+$$
+
+得到hard pseudo-label，并计算
+
+$$
+R_{D_U}(f_\theta)
 =
-\frac{1}{|D_{\mathrm{test}}|}
-\sum_i(p_i-z_i)^2.
+\frac1{n_U}\sum_k
+\left[
+\widetilde s_kp_+[-\log\sigma(d_k)]
++(1-\widetilde s_k)p_-[-\log\sigma(-d_k)]
+\right],
 $$
 
-第一轮不需要用 AlpacaEval 取代上述机制指标。生成质量评估可以在核心机制成立后补充。
-
-### 6.3 成功、失败与决策标准
-
-- **最低有效性条件**：DPO + PE 在独立测试集上稳定优于 DPO-10%，说明无标签回复对提供了可利用信息。
-- **核心贡献条件**：DPO + PE 稳定优于公平调参的 Pseudo-target，说明群体结构监督比逐样本伪目标更可靠。
-- **上界参照**：与 DPO-100% 的差距用于判断尚有多少标签信息未被结构方法利用。
-- “稳定优于”不能由单次随机种子或单个切分决定；重复次数、不确定性和判断阈值应在实验设计中预先约定。
-- 若最低有效性条件不成立，应先研究 $L_{\mathrm{PE}}$ 在 preference space 中为何失效，而不是立即加入 on-policy。
-- 若仅优于 DPO-10% 而不优于 Pseudo-target，只能说明结构正则可能有帮助，不能支撑“优于 instance-level target”的核心论点。
-
-## 7. 第二阶段：动态 SFT 候选对扩展
-
-只有第一阶段支持核心命题后，才进入动态版本。给定少量真实偏好数据
+其中$d_k=z_k-\widehat\delta_t$。论文联合目标为
 
 $$
-D_P=\{(x_i,y_i^w,y_i^l)\}_{i=1}^{N_P}
-$$
-
-和监督微调数据
-
-$$
-D_S=\{(x_j,y_j^s)\}_{j=1}^{N_S},
-$$
-
-对每个 SFT prompt 使用当前策略在线生成
-
-$$
-y_j^o\sim\pi_{\theta}(\cdot\mid x_j),
-$$
-
-并构造方向未知的动态候选集合
-
-$$
-D_U(\theta)
+\mathcal L_t
 =
-\{(x_j,y_j^s,y_j^o)\}_{j=1}^{N_S}.
+\gamma_tR_{B_L}+(1-\gamma_t)R_{B_U},
+\qquad
+\gamma_t=\max\{\gamma_{\min},\gamma_0e^{-\lambda t}\}.
 $$
 
-$y_j^s$ 只是 SFT 参考回复，不能预设为 chosen；$y_j^o$ 也不能预设为 rejected。定义
+论文机制来源：[practical threshold](https://arxiv.org/html/2511.00040v3#S4.SS2)，[adaptive scheduler](https://arxiv.org/html/2511.00040v3#S4.SS3)。本轮不运行该paper-v3 profile，不能把它的KDE、Bayes threshold或threshold EMA混入实际SSPO臂。
+
+### 3.3 `SSPO-code-main@2df9e9a`：源码事实
+
+公开仓库commit `2df9e9a1d5fb9202a583cb66eb081e0cb60e873d`早于本地论文v3。仓库数据管线把labeled rows和unpaired rows合并shuffle，随机batch再由collator按`data_types`拆分；它不保证固定labeled/unpaired数量。[preprocessing](https://github.com/MLAI-Yonsei/SSPO/blob/2df9e9a1d5fb9202a583cb66eb081e0cb60e873d/preprocessing_data/preprocessing_ultrachat.py#L292-L343)，[collator](https://github.com/MLAI-Yonsei/SSPO/blob/2df9e9a1d5fb9202a583cb66eb081e0cb60e873d/src_sspo/llamafactory/data/collator.py#L184-L259)。
+
+源码default SimPO labeled risk为
 
 $$
-p_j
+R_{B_L}^{\mathrm{code}}
 =
-\sigma\left[
-r_{\theta}(x_j,y_j^s)-r_{\theta}(x_j,y_j^o)
-\right]
+\operatorname{mean}\left[
+-\log\sigma\bigl(\beta(q_w-q_l)-\Delta\bigr)
+\right].
 $$
 
-后，仍在批次层面估计“参考回复更受偏好”和“在线回复更受偏好”两类编码，并联合优化
+其unpaired路径与论文v3不同：
+
+1. 按chosen、rejected、unpaired调用顺序分别更新同一份running mean/variance，而非一次joint batch更新；
+2. 使用running variance开方，并把normalized values clamp到$[-5,5]$；
+3. threshold为当前normalized chosen values的最小值
 
 $$
-L
+\delta_{\mathrm{code}}=\min_i z_{w,i};
+$$
+
+4. 不使用KDE、Bayes grid search或threshold EMA；
+5. 对unpaired response定义
+
+$$
+d_k^{\mathrm{code}}
 =
-L_{\mathrm{DPO}}(D_P)
-+
-\lambda L_{\mathrm{PE}}(D_U(\theta)).
+\beta(z_{u,k}-\delta_{\mathrm{code}}),
 $$
 
-随着 $\theta$ 更新，在线回复、候选对分布、偏好概率和编码估计共同变化，从而形成
+并计算
 
 $$
-\text{在线生成}
-\rightarrow
-\text{候选对构造}
-\rightarrow
-\text{偏好编码估计}
-\rightarrow
-\text{联合更新}
+\ell_{U,k}^{\mathrm{code}}
+=
+\begin{cases}
+p_+[-\log\sigma(d_k^{\mathrm{code}})],&d_k^{\mathrm{code}}>0,\\
+p_-[-\log\sigma(-d_k^{\mathrm{code}})],&d_k^{\mathrm{code}}\leq0.
+\end{cases}
 $$
 
-的动态闭环。这里要检验的不是某个固定“第二阶段”本身，而是：在 rollout 引入后，SFT 参考锚点是否仍然提供额外信息，以及动态候选对是否优于静态候选对。
+最终目标仍为
 
-## 8. 关键假设与可证伪预测
+$$
+\mathcal L_t^{\mathrm{code}}
+=
+\gamma_tR_{B_L}^{\mathrm{code}}
++(1-\gamma_t)R_{B_U}^{\mathrm{code}}.
+$$
 
-| 编号 | 假设 | 可观察预测 | 反驳或削弱条件 |
+GitHub初始化与更新语义现明确冻结为：`reward_norm_momentum=0.95`、`running_mean=None`、`running_var=None`、`reward_clip_range=5.0`。第一次非空调用用该调用的`batch_mean`和`batch_var`直接初始化；`batch_var=var(unbiased=False)+1e-8`。随后按chosen→rejected→unpaired的调用顺序分别执行
+
+$$
+m\leftarrow0.95m+0.05m_B,
+\qquad
+v\leftarrow0.95v+0.05v_B,
+$$
+
+并以$\sqrt v$标准化、clamp到$[-5,5]$。scheduler使用trainer进入当前loss时的`state.global_step`，因此第一optimizer update前$t=0$、$\gamma_0=1$。不得用零初始化、预热batch、joint初始化、unbiased variance或不同调用顺序替换。源码事实见[trainer initialization](https://github.com/MLAI-Yonsei/SSPO/blob/2df9e9a1d5fb9202a583cb66eb081e0cb60e873d/src_sspo/llamafactory/train/dpo/trainer.py#L87-L103)与[trainer loss lines 183–261](https://github.com/MLAI-Yonsei/SSPO/blob/2df9e9a1d5fb9202a583cb66eb081e0cb60e873d/src_sspo/llamafactory/train/dpo/trainer.py#L183-L261)。仓库通用示例使用$\beta=10,\Delta=2,p_+=p_-=0.5,\gamma_0=1,\lambda=0.001$。
+
+## 4. Round3实际SSPO合同
+
+### 4.1 数据来源
+
+SSPO的$D_U$单位是单个prompt–response，不是方向未知response pair。Round3不再从本项目UltraFeedback pair中选择A/B，而是固定采用作者仓库相同的`HuggingFaceH4/ultrachat_200k` `train_sft`来源。GitHub预处理取每条记录的`prompt`及首条assistant content，形成独立unpaired response。
+
+正式数据合同仍须冻结dataset revision、split、canonical row schema、去重/交叉污染规则和确定性子集SHA-256。公开训练入口只能读取`sample_id,prompt,response`，不得包含任何伪造的chosen/rejected字段或方向标签。
+
+### 4.2 比例分层适配
+
+每个optimizer step固定使用
+
+$$
+4\ \text{labeled pairs}+28\ \text{unpaired singles}.
+$$
+
+一个labeled pair含两条response，一个unpaired record含一条，因此每步共有$2\times4+28=36$条response sequences参与loss。`4+28`是本项目固定的resource-scaled stratified sampler，不是论文或GitHub仓库的原始固定数字；在1,000/7,000规模下恰好产生250 steps。
+
+固定4个labeled winners确保每个step的min-chosen threshold有定义，并消除仓库随机小batch可能进入的no-labeled fallback。代价是该臂不能称作GitHub sampler原样复现。
+
+### 4.3 loss与scheduler
+
+实际SSPO严格使用§3.3的code loss：sequential running statistics、clamp、min-chosen threshold、prior-weighted$R_U$和curriculum scheduler。采用仓库示例的
+
+$$
+\beta=10,\quad \Delta=2,\quad p_+=p_-=0.5,
+$$
+
+以及GitHub规则中的
+
+$$
+\gamma_{\min}=\frac{n_L}{n_L+n_U},
+\qquad
+\gamma_t=\max\{\gamma_{\min},e^{-0.001t}\},
+\qquad t=\texttt{state.global_step},\ t_\text{first}=0.
+$$
+
+本轮固定$n_L=1{,}000,n_U=7{,}000$，因此$\gamma_{\min}=0.125$，不再是候选值。保持GitHub decay $0.001$与首步$t=0$；在250步短程中floor不会实际触发，这是忠实保留GitHub scheduler后可预期的行为，不得为了让unpaired权重更大而偷偷重标度decay。
+
+任何KDE、Bayes threshold、threshold EMA或joint reward-statistics替换都会产生另一个hybrid方法，不得仍命名为本profile。
+
+## 5. 五个训练任务与统一250-step合同
+
+| # | 方法 | train view | 每个optimizer step | epoch | steps | 一轮总暴露/生成 |
+| ---: | --- | --- | --- | ---: | ---: | --- |
+| 1 | DPO-1K | 1,000 paired preference pairs | 4 labeled pairs | 1 | 250 | 1,000 pairs |
+| 2 | SSPO code-loss | 同一1,000 labeled +7,000 UltraChat singles | 4 labeled pairs +28 singles | 1 | 250 | 1,000 pairs +7,000 singles |
+| 3 | DPO-8K | 8,000 paired master pool | 32 labeled pairs | 1 | 250 | 8,000 pairs |
+| 4 | DPO+PE-SFT+rollout | 同一1,000 labeled +7,000 UltraChat anchors/prompts | 4 labeled +28 candidate pairs | 1 | 250 | 生成7,000条rollout |
+| 5 | DPO+PE-rollout-only | 同一1,000 labeled +7,000 UltraChat prompts | 4 labeled +28 candidate pairs | 1 | 250 | 生成14,000条rollout |
+
+整数对齐为$1000/4=7000/28=8000/32=250$。五个任务共享模型初始化、同一1K labeled子集与同一顺序；DPO-8K使用包含该1K子集的完整master pool，因此只改变paired-label预算。SSPO与DPO-1K仍同时存在SimPO-vs-reference-DPO的labeled-objective差异，其总体差异不能只归因于unpaired分支。
+
+## 6. 共同checkpoint selection
+
+训练objective和checkpoint-selection objective必须分离。五个方法固定在step 25、50、75、100、125、150、175、200、225、250保存durable checkpoint并计算共同`eval_selection_loss`；step250与final是同一对象，不重复保存。
+
+五个方法统一在同一份冻结的1,000-pair labeled validation view上计算同一个`eval_selection_loss`：
+
+$$
+L_{\mathrm{eval\_select}}
+=\frac1N\sum_i\left[-z_i\log\sigma(d_i^{\mathrm{DPO}})-(1-z_i)\log\sigma(-d_i^{\mathrm{DPO}})\right],
+$$
+
+其中$d_i^{\mathrm{DPO}}$严格采用§2.2的冻结初始Qwen3-1.7B reference、response总log-prob和$\beta_{\mathrm{DPO}}=0.1$。所有方法共享相同pairs、A/B换位、截断、batch顺序和样本加权；该loss只用于选点，不把SSPO或PE的训练目标改写成DPO。
+
+`ultrafeedback_binarized/test_prefs`固定2,000条候选记录：先按namespace `round3-paired-validation-v3`的SHA-256排序选择1,000条validation，再从剩余记录按独立namespace `round3-paired-independent-test-v3`排序选择1,000条test，保证无交集。精确canonicalization、去重与A/B换位合同写在experiment v1.3。
+
+Round3不运行checkpoint级SSPO/PE objective diagnostic，也不运行dynamic rollout diagnostic panel。训练时仍记录loss components、$p$熵/极端比例、SSPO threshold/pseudo-positive rate和rollout长度等聚合telemetry，但这些不是eval、不参与选点。该删除使Round3除共同selection外只保留§7的独立1,000-pair final test。
+
+SSPO checkpoint仍必须显式序列化并恢复`running_mean`与`running_var`；共同selection evaluator只能读取policy/reference log-prob，不调用SSPO loss、不更新running state。selection前后state hash必须完全相同，missing state在checkpoint round-trip验收时fail closed。下一batch round-trip由同一checkpoint独立重载两次：running state、scheduler/global step精确一致，loss绝对差`<=1e-7`，trainable LoRA更新后的最大绝对差`<=1e-7`且最大相对差`<=1e-6`；超限按工程失败处理，不构成调整科学合同的理由。
+
+每个方法只在finite checkpoint中选择最低共同`eval_selection_loss`；排序键固定为原始未四舍五入的`(eval_selection_loss, step)`，因此loss完全相同时选择更早step。任一selection batch或aggregate出现NaN/Inf，该checkpoint无效但继续评价其他checkpoint；若某方法全部checkpoint均无效，则该方法记为工程失败且不进入test。训练loss或gradient非有限时立即终止该方法；禁止把非有限值替换为0、跳过后继续更新或用test补选checkpoint。诊断量非有限必须记录并判定对应诊断失败，但不能用另一个诊断量替代共同selection loss。
+
+## 7. Round3唯一final test与Round4延期登记
+
+Round3唯一final evaluation是独立1,000-pair fixed-pair test。每个方法只有按§6共同`eval_selection_loss`选出的一个checkpoint进入test；frozen base作为共同参照也在同一view上评分。Test直接评分冻结的有标签A/B preference pairs，不为动态方法再次生成rollout，也不参与checkpoint或超参选择。
+
+因此当前test没有`temperature`或其他generation sampling参数。“PE rollout与test rollout保持一致”不适用于本轮；需要一致的是两个动态PE训练的sampling合同。
+
+每个模型都必须在同一批1,000 pairs上同时输出两个score head，不能再让DPO臂只用reference-delta、SSPO/PE臂只用raw mean-logp后横向比较：
+
+$$
+p_i^{\mathrm{ref}}
+=\sigma\!\left(0.1[(s_\theta^A-s_{\mathrm{ref}}^A)-(s_\theta^B-s_{\mathrm{ref}}^B)]\right),
+$$
+
+$$
+p_i^{\mathrm{raw}}
+=\sigma\!\left(10[q_\theta(x_i,y_{iA})-q_\theta(x_i,y_{iB})]\right).
+$$
+
+每个head分别报告Accuracy、NLL、Brier、ECE、confidence distribution、$\sum_i p_i$、$\sum_i(1-p_i)$与坍缩诊断；恰好$p_i=0.5$的accuracy计0.5 credit。实现口径固定为：$p$与$c=\max(p,1-p)$都报告分位数`{.01,.05,.25,.50,.75,.95,.99}`；`near-zero/near-half/near-one`分别定义为$p\le.01$、$|p-.5|\le.01$、$p\ge.99$；confidence阈值固定为`{.6,.7,.9,.99}`；collapse diagnostics固定为$p\le.01$或$p\ge.99$的比例，以及A/B预测多数侧比例$\max\{P(p>.5),1-P(p>.5)\}$。这些只作预定义描述性诊断，不参与选点、排名或成功判定。跨方法比较只能在相同`score_type`内进行，不合成单一综合分数，也不使用test重选checkpoint、超参或方法。frozen base的reference-delta恒为0.5是定义上的基线事实，不作为失败。
+
+训练前base与DPO-1K不能只使用DPO reference-delta做before/after，因为当policy等于reference时该delta恒为0、概率恒为0.5。Round3的raw head因此同时承担base/DPO-1K辅助headroom：在同一冻结paired validation/test view上，对frozen base和selected DPO-1K使用
+
+$$
+p_i^{\mathrm{raw}}=\sigma\!\left(10[q_\theta(x_i,y_{iA})-q_\theta(x_i,y_{iB})]\right)
+$$
+
+计算相同口径的Accuracy/NLL/Brier/ECE。两个head都对所有方法报告并分别命名；辅助headroom不得用于重选checkpoint或超参。
+
+### 7.1 Round4生成式benchmark登记（本轮禁止执行）
+
+AlpacaEval 2.0 length-controlled win rate与MT-Bench平均分登记为Round4候选生成式benchmark。Round3不生成其prompts对应的模型回答，不安装或调用评测器，不申请、读取或使用judge API key，不发起OpenAI或其他外部裁判请求，也不运行本地替代judge。
+
+该登记仅保存后续研究意图，不是Round4设计批准或执行授权。Round4必须重新讨论并冻结：benchmark/version与数据revision、待评模型集合、prompt/chat template、generation参数、judge provider/model/snapshot、API可用性与费用上限、reference outputs、缓存/重试/失败策略、统计口径及与历史榜单的可比性。旧`gpt-4-1106-preview`或`gpt-4`配置不得在未核验可用性时被默认继承。
+
+### 7.2 Round5 PE-static消融登记（本轮禁止实现）
+
+`DPO+PE-static`登记到Round5消融候选。Round5必须单独回答第二条冻结candidate来自何处，并设置matched source/generator control；Round3不创建其数据view、配置、代码入口或运行目录。本登记不构成Round5设计批准。
+
+## 8. 可证伪预测与解释边界
+
+| 编号 | 预测 | 必须观察 | 削弱或反驳条件 |
 | --- | --- | --- | --- |
-| H1 | 少量真实偏好对足以锚定共享的偏好方向 | 第一轮静态 PE 的测试集 Acc 高于 DPO-10%，且 Brier 不恶化 | 多切分、多随机种子下无稳定提升 |
-| H2 | 群体级结构约束比逐样本伪目标更能抑制早期错误累积 | 第一轮静态 PE 优于公平实现的硬/软 Pseudo-target | Pseudo-target 持续持平或更优 |
-| H3 | rollout 引入后，SFT 参考锚点仍可能提供额外信息 | 第二轮 SFT+rollout 在受控增量实验中优于 rollout-only，并相对第一轮冻结基线有增量 | rollout-only 持平或更优，说明 SFT 锚点不必要 |
-| H4 | 第一轮静态 PE 与第二轮 rollout 实验可分离存储、独立复现 | 两轮实验目录、命令和产物彼此隔离，且 MVP 代码冻结不被改写 | 两轮结果混写、命令复用不独立或覆盖既有产物 |
+| S1 | code-loss threshold受每步4个winning rewards中的最小值控制 | min chosen、threshold、pseudo-positive rate | 实际threshold不等于源码定义 |
+| S2 | 固定4+28消除no-labeled fallback，但不能消除4-sample极值方差 | batch composition、fallback count、threshold variation | 任一步不是4+28或仍触发fallback |
+| S3 | labeled separation未建立时，不能把unpaired分支解释为可靠偏好监督 | labeled reward accuracy/separation、$R_L$、$R_U$ | 无labeled separation却宣称可靠pseudo signal |
+| S4 | 共同labeled DPO selection loss可公平选点，但不能替代独立test | best step/selection loss与selected-test metrics | 用train-objective或test重选checkpoint |
+| S5 | 两个rollout副本必须消费同一current-policy版本 | optimizer step、adapter hash、replica ACK | 任一副本使用旧adapter、跨step混合或缺失hash证据 |
 
-## 9. 与相关工作的暂定关系
+Round3是单模型、单种子的探索性比较，不能宣称统计显著性。置信度变尖而Accuracy不升、Brier恶化或预测坍缩，不支持结构监督有效。SFT+rollout与rollout-only的比较只解释为“固定历史单回复锚点 vs纯在线rollout”，不能外推为一般SFT语料收益。
 
-- LERM 的原始目标是 label-insufficient classification；本研究借鉴的是“从无标签样本总体预测估计类别编码”的结构，而不是把分类任务或原方法原封不动搬到 preference optimization。[LERM / arXiv:2406.02862](https://arxiv.org/abs/2406.02862)
-- 附件将 SSPO、CW-PO、Semi-DPO 和 RE-PO 列为 instance-level pseudo-label、weak-label 或 confidence 路线的近邻工作。这里暂时只把它们作为待对照对象；每项方法究竟监督什么、与本目标是否同构，仍需逐篇核验 `../../../相关工作/` 中的原文。
-- “尚无工作把 LERM 机制直接用于 LLM preference optimization”目前只能作为待系统检索的创新性假设，不能写成已经证明的 novelty claim。distribution-level regularization、class-prior matching、prototype learning 和熵/多样性正则都是必须继续排查的邻近方向。
+本轮不运行paper-v3与code-main直接对照，因此结果不能回答KDE是否优于min-chosen threshold。
 
-## 10. MVP 阶段与第二轮约束（v0.2 新增）
+## 9. 已固定、执行时解析与批准边界
 
-基于三轮 QA 讨论，以下约束已确认并预注册：
+已固定：
 
-### 10.1 数据与预处理
-- **数据集**：UltraFeedback（MVP 专注单一数据集）
-- **数据规模**：10k 子集（1k labeled : 8k unlabeled : 1k test）
-- **标签隐藏**：
-  - 随机交换回复位置，避免位置泄漏
-  - 确保同一 prompt 的不同回复对不跨集合
-  - 需要无监督 baseline（只用 $D_U$）验证标签隐藏有效性
+- 五任务研究问题骨架、ModelScope `Qwen/Qwen3-1.7B` Instruct共同初始化与native non-thinking template；
+- SSPO官方双源类型：UltraFeedback Binarized paired +UltraChat 200k unpaired；8K paired master、其内嵌1K limited view、7K singles、1K validation与1K test；
+- `DPO-1K`与`DPO-8K`命名及嵌套关系；PE-static移至Round5；
+- DPO与PE的完整数学定义、PE exact logical-population梯度和normalized $\lambda_{PE}=0.1$；
+- SSPO GitHub code-loss、running statistics初始化/更新、min-chosen threshold与$t=0$ scheduler语义；
+- 五方法全部1 epoch/250 optimizer steps，checkpoint steps固定25至250每25步一次，$\gamma_{\min}=0.125$；
+- 训练objective与selection objective分离；五方法共同使用冻结1,000-pair labeled DPO validation loss，Round3不运行checkpoint级SSPO/PE或dynamic diagnostic；
+- LoRA r8/alpha16/dropout0/all Qwen linears、非量化BF16 mixed precision、AdamW/cosine/warmup/clip与五方法统一lr $10^{-5}$；
+- 总序列2048、prompt/completion各1024上限及rollout截断审计；
+- non-thinking train rollout sampling与seed角色；
+- finite-only checkpoint selection、较早step tie-break、non-finite policy与SSPO checkpoint-state round-trip验收；
+- selected-checkpoint-only independent 1,000-pair fixed-pair test；所有模型同时报告reference-delta与raw mean-logp两种score head，并只在同head内比较；
+- AlpacaEval 2.0与MT-Bench只登记为Round4候选，Round3禁止生成、judge API调用和本地替代judge；
+- PE-static只登记为Round5消融候选，Round3禁止实现或运行；
+- Round3目标执行机器为当前3×RTX 4090服务器；五方法统一由GPU0单卡训练，两个动态方法训练时GPU1/2运行两份独立vLLM replica并由step/adapter hash/ACK屏障同步；静态方法不为占满GPU而改变训练语义；
+- 独立train/rollout环境、全部十个durable checkpoints保留、无自动pruner；formal前按strong-smoke实测尺寸计算projected peak，空闲空间不足两倍projected peak时fail closed且不删除Round2产物。
 
-### 10.2 模型与预实验
-- **模型**：Qwen2.5-4B-Instruct
-- **Headroom 预实验**：
-  - 用 1k 样本验证 DPO-100% 显著优于 SFT baseline
-  - 如果 headroom < 5%，换成 Qwen2.5-1.5B 或更难数据子集
+执行前解析：
 
-### 10.3 超参数策略
-- **固定**：$\beta = 0.1$（或 0.5，从文献常见值选择）
-- **搜索**：$\lambda \in [0.1, 0.3, 0.5, 1.0]$，在 validation set（从 $D_L$ 划出 10%）上选择
-- **$\lambda$ scheduler**（可选消融）：
-  - 主实验：Fixed-$\lambda$
-  - 如果时间允许：Warmup-$\lambda$（从 0 线性增长）和 Decay-$\lambda$（指数衰减）
-- **共享**：所有方法使用相同 lr, batch size, epochs
-- **预注册**：避免实验后调优
+- 两个dataset仓库的resolved full commit SHA、源parquet SHA-256、构造后manifest与交叉隔离审计；
+- ModelScope下载实际resolved revision与模型/tokenizer文件manifest；
+- Round3 experiment ID、服务器实测3×4090硬件证据、精确dependency lock、源码commit与projected storage peak。
 
-### 10.4 Baseline 设置
-- **第一轮冻结基线（只读引用，不重跑）**：DPO-10%、Pseudo-target/SSPO 类基线、静态 DPO+PE、DPO-100%
-- **第二轮新增实验**：DPO+PE（SFT+rollout）与 DPO+PE（rollout-only）
-
-### 10.5 成功标准
-- **第一轮 MVP**：静态 PE，3 个随机种子，统计显著性 p < 0.05
-- **第二轮 rollout 实验**：独立命名、独立存储、独立命令；不改写 MVP 代码，只复用公共模块并新增实现
-- **第一轮最低有效性**：DPO+PE 优于 DPO-10%
-- **第一轮核心贡献**：DPO+PE 优于 Pseudo-target
-- **第二轮核心比较**：SFT+rollout vs rollout-only；DPO-10%、DPO-100%、静态 PE 与 Pseudo-target/SSPO 等第一轮结果只作冻结基线，不重跑
-- **度量**：Acc 和 Brier 分别报告，差异 ≤1% 视为无实质差异
-
-### 10.6 撤退标准
-- **时间盒**：1-2 周诊断分析
-- **第一轮触发条件**：静态 DPO+PE 与 DPO-10% 无显著差异或更差（3 种子一致）
-- **第一轮撤退动作**：静态 PE 不成立时先暂停，不自动把 rollout 当作补救；第二轮只在第一轮结论清楚后单独推进
-
-### 10.7 `C_{\gamma}` 状态
-- **优先级**：第二优先级（仅在 MVP 核心机制成立后考虑）
-- **当前处理**：暂时从理论中移除，待核验后再加入
-
-## 11. 实现细节澄清（v0.2 新增）
-
-### 11.1 梯度路径
-- **第一轮静态 PE**：让梯度穿过 responsibility $p_i$（不使用 stop_gradient），作为已完成基线
-- **第二轮 rollout 实验**：沿用同样的责任定义，若训练出现数值不稳定或震荡，再对分母 $\sum_i p_i$ 使用 detach
-
-### 11.2 数值稳定性
-- **第一轮静态 PE**：随机采样 + 足够大的 batch size（128-256）
-- **第二轮 rollout 实验**：如果出现退化（$p_i$ 全部接近 0.5 或 1），考虑分层采样
-- **监控指标**：观测 $\sum_i p_i$ 和 $\sum_i (1-p_i)$ 的分布
-
-### 11.3 训练流程
-每个训练步：
-1. 从 $D_L$ 采样 batch，计算 $L_{\text{DPO}}$
-2. 从 $D_U$ 采样 batch，用**当前权重 $\theta$** 实时计算 $p_i$
-3. 估计 $\widehat{\mathbf{e}}_+, \widehat{\mathbf{e}}_-$，计算 $L_{\text{PE}}$
-4. 反向传播 $L = L_{\text{DPO}} + \lambda L_{\text{PE}}$
-
-Pseudo-target baseline 对齐此流程：每步实时计算 $p_i$ 并生成硬标签。
-
-## 12. 理论边界、风险与未决问题
-
-### 12.1 结构目标本身
-
-- $p_i$ 同时参与 responsibility 与 prediction encoding，梯度是否穿过 responsibility、是否需要 stop-gradient 尚未确定，必须做实现消融。
-- 当某一方向的责任质量 $\sum_i p_i$ 或 $\sum_i(1-p_i)$ 很小时，编码估计可能数值不稳定；是否加入 $\varepsilon$、跨批次统计或最小质量约束需要预先定义。
-- 一热理想编码隐含“偏好方向应高度可分”的假设；对于真实歧义或接近无差别的回复对，这可能造成过度自信。
-- 当前损失可能主要推动置信度变尖，而未必保证两类都有合理覆盖。必须同时观测方向质量、预测分布、熵、校准与坍缩，而不能只看训练损失。
-- mini-batch 条件编码是否能稳定代表总体结构，依赖批大小、采样方式和类别比例。
-
-### 12.2 数据与评估
-
-- 人为隐藏标签的 MVP 只证明“已存在的无标签偏好对”是否可用，不直接证明 SFT 单回复可以安全转化为动态候选对。
-- 标签隐藏必须真正隔离方向信息；回复位置、文件字段、缓存和预处理都可能泄漏 chosen/rejected。
-- Preference Acc/Brier 检验的是偏好判别机制，不等同于最终生成质量、帮助性或安全性。
-- Pseudo-target 基线必须共享相同初始化、标注预算、数据和计算预算，否则核心比较无效。
-
-### 12.3 模型与优化
-
-- 隐式偏好得分可能受回复长度、tokenization 和参考模型选择影响。
-- $\beta$、$\lambda$、标签比例、无标签批次大小和更新频率可能改变结论，需要区分核心结论与特定超参数现象。
-- 少量标签若无法提供可靠方向锚点，结构责任会继承系统性偏差。
-
-### 12.4 尚待完成
-
-- 核验相关工作的精确监督单位和 novelty 边界。
-- 明确 `C_{\gamma}` 的定义及其是否能诊断结构学习。
-- 把本理论转化为 `../exp/current_experiment.md` 中预注册的首轮 MVP 设计。
-- 在代码实现前确定梯度路径、数值稳定策略和防标签泄漏检查。
+用户已明确确认补回DPO/PE合同、共同checkpoint-selection与双score-head final test口径、保持GitHub SSPO初始化并指定3×4090目标服务器；又明确采用SSPO官方双源类型和本项目缩放数量、从Round3删除PE-static并登记到Round5。2026-08-25用户进一步明确表示“我认可了”并询问进入code，因此`r3-theory-v0.8`与`round3-exp-v1.3`的内容批准已记录。2026-08-26用户又明确要求“round2先不管了，直接开始round3”，据此Round2以无实时结果证据的行政性`NO_CONCLUSION`完成交接，唯一活动阶段切换为Round3 `CODE_IMPLEMENTATION`。该指令只解锁本地静态代码实现，不授权触碰潜在仍运行的Round2任务，也不解锁Round3上传或服务器执行。

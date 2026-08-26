@@ -1,0 +1,7 @@
+_base_: base.yaml
+
+method:
+  name: "dpo_1k"
+  labeled_pairs: 4
+  unpaired_units: 0
+

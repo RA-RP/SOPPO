@@ -1,0 +1,19 @@
+# Candidate Qwen3-1.7B train/data stack. The authorized server writes the exact
+# successful pip freeze outside Git after tests and production-path strong smoke.
+torch>=2.7,<2.8
+transformers>=4.53,<4.54
+peft>=0.15,<0.17
+accelerate>=1.8,<2
+safetensors>=0.5,<0.6
+tokenizers>=0.21,<0.22
+sentencepiece>=0.2,<0.3
+numpy>=1.26,<2
+pyyaml>=6,<7
+jsonlines>=4,<5
+datasets>=2.21,<3
+huggingface_hub>=0.33,<1
+modelscope>=1.27,<2
+tqdm>=4.67,<5
+packaging>=24,<26
+pytest>=8,<9
+

@@ -6,6 +6,8 @@
 - `useful_experiments.md`：经复盘后认为对论文有用的历史实验设计。
 - `experiment_archive.md`：所有版本的实验设计，按 cycle/experiment ID 追加。
 
+`CODE_HANDOFF.md`当前是Round3代码交接草案，并在后半保留Round2历史交接。Round3已进入`CODE_IMPLEMENTATION`，但交接尚未通过用户审阅，不能上传或执行。
+
 ## 阶段门禁
 
 - 只有 `../theory/current_theory.md` 已记录用户明确通过后，才能进入 `EXP_DISCUSSION`。在此之前，现有设计只能作为锁定的预讨论草案。
