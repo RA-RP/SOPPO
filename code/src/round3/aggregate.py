@@ -7,6 +7,8 @@ import json
 from pathlib import Path
 from typing import Any, Dict
 
+from .data import VIEW_COUNTS
+
 
 METHODS = (
     "frozen_base",
@@ -29,7 +31,10 @@ def _load(root: Path, method: str) -> Dict[str, Any]:
         raise ValueError(f"Malformed Round3 final metrics for {method}")
     if set(value.get("heads", {})) != set(HEADS):
         raise ValueError(f"Round3 final metrics are missing score heads for {method}")
-    if any(int(value["heads"][head].get("samples", 0)) != 1000 for head in HEADS):
+    if any(
+        int(value["heads"][head].get("samples", 0)) != VIEW_COUNTS["test"]
+        for head in HEADS
+    ):
         raise ValueError(f"Round3 final metrics sample count mismatch for {method}")
     return value
 
@@ -64,7 +69,7 @@ def main() -> None:
         }
     aggregate = {
         "schema_version": "round3.aggregate.v1",
-        "experiment_contract": "round3-exp-v1.3",
+        "experiment_contract": "round3-exp-v1.4",
         "single_seed_exploratory": True,
         "methods": {method: results[method] for method in METHODS},
         "same_head_only_comparisons": comparisons,
@@ -80,4 +85,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-

@@ -55,9 +55,9 @@ def validate_round3_config(config: Dict[str, Any]) -> None:
     ):
         if not isinstance(config.get(section), dict):
             raise ValueError(f"Round3 config missing mapping: {section}")
-    if config["contract"].get("theory") != "r3-theory-v0.8":
+    if config["contract"].get("theory") != "r3-theory-v0.9":
         raise ValueError("Wrong Round3 theory contract")
-    if config["contract"].get("experiment") != "round3-exp-v1.3":
+    if config["contract"].get("experiment") != "round3-exp-v1.4":
         raise ValueError("Wrong Round3 experiment contract")
     _full_sha(config["provenance"].get("git_commit"), "provenance.git_commit")
     experiment_id = config["provenance"].get("experiment_id")
@@ -117,7 +117,7 @@ def validate_round3_config(config: Dict[str, Any]) -> None:
         "paired_limited": 1000,
         "unpaired_train": 7000,
         "validation": 1000,
-        "test": 1000,
+        "test": 997,
     }
     for key, expected in counts.items():
         if int(data.get(key, -1)) != expected:
@@ -238,7 +238,7 @@ def validate_round3_config(config: Dict[str, Any]) -> None:
         int(evaluation.get("selection_pairs", 0)) != 1000
         or int(evaluation.get("selection_batch_size", 0)) != 4
         or float(evaluation.get("selection_dpo_beta", -1)) != 0.1
-        or int(evaluation.get("test_pairs", 0)) != 1000
+        or int(evaluation.get("test_pairs", 0)) != 997
         or int(evaluation.get("ece_bins", 0)) != 15
     ):
         raise ValueError("Round3 selection/final-test contract mismatch")

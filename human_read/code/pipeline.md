@@ -1,6 +1,6 @@
 # SOPPO Round2：3×4090 TP 训练与在线 rollout 流水线
 
-> 历史状态说明：本文只解释Round2旧流水线，不是当前入口。当前唯一活动阶段是Round3 `CODE_IMPLEMENTATION`，实现总览见`../../code/CODE_OVERVIEW.md`。Round2于2026-08-26仅作行政性`NO_CONCLUSION`归档，潜在服务器任务是否仍运行未知；本文的2026-08-24快照不能当作实时证据。现场只读核验仍见[`ROUND2_LIVE_HANDOFF.md`](ROUND2_LIVE_HANDOFF.md)。
+> 历史状态说明：本文只解释Round2旧流水线，不是当前入口。当前唯一活动阶段是Round3 `CODE_IMPLEMENTATION`，实现总览见`../../code/CODE_OVERVIEW.md`。2026-08-26后续只读核验确认Round2第一方法在step590停止、第二方法未启动，仍因缺少final evaluation而保持`NO_CONCLUSION`；本文的2026-08-24性能快照不能当作实时证据。现场勘误见[`ROUND2_LIVE_HANDOFF.md`](ROUND2_LIVE_HANDOFF.md)。
 
 ## 1. 三张卡怎么分
 
@@ -142,10 +142,10 @@ resolved config 是运行时唯一真源。它冻结：
 
 ## 8. 当前限制
 
-- 已在真实3×4090上完成两条production-path strong smoke，并进入formal；当前运行仍须完成第二条方法、独立test与aggregate，不能提前宣称结果完成。
+- 已在真实3×4090上完成过两条production-path strong smoke；正式链后来在第一方法step590停止，第二方法、独立test与aggregate均未运行，不能宣称结果完成。
 - 每步在线rollout与adapter发布显著增加wall time和存储。第一条方法step35现场最近20步均值为总286.1秒，其中vLLM generate165.4秒、训练及其他120.7秒；第二条每prompt生成2条，不能用第一条耗时直接替代。
 - 当前保留每步 LoRA adapter，但不保存 optimizer/scheduler state，因此不能声称 bit-exact 热恢复。
-- `best.json`只是指向validation-selected step目录。共享盘余量不足以安全保留1,714个目录；用户要求外置keep-20策略，但其进程状态必须在服务器核验，仓库代码尚未内置自动prune。
+- `best.json`只是指向validation-selected step目录。后续只读核验确认第一方法保留20个checkpoint、best指向step480，两个外置keep-20 pruner均已不运行；仓库代码没有内置自动prune。
 - 当前Round2任务图不计算第一轮的`C_epsilon`轨迹；训练中的`epsilon=1e-8`是PE数值稳定项。
-- QLoRA-4B、Qwen3-1.7B、双vLLM replica和单卡bf16均为未批准性能候选，不能热修改正在运行的共享checkout或只应用到第二条方法。
+- QLoRA-4B和单卡4B bf16仍是未批准候选；Qwen3-1.7B与双vLLM replica仅在独立Round3合同中获本地实现授权，不能回写到Round2或未经交接直接在服务器执行。
 - 第一轮 A800 DDP pipeline 与第二轮 4090 TP pipeline 是两个独立入口；本实现不会让第一轮任务自动迁移或重跑。

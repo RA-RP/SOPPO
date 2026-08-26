@@ -1,11 +1,11 @@
 # Round3 3×4090服务器执行手册（当前未授权）
 
-本手册对应`r3-theory-v0.8`、`round3-exp-v1.3`和五方法Round3实现。它只定义代码交接后的执行顺序；当前仍处于`CODE_IMPLEMENTATION`，未经用户明确确认代码版本并另行授权`SERVER_EXECUTION`，不得运行下列入口、上传代码或改动服务器checkout。
+本手册对应`r3-theory-v0.9`、`round3-exp-v1.4`和五方法Round3方案B实现。它只定义代码交接后的执行顺序；当前仍处于`CODE_IMPLEMENTATION`，未经用户明确确认修订代码版本并另行授权`SERVER_EXECUTION`，不得运行下列入口、上传代码或改动服务器checkout。
 
 ## 0. 必须先满足的门禁
 
 1. 用户已审阅当前未提交diff，并明确确认可形成服务器候选commit；commit/push不得由实现者自行执行。
-2. 先按`machine/standalone_3x4090_server.md`和`human_read/code/ROUND2_LIVE_HANDOFF.md`只读核验潜在Round2现场：其`status_all.sh`、`controller.json`、两个`state.json`、metrics尾部、`nvidia-smi`、`df`和keep-20 pruner状态。不得猜experiment ID、commit、step或PID，不得为Round3停止Round2。
+2. 已有2026-08-26只读证据确认Round2在step590停止、step580/589/590保留、第二方法未启动、两个pruner未运行；每次新的服务器动作前仍须重新核验controller/process/GPU/df，且不得删除Round2产物。
 3. 用户基于实时证据明确授权Round3服务器阶段；三个GPU必须空闲，磁盘门禁必须通过。不得修改潜在运行中的Round2 checkout，不得删除任何Round2或Round3 checkpoint。
 4. 服务器`<SERVER_BASE>/SOPPO`是唯一Git仓库并处于用户确认的clean commit；环境、cache、data、models、runs、exports和platform logs全部位于仓库外。
 
@@ -27,14 +27,14 @@ export SOPPO_ROUND3_ULTRACHAT_REF='<explicit-refs/heads/...-or-refs/tags/...>'
 从clean、reviewed Round3 checkout执行：
 
 ```bash
-bash code/scripts/round3/00_setup_envs.sh
+bash code/scripts/round3/00_setup_envs.sh  # 仅环境不存在时；支持Conda或Python 3.10 venv
 bash code/scripts/round3/00_resolve_revisions.sh
 bash code/scripts/round3/00_download_model.sh
 bash code/scripts/round3/00_prepare_data.sh
 bash code/scripts/round3/03_strong_smoke.sh
 ```
 
-revision脚本只对运行者显式给出的公开Git ref执行`ls-remote`，把ModelScope模型和两个Hugging Face数据集解析为40字符commit SHA并原子保存到本experiment；后续下载、数据与resolved config只读该证据。数据脚本记录源parquet SHA-256并生成8K/1K/7K/1K/1K视图；不覆盖既有目录。strong smoke依次完成配置解析、server-only CPU tests、输入/GPU前置门禁、reference cache、五方法各一个完整logical step、真实checkpoint重载和空间投影。任一步失败立即停止，不自动删目录或改参重试。
+已存在并通过`pip check`的两个Python 3.10 venv不得为形式统一而重装；此时跳过`00_setup_envs.sh`并重新记录版本/freeze即可。revision脚本只对运行者显式给出的公开Git ref执行`ls-remote`并原子保存full SHA；已有experiment的`source_revisions.json`不得覆盖或重跑。数据脚本使用新的`dual_source_v2`，确定性隔离冻结revision的畸形行，生成8K/1K/7K/1K/997 views、17,997行source manifest和12,197行无原始文本malformed audit；失败遗留空v1目录保留，不删除。strong smoke依次完成配置解析、server-only CPU tests、输入/GPU前置门禁、v2 reference cache、五方法各一个完整logical step、真实checkpoint重载和空间投影。任一步失败立即停止，不自动删目录或改参重试。
 
 strong smoke后只读检查至少包括：
 
@@ -54,7 +54,7 @@ strong smoke后只读检查至少包括：
 bash code/scripts/round3/start_all.sh
 ```
 
-控制器依次完成formal config解析、一次性`free >= 2 × projected_peak`门禁、五方法串行训练、共同1K validation选点、独立1K双head final test和sample-free聚合。方法顺序固定为：
+控制器依次完成formal config解析、一次性`free >= 2 × projected_peak`门禁、五方法串行训练、共同1K validation选点、独立997-pair双head final test和sample-free聚合。方法顺序固定为：
 
 1. `dpo_1k`
 2. `sspo_code_loss_stratified_ultrachat_2df9e9a`

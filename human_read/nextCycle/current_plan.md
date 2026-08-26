@@ -6,8 +6,8 @@
 - 目标：同一研究cycle中已批准的Round3
 - 规划版本：`round3-activation-plan-v0.1`
 - 用户批准：2026-08-26明确指示“Round2先不管了，直接开始Round3”
-- Round3理论：`../theory/current_theory.md` `r3-theory-v0.8`，已批准
-- Round3实验：`../exp/current_experiment.md` `round3-exp-v1.3`，已批准
+- Round3理论：`../theory/current_theory.md` `r3-theory-v0.9`，方案B勘误已批准
+- Round3实验：`../exp/current_experiment.md` `round3-exp-v1.4`，方案B勘误已批准
 - 当前唯一活动阶段：Round3 `CODE_IMPLEMENTATION`
 
 ## 1. 证据摘要与理论处理
@@ -18,7 +18,7 @@ Round2没有可核验的最终白名单证据，因此对Round2保持`NO_CONCLUS
 
 1. 在本地仅编辑`code/`下的Round3源码、配置、服务器脚本与`CODE_OVERVIEW.md`；
 2. 实现五方法：DPO-1K、GitHub-loss SSPO、DPO-8K、DPO+PE-SFT+rollout、DPO+PE-rollout-only；
-3. 实现SSPO双源数据manifest、共同1K validation selection、独立1K双head final test、SSPO state round-trip和双vLLM replica ACK协议；
+3. 实现SSPO双源数据manifest、共同1K validation selection、独立997-pair双head final test、SSPO state round-trip和双vLLM replica ACK协议；
 4. 实现独立Round3 train/rollout环境文本与3×4090服务器入口，但在代码交接获用户确认前不上传、不创建服务器环境、不测试或运行；
 5. 完成实现映射和静态文本复核后，向用户交接diff及服务器待验收清单。
 

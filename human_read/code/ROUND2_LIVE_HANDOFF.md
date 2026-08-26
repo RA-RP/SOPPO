@@ -1,6 +1,6 @@
 # Round2 现场交接：3×4090 正式运行、资源瓶颈与待决策项
 
-> 2026-08-26状态注：本文是带时间的Round2现场快照，不再表示全局当前阶段。用户已要求以行政性`NO_CONCLUSION`结束等待并进入Round3 `CODE_IMPLEMENTATION`；Round2服务器是否仍运行、experiment ID、commit、step、PID、磁盘和pruner状态依然未知。任何服务器动作前仍须按本文只读命令重新核验，不得因阶段切换停止任务、修改checkout或删除checkpoint。
+> 2026-08-26状态勘误：本文主体是2026-08-24的历史现场快照，不再表示全局当前阶段。后续只读核验确认正式experiment为`exp-20260824-05-round2-tp2`，controller已在step590以exit 143停止；第一方法保留step580/589/590且best指向step480，第二方法未启动，两个keep-20 pruner PID均为陈旧记录且进程不存在。旧Round2环境已被外部操作删除，但run/checkpoint仍保留。不得删除或覆盖这些产物；任何新执行仍须重新核验实时GPU、磁盘、进程与checkout。
 
 > 快照日期：2026-08-24（Asia/Shanghai）。这是服务器现场与讨论结论的交接记录，不替代服务器实时状态。新 agent 必须先运行只读查询，不得根据本文猜测当前 step、PID、experiment ID 或 Git commit。
 

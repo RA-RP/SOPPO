@@ -34,11 +34,11 @@
 
 - 当前 cycle：`cycle-20260818-01`
 - 唯一活动阶段：Round3 `CODE_IMPLEMENTATION`
-- 当前入口：`code/CODE_OVERVIEW.md`、`human_read/theory/current_theory.md` `r3-theory-v0.8`与`human_read/exp/current_experiment.md` `round3-exp-v1.3`
-- 已完成门禁：Round3理论与实验内容已于2026-08-25获用户明确整体批准；2026-08-26用户明确要求不再等待Round2证据并直接开始Round3，`result/current_result.md`已按`NO_CONCLUSION`归档，`nextCycle/current_plan.md`已记录并通过Round3激活规划。
-- Round2边界：服务器真实experiment ID、commit、step、PID、final metrics与keep-20 pruner状态均未知。阶段切换不代表该任务已停止；未运行停止、服务器checkout修改或checkpoint删除。后续Round3服务器阶段必须先只读核验GPU、磁盘与Round2潜在运行。
-- 当前本地代码基线：HEAD `d338eb5bedef16d83a42790c3faa97f8f404315b`；worktree含用户既有及当前文档变更，未经用户审阅不commit/push。
-- Round3实现合同：Qwen3-1.7B非量化LoRA；SSPO双源类型缩放数据；DPO-1K、GitHub-loss SSPO、DPO-8K与两个动态PE共五方法；全部1 epoch/250 steps；共同1K validation selection与独立1K双head final test；GPU0单卡训练，动态方法在GPU1/2使用双vLLM replica与step/adapter hash/ACK屏障。PE-static与AlpacaEval/MT-Bench不在Round3实现范围。
+- 当前入口：`code/CODE_OVERVIEW.md`、`human_read/theory/current_theory.md` `r3-theory-v0.9`与`human_read/exp/current_experiment.md` `round3-exp-v1.4`
+- 已完成门禁：原`r3-theory-v0.8`/`round3-exp-v1.3`于2026-08-25获批；冻结数据审计发现`test_prefs`只有1,997个有效pair后，用户于2026-08-26明确批准方案B及本地修改，形成`r3-theory-v0.9`/`round3-exp-v1.4`并保持`CODE_IMPLEMENTATION`。
+- Round2边界：2026-08-26只读核验确认`exp-20260824-05-round2-tp2`已在step590停止，step580/589/590保留，第二方法未启动，两个pruner均未运行。旧环境已删除但runs/checkpoints仍在；不得删除或覆盖。
+- 当前本地代码基线：HEAD `33f0eea632ba93ede616650484f72c57f35742c6`；当前方案B修订为未提交worktree，未经用户审阅不commit/push。
+- Round3实现合同：Qwen3-1.7B非量化LoRA；SSPO双源类型缩放数据；DPO-1K、GitHub-loss SSPO、DPO-8K与两个动态PE共五方法；全部1 epoch/250 steps；共同1K validation selection与独立997-pair双head final test；GPU0单卡训练，动态方法在GPU1/2使用双vLLM replica与step/adapter hash/ACK屏障。PE-static与AlpacaEval/MT-Bench不在Round3实现范围。
 - 锁定阶段：Round3 `SERVER_EXECUTION`、`RESULT_HANDOFF`与`NEXTCYCLE_DISCUSSION`。
 - 下一阶段条件：Round3实现、`CODE_OVERVIEW.md`追踪映射与本地静态复核完成，且用户明确确认当前代码版本可提交服务器。
 

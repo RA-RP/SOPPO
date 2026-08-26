@@ -10,6 +10,7 @@ import argparse
 import hashlib
 import json
 import unicodedata
+from collections import Counter
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Sequence, Tuple
 
@@ -31,8 +32,42 @@ VIEW_COUNTS = {
     "paired_train_1k": 1000,
     "unpaired_train_7k": 7000,
     "validation": 1000,
-    "test": 1000,
+    "test": 997,
 }
+SOURCE_MANIFEST_ROWS = sum(VIEW_COUNTS.values())
+SOURCE_AUDIT_CONTRACT = {
+    "train_prefs": {
+        "dataset_id": "HuggingFaceH4/ultrafeedback_binarized",
+        "split": "train_prefs",
+        "source_rows": 61135,
+        "valid_rows": 61054,
+        "malformed_rows": 81,
+        "malformed_reason_counts": {"empty_chosen": 20, "empty_rejected": 72},
+    },
+    "test_prefs": {
+        "dataset_id": "HuggingFaceH4/ultrafeedback_binarized",
+        "split": "test_prefs",
+        "source_rows": 2000,
+        "valid_rows": 1997,
+        "malformed_rows": 3,
+        "malformed_reason_counts": {"empty_rejected": 3},
+    },
+    "train_sft": {
+        "dataset_id": "HuggingFaceH4/ultrachat_200k",
+        "split": "train_sft",
+        "source_rows": 207865,
+        "valid_rows": 195752,
+        "malformed_rows": 12113,
+        "malformed_reason_counts": {
+            "empty_prompt": 1,
+            "empty_response": 21,
+            "message0_prompt_mismatch": 12092,
+        },
+    },
+}
+MALFORMED_SOURCE_ROWS = sum(
+    int(value["malformed_rows"]) for value in SOURCE_AUDIT_CONTRACT.values()
+)
 TOKENIZATION_CONTRACT = "round3_qwen3_native_nonthinking_prompt1024_completion1024_v1"
 
 
@@ -62,13 +97,20 @@ def deterministic_key(namespace: str, sample_id: str) -> str:
     return sha256_text(f"{namespace}\0{SEED}\0{sample_id}")
 
 
-def _message(messages: Any, role: str) -> str:
+def _canonical_text_or_none(value: Any) -> str | None:
+    try:
+        return canonical_text(value)
+    except ValueError:
+        return None
+
+
+def _message_or_none(messages: Any, role: str) -> str | None:
     if not isinstance(messages, list):
-        raise ValueError("Conversation field must be a message list")
+        return None
     for item in messages:
         if isinstance(item, dict) and item.get("role") == role:
-            return canonical_text(item.get("content"))
-    raise ValueError(f"Conversation is missing a non-empty {role} message")
+            return _canonical_text_or_none(item.get("content"))
+    return None
 
 
 def _source_id(
@@ -87,16 +129,51 @@ def _source_id(
     }
 
 
-def _paired_record(repo: str, revision: str, split: str, row: Dict[str, Any], index: int) -> Dict[str, Any]:
+def _malformed_source_row(
+    repo: str,
+    revision: str,
+    split: str,
+    row: Dict[str, Any],
+    index: int,
+    prompt: str | None,
+    reason_codes: Sequence[str],
+) -> Dict[str, Any]:
+    source_id, sample_id, source_provenance = _source_id(repo, revision, split, row, index)
+    return {
+        "sample_id": sample_id,
+        "source_id": source_id,
+        "canonical_prompt_sha256": sha256_text(prompt) if prompt is not None else None,
+        "reason_codes": sorted(set(reason_codes)),
+        **source_provenance,
+    }
+
+
+def _paired_record(
+    repo: str, revision: str, split: str, row: Dict[str, Any], index: int
+) -> Tuple[Dict[str, Any] | None, Dict[str, Any] | None]:
+    reasons = []
     if row.get("prompt_id") is None or not str(row.get("prompt_id")):
-        raise ValueError("UltraFeedback row is missing prompt_id")
-    prompt = canonical_text(row.get("prompt"))
-    chosen_prompt = _message(row.get("chosen"), "user")
-    rejected_prompt = _message(row.get("rejected"), "user")
-    if chosen_prompt != prompt or rejected_prompt != prompt:
-        raise ValueError("UltraFeedback chosen/rejected user content differs from prompt")
-    chosen = _message(row.get("chosen"), "assistant")
-    rejected = _message(row.get("rejected"), "assistant")
+        reasons.append("missing_prompt_id")
+    prompt = _canonical_text_or_none(row.get("prompt"))
+    if prompt is None:
+        reasons.append("empty_prompt")
+    chosen_prompt = _message_or_none(row.get("chosen"), "user")
+    rejected_prompt = _message_or_none(row.get("rejected"), "user")
+    if prompt is None or chosen_prompt != prompt:
+        reasons.append("chosen_user_prompt_mismatch")
+    if prompt is None or rejected_prompt != prompt:
+        reasons.append("rejected_user_prompt_mismatch")
+    chosen = _message_or_none(row.get("chosen"), "assistant")
+    rejected = _message_or_none(row.get("rejected"), "assistant")
+    if chosen is None:
+        reasons.append("empty_chosen")
+    if rejected is None:
+        reasons.append("empty_rejected")
+    if reasons:
+        return None, _malformed_source_row(
+            repo, revision, split, row, index, prompt, reasons
+        )
+    assert prompt is not None and chosen is not None and rejected is not None
     source_id, sample_id, source_provenance = _source_id(repo, revision, split, row, index)
     swap = int(deterministic_key(NAMESPACES["ab_swap"], sample_id)[-1], 16) & 1
     if swap:
@@ -112,20 +189,36 @@ def _paired_record(repo: str, revision: str, split: str, row: Dict[str, Any], in
         "response_a": response_a,
         "response_b": response_b,
         "label": label,
-    }
+    }, None
 
 
-def _unpaired_record(repo: str, revision: str, split: str, row: Dict[str, Any], index: int) -> Dict[str, Any]:
-    prompt = canonical_text(row.get("prompt"))
+def _unpaired_record(
+    repo: str, revision: str, split: str, row: Dict[str, Any], index: int
+) -> Tuple[Dict[str, Any] | None, Dict[str, Any] | None]:
+    reasons = []
+    prompt = _canonical_text_or_none(row.get("prompt"))
+    if prompt is None:
+        reasons.append("empty_prompt")
     messages = row.get("messages")
     if not isinstance(messages, list) or len(messages) < 2:
-        raise ValueError("UltraChat train_sft row requires at least user/assistant messages")
-    if messages[0].get("role") != "user" or messages[1].get("role") != "assistant":
-        raise ValueError("UltraChat messages[0:2] must be user then assistant")
-    message_prompt = canonical_text(messages[0].get("content"))
-    if message_prompt != prompt:
-        raise ValueError("UltraChat messages[0] differs from prompt")
-    response = canonical_text(messages[1].get("content"))
+        reasons.append("bad_message_structure")
+        first, second = {}, {}
+    else:
+        first = messages[0] if isinstance(messages[0], dict) else {}
+        second = messages[1] if isinstance(messages[1], dict) else {}
+        if first.get("role") != "user" or second.get("role") != "assistant":
+            reasons.append("bad_first_two_roles")
+    message_prompt = _canonical_text_or_none(first.get("content"))
+    if prompt is None or message_prompt != prompt:
+        reasons.append("message0_prompt_mismatch")
+    response = _canonical_text_or_none(second.get("content"))
+    if response is None:
+        reasons.append("empty_response")
+    if reasons:
+        return None, _malformed_source_row(
+            repo, revision, split, row, index, prompt, reasons
+        )
+    assert prompt is not None and response is not None
     source_id, sample_id, source_provenance = _source_id(repo, revision, split, row, index)
     return {
         "sample_id": sample_id,
@@ -134,7 +227,47 @@ def _unpaired_record(repo: str, revision: str, split: str, row: Dict[str, Any], 
         "canonical_prompt_sha256": sha256_text(prompt),
         "prompt": prompt,
         "response": response,
+    }, None
+
+
+def _partition_records(
+    results: Iterable[Tuple[Dict[str, Any] | None, Dict[str, Any] | None]],
+) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
+    valid, malformed = [], []
+    for record, audit in results:
+        if (record is None) == (audit is None):
+            raise RuntimeError("Round3 source validation must return exactly one outcome")
+        if record is not None:
+            valid.append(record)
+        else:
+            assert audit is not None
+            malformed.append(audit)
+    return valid, malformed
+
+
+def _source_audit_summary(
+    key: str,
+    source_rows: int,
+    valid: Sequence[Dict[str, Any]],
+    malformed: Sequence[Dict[str, Any]],
+) -> Dict[str, Any]:
+    expected = SOURCE_AUDIT_CONTRACT[key]
+    reason_counts = Counter(
+        reason for row in malformed for reason in row["reason_codes"]
+    )
+    summary = {
+        "dataset_id": expected["dataset_id"],
+        "split": expected["split"],
+        "source_rows": int(source_rows),
+        "valid_rows": len(valid),
+        "malformed_rows": len(malformed),
+        "malformed_reason_counts": dict(sorted(reason_counts.items())),
     }
+    if summary != expected:
+        raise ValueError(
+            f"Round3 frozen-source audit mismatch for {key}: {summary} != {expected}"
+        )
+    return summary
 
 
 def _deduplicate(records: Iterable[Dict[str, Any]]) -> Tuple[List[Dict[str, Any]], int]:
@@ -234,33 +367,60 @@ def prepare_round3_data(
     test_prefs = load_dataset(uf_repo, split="test_prefs", revision=ultrafeedback_revision)
     train_sft = load_dataset(uc_repo, split="train_sft", revision=ultrachat_revision)
 
-    paired_test, test_duplicates = _deduplicate(
+    paired_test_valid, test_malformed = _partition_records(
         _paired_record(uf_repo, ultrafeedback_revision, "test_prefs", dict(row), index)
         for index, row in enumerate(test_prefs)
     )
-    validation = _select(paired_test, NAMESPACES["validation"], 1000)
+    test_audit = _source_audit_summary(
+        "test_prefs", len(test_prefs), paired_test_valid, test_malformed
+    )
+    paired_test, test_duplicates = _deduplicate(paired_test_valid)
+    validation = _select(
+        paired_test, NAMESPACES["validation"], VIEW_COUNTS["validation"]
+    )
     validation_prompts = {row["canonical_prompt_sha256"] for row in validation}
     test_candidates = [row for row in paired_test if row["canonical_prompt_sha256"] not in validation_prompts]
-    independent_test = _select(test_candidates, NAMESPACES["test"], 1000)
+    if len(test_candidates) != VIEW_COUNTS["test"]:
+        raise ValueError(
+            "Round3 frozen test_prefs must leave exactly 997 valid independent-test pairs "
+            f"after the 1,000-pair validation view, got {len(test_candidates)}"
+        )
+    independent_test = _select(test_candidates, NAMESPACES["test"], VIEW_COUNTS["test"])
     heldout_prompts = validation_prompts | {row["canonical_prompt_sha256"] for row in independent_test}
 
-    paired_train_all, train_duplicates = _deduplicate(
+    paired_train_valid, train_malformed = _partition_records(
         _paired_record(uf_repo, ultrafeedback_revision, "train_prefs", dict(row), index)
         for index, row in enumerate(train_prefs)
     )
+    train_audit = _source_audit_summary(
+        "train_prefs", len(train_prefs), paired_train_valid, train_malformed
+    )
+    paired_train_all, train_duplicates = _deduplicate(paired_train_valid)
     train_overlap_removed = sum(row["canonical_prompt_sha256"] in heldout_prompts for row in paired_train_all)
     paired_train_candidates = [row for row in paired_train_all if row["canonical_prompt_sha256"] not in heldout_prompts]
-    paired_master = _select(paired_train_candidates, NAMESPACES["paired_train"], 8000)
-    paired_limited = paired_master[:1000]
+    paired_master = _select(
+        paired_train_candidates,
+        NAMESPACES["paired_train"],
+        VIEW_COUNTS["paired_train_8k"],
+    )
+    paired_limited = paired_master[: VIEW_COUNTS["paired_train_1k"]]
     all_paired_prompts = heldout_prompts | {row["canonical_prompt_sha256"] for row in paired_master}
 
-    unpaired_all, unpaired_duplicates = _deduplicate(
+    unpaired_valid, unpaired_malformed = _partition_records(
         _unpaired_record(uc_repo, ultrachat_revision, "train_sft", dict(row), index)
         for index, row in enumerate(train_sft)
     )
+    unpaired_audit = _source_audit_summary(
+        "train_sft", len(train_sft), unpaired_valid, unpaired_malformed
+    )
+    unpaired_all, unpaired_duplicates = _deduplicate(unpaired_valid)
     unpaired_overlap_removed = sum(row["canonical_prompt_sha256"] in all_paired_prompts for row in unpaired_all)
     unpaired_candidates = [row for row in unpaired_all if row["canonical_prompt_sha256"] not in all_paired_prompts]
-    unpaired = _select(unpaired_candidates, NAMESPACES["unpaired_train"], 7000)
+    unpaired = _select(
+        unpaired_candidates,
+        NAMESPACES["unpaired_train"],
+        VIEW_COUNTS["unpaired_train_7k"],
+    )
 
     _write_jsonl(output_dir / "paired_train_8k.jsonl", (_public_pair(row, True) for row in paired_master))
     _write_jsonl(output_dir / "paired_train_1k.jsonl", (_public_pair(row, True) for row in paired_limited))
@@ -269,11 +429,15 @@ def prepare_round3_data(
         ({key: row[key] for key in ("sample_id", "prompt", "response")} for row in unpaired),
     )
     _write_jsonl(output_dir / "validation_1k.jsonl", (_public_pair(row, True) for row in validation))
-    _write_jsonl(output_dir / "test_1k.public.jsonl", (_public_pair(row, False) for row in independent_test))
+    _write_jsonl(output_dir / "test.public.jsonl", (_public_pair(row, False) for row in independent_test))
     _write_jsonl(
-        output_dir / "test_1k.private_labels.jsonl",
+        output_dir / "test.private_labels.jsonl",
         ({"sample_id": row["sample_id"], "label": int(row["label"])} for row in independent_test),
     )
+    malformed_rows = train_malformed + test_malformed + unpaired_malformed
+    if len(malformed_rows) != MALFORMED_SOURCE_ROWS:
+        raise ValueError("Round3 malformed-source audit row count changed")
+    _write_jsonl(output_dir / "malformed_source_rows.jsonl", malformed_rows)
     _write_jsonl(
         output_dir / "source_manifest.jsonl",
         (
@@ -299,7 +463,7 @@ def prepare_round3_data(
     for path in sorted(output_dir.glob("*.jsonl")):
         files[path.name] = {"rows": sum(1 for _ in path.open(encoding="utf-8")), "bytes": path.stat().st_size, "sha256": file_sha256(path)}
     manifest = {
-        "schema_version": "round3.data_manifest.v1",
+        "schema_version": "round3.data_manifest.v2",
         "seed": SEED,
         "namespaces": NAMESPACES,
         "repositories": {
@@ -314,6 +478,11 @@ def prepare_round3_data(
         "source_parquet_files": {
             "ultrafeedback": _snapshot_parquet_manifest(uf_snapshot),
             "ultrachat": _snapshot_parquet_manifest(uc_snapshot),
+        },
+        "source_audit": {
+            "train_prefs": train_audit,
+            "test_prefs": test_audit,
+            "train_sft": unpaired_audit,
         },
         "exclusions": {
             "test_duplicate_prompts": test_duplicates,

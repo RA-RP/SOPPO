@@ -3,13 +3,13 @@
 ## 0. 版本、状态与历史边界
 
 - Cycle：`cycle-20260818-01` / Round3
-- 设计版本：`round3-exp-v1.3`
-- 对应理论：`../theory/current_theory.md` `r3-theory-v0.8`
-- 理论状态：用户已于2026-08-25明确整体通过`r3-theory-v0.8`内容
-- 实验状态：用户已于2026-08-25明确整体通过`round3-exp-v1.3`内容，并于2026-08-26明确要求直接开始Round3
+- 设计版本：`round3-exp-v1.4`
+- 对应理论：`../theory/current_theory.md` `r3-theory-v0.9`
+- 理论状态：用户已于2026-08-26明确批准方案B数据勘误`r3-theory-v0.9`
+- 实验状态：用户已于2026-08-26明确批准方案B：1,000 validation +997 independent test、确定性畸形审计、不从train补样
 - 当前唯一活动阶段：Round3 `CODE_IMPLEMENTATION`
 - 代码与执行：本地静态代码实现已解锁；代码交接、上传与服务器执行未解锁
-- Round2边界：仅作行政性`NO_CONCLUSION`归档；其实时服务器状态仍未知，不停止潜在任务、不修改服务器checkout、不删除checkpoint
+- Round2边界：服务器只读证据确认其controller已在step590停止，step580/589/590仍保留且pruner未运行；不得删除其run/checkpoint
 - 历史设计：Round1/Round2完整基线位于Git commit `d338eb5bedef16d83a42790c3faa97f8f404315b`；设计演化见`experiment_archive.md`，当前执行证据见`../code/ROUND2_LIVE_HANDOFF.md`
 
 本文件只表达当前Round3设计；早期版本的完整内容只从历史索引读取，不在本文混排。
@@ -54,7 +54,7 @@ DPO-1K
 | limited labeled view | 1,000 pairs | 8K master的嵌套子集；DPO-1K、SSPO、两个动态PE |
 | unpaired train | 7,000 singles | `ultrachat_200k/train_sft`；SSPO、两个动态PE |
 | paired validation | 1,000 pairs | `ultrafeedback_binarized/test_prefs`；五方法共同checkpoint selection |
-| paired independent test | 1,000 pairs | `ultrafeedback_binarized/test_prefs`；selected-checkpoint-only test |
+| paired independent test | 997 pairs | `ultrafeedback_binarized/test_prefs`；1,000 validation之后的全部有效剩余；selected-checkpoint-only test |
 
 这是SSPO双源合同的缩小版，不是GitHub 10%数量原样复现。`DPO-8K`使用额外paired feedback作为高标签reference，不称为全数据100% oracle；`DPO-1K`/`DPO-8K`名称替代旧`DPO-10`/`DPO-100`。
 
@@ -70,7 +70,9 @@ sample_id = SHA256(dataset_id || "\0" || resolved_revision || "\0" ||
                    split || "\0" || prompt_id || "\0" || source_row_index)
 ```
 
-UltraFeedback row必须包含`prompt,prompt_id,chosen,rejected`；chosen/rejected的首条user content经canonicalization后必须等于`prompt`，各自必须存在一条非空assistant response，否则preflight失败。UltraChat row必须满足`messages[0].role=user,messages[1].role=assistant`，且`messages[0].content`与`prompt` canonical相等；与SSPO GitHub预处理一致，只取`messages[1].content`作为公开single response，后续轮次不进入Round3。
+UltraFeedback row必须包含`prompt,prompt_id,chosen,rejected`；chosen/rejected的首条user content经canonicalization后必须等于`prompt`，各自必须存在一条非空assistant response。UltraChat row必须满足`messages[0].role=user,messages[1].role=assistant`，且`messages[0].content`与`prompt` canonical相等；与SSPO GitHub预处理一致，只取`messages[1].content`作为公开single response，后续轮次不进入Round3。不满足这些条件的source row不得进入选择池，也不得因单行畸形终止整个冻结数据构造；它必须进入无原始文本的server-only `malformed_source_rows.jsonl`，记录dataset/split、source index、sample/source ID、可用prompt hash与排序后的reason codes。
+
+本版绑定服务器已解析的冻结revision事实：`train_prefs`为61,135 source/81 malformed/61,054 valid，reason counts为empty-chosen 20、empty-rejected 72；`test_prefs`为2,000/3/1,997，三个畸形source indices固定为374、595、1846且均为empty-rejected；`train_sft`为207,865/12,113/195,752，reason counts为empty-prompt 1、message0-prompt-mismatch 12,092、empty-response 21。reason counts允许同一畸形行贡献多个reason。上述source totals、valid/malformed totals或reason aggregate任一变化都fail closed。
 
 Round3只做上述exact canonical-prompt隔离，不宣称语义近重复过滤；这是已知局限。任何canonical prompt在train master、unpaired、validation、test之间重复都必须在确定性选择前排除并计数。
 
@@ -84,14 +86,14 @@ SHA256(UTF8(namespace || "\0" || seed || "\0" || sample_id)), seed=42
 
 按以下顺序冻结，不能调换后接受另一批样本：
 
-1. 对`test_prefs`用`round3-paired-validation-v3`排序选1,000 validation；从剩余记录以`round3-paired-independent-test-v3`排序选1,000 test。两者canonical prompt必须唯一且无交集，不足数量则fail closed。
+1. 先隔离`test_prefs`的3条畸形行；对剩余1,997个有效pair用`round3-paired-validation-v3`排序选1,000 validation，再对剩余记录以`round3-paired-independent-test-v3`排序并要求恰好得到997 test。两者canonical prompt必须唯一且无交集；不得动态接受其他数量，也不得从`train_prefs`补3条。
 2. 从`train_prefs`排除validation/test prompt后，用`round3-uf-paired-train-8k-v1`排序选8,000 master pairs；排序前8,000构成DPO-8K，前1,000同时构成所有limited-label方法共享的DPO-1K view。
 3. 从`ultrachat_200k/train_sft`排除全部paired master/validation/test prompt并按canonical prompt去重，再用`round3-uc-unpaired-train-7k-v1`排序选7,000 singles。SSPO与两个动态PE共享这7,000 source IDs和顺序。
 4. paired A/B位置使用独立`round3-paired-ab-swap-v1` hash最低bit确定；A为chosen时$z=1$，A为rejected时$z=0$。同一pair在所有方法、selection和test中的A/B位置一致。
 
 动态candidate pair的A/B位置使用`SHA256("round3-dynamic-ab-swap-v1\0" || method_id || "\0" || optimizer_step || "\0" || sample_id)`摘要最低bit确定。该换位只消除固定位置约定，不能改变28-pair population、跨副本路由或复用生成文本。
 
-最终输出8K master、1K limited、7K unpaired、1K validation和1K test五份canonical manifests及各自SHA-256，并输出排除/去重计数。入口只能读取其所需公开字段；test label不进入训练或selection入口。
+最终在仓库外`dual_source_v2`输出8K master、1K limited、7K unpaired、1K validation和997 test五份canonical views及各自SHA-256，并输出17,997行view source manifest、12,197行malformed-source audit、source aggregate和排除/去重计数。失败遗留的空`dual_source_v1`保留作证据，不删除、不覆盖。test使用不嵌入数量的`test.public.jsonl`与`test.private_labels.jsonl`；公开入口不能读取private labels，test label不进入训练或selection入口。
 
 ## 3. 模型、序列与统一优化合同
 
@@ -321,9 +323,9 @@ SSPO checkpoint必须显式保存并恢复`running_mean`、`running_var`、`glob
 2. save/load round-trip恢复相同`running_mean/running_var/global_step`，并使同一下一训练batch的loss、state与参数更新在预注册数值容差内相同：两次从同一checkpoint独立重载并执行同一batch，running state、scheduler step与global step必须精确一致，loss绝对差不超过`1e-7`，全部trainable LoRA参数更新后的最大绝对差不超过`1e-7`且最大相对差不超过`1e-6`；任一超限即strong-smoke失败，不得放宽后继续formal；
 3. 人工移除SSPO running state时fail closed，不得静默重置。
 
-## 7. Round3唯一final test：独立1,000 pairs
+## 7. Round3唯一final test：独立997 pairs
 
-每个方法只有最低共同`eval_selection_loss`选出的一个checkpoint进入独立1,000-pair test；frozen base也作为共同参照进入同一test。Test不默认使用step250，也不得用于重选checkpoint、超参或方法。
+每个方法只有最低共同`eval_selection_loss`选出的一个checkpoint进入独立997-pair test；frozen base也作为共同参照进入同一test。Test不默认使用step250，也不得用于重选checkpoint、超参或方法。
 
 Test直接评分冻结的有标签A/B preference pairs，不为动态方法再次生成rollout，因此没有test temperature或sampling配置。所有selected checkpoints与frozen base都必须在同一批pairs上同时计算两个score head：
 
@@ -441,7 +443,7 @@ AlpacaEval 2.0 length-controlled win rate与MT-Bench平均分登记为Round4候�
 - source/派生view/reference-cache/checkpoint manifest与SHA-256；
 - 每个checkpoint的共同`eval_selection_loss`与训练telemetry摘要；
 - 五个best-checkpoint指针；
-- 五份selected-checkpoint及frozen-base的独立1,000-pair双head聚合指标；
+- 五份selected-checkpoint及frozen-base的独立997-pair双head聚合指标；
 - SSPO state/checkpoint完整性摘要、dynamic rollout/replica synchronization聚合摘要；
 - 失败、终止或无结论证据。
 
@@ -458,4 +460,4 @@ AlpacaEval 2.0 length-controlled win rate与MT-Bench平均分登记为Round4候�
 3. Round3 experiment ID、当时3×RTX 4090实时硬件/磁盘证据、精确dependency locks、最终源码commit和数值验收摘要；
 4. strong-smoke实测的峰值显存、checkpoint/cache/staging尺寸、`projected_peak_bytes`及两倍空闲空间门禁结果。
 
-Round4和Round5登记项不阻塞Round3设计闭合，也不能在Round3代码阶段顺手实现。用户已明确确认补回DPO/PE定义、共同checkpoint selection与双score-head final test、保持GitHub SSPO初始设置、采用SSPO官方双源类型和本项目缩放数量，指定3×4090目标服务器，把AlpacaEval/MT-Bench延后到Round4，并把PE-static延后到Round5。2026-08-25用户进一步明确表示“我认可了”并询问进入code，因此`r3-theory-v0.8`与`round3-exp-v1.3`的内容批准已记录。2026-08-26用户明确要求“round2先不管了，直接开始round3”，据此Round2以行政性`NO_CONCLUSION`完成交接，当前唯一活动阶段切换为Round3 `CODE_IMPLEMENTATION`。本地静态实现已解锁；代码交接、上传和服务器执行仍需后续明确批准。
+Round4和Round5登记项不阻塞Round3设计闭合，也不能在Round3代码阶段顺手实现。2026-08-25批准的`r3-theory-v0.8`/`round3-exp-v1.3`假设`test_prefs`有2,000个有效pair；服务器冻结数据审计使该假设fail closed。2026-08-26用户明确表示“我也赞成B，请你本地修改”，据此批准`r3-theory-v0.9`/`round3-exp-v1.4`的数据勘误：保持1,000 validation、使用997 independent test、确定性隔离并审计畸形行、保持split级独立性且不从train补样。当前仍为`CODE_IMPLEMENTATION`；修订代码交接、commit/push、上传、strong smoke与formal均需后续明确批准。

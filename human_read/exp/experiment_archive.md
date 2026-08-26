@@ -266,3 +266,13 @@
 - 本地证据：全部Round3 shell通过`bash -n`，`git diff --check`通过，可执行位与路径/旧接口/禁止项静态搜索通过；按工作区门禁没有运行Python import/compile、pytest、数据、模型或GPU任务。
 - 服务器待证：候选依赖组合、Git ref解析与下载API、数据schema/数量、Qwen特殊token、vLLM per-request SamplingParams/LoRA卸载、实际显存、SSPO真实next-batch round-trip与两倍空间门禁。
 - Round2边界：没有获取或声称新的实时状态，没有停止任务、修改服务器checkout或删除checkpoint。
+
+### `cycle-20260818-01` / Round3方案B数据勘误 / 设计版本 v1.4 — 2026-08-26
+
+- 状态：用户明确批准方案B及本地修改；对应理论`r3-theory-v0.9`，唯一活动阶段保持`CODE_IMPLEMENTATION`。
+- 服务器事实：冻结UltraFeedback revision的`test_prefs`为2,000 source rows，其中indices 374/595/1846的rejected为空，只有1,997个有效pair；原v1.3的1K+1K构造正确地fail closed。
+- 修订：保持SHA namespace选出的1,000 validation；剩余997个有效pair全部进入independent test并精确断言，不动态接受其他N、不从train补3条。所有模型仍在同一test上计算两个预注册score heads并报告`N=997`。
+- source审计：冻结`train_prefs`/`test_prefs`/`train_sft`的source、valid、malformed与reason aggregates；畸形行选择前隔离，server-only audit记录source index/ID/reason而不保存重复原始文本。view source manifest固定17,997行，malformed audit固定12,197行。
+- 路径：新合同使用仓库外`dual_source_v2`与对应v2 reference cache；失败遗留空`dual_source_v1`保留，不删除、不覆盖。
+- 不变项：五方法、训练数据与steps、共同1K validation selection、checkpoint、SSPO/PE定义、GPU角色、评价head、Round4/5延期和两倍磁盘门禁均不变。
+- 执行边界：服务器当时只有环境/revision/model证据，data v1为空、strong smoke未开始；服务器GLM留下的单文件dirty补丁不构成实现。修订必须从本地完成并重新交接，未经批准不commit/push或上传执行。

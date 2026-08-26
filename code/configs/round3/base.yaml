@@ -1,6 +1,6 @@
 contract:
-  theory: "r3-theory-v0.8"
-  experiment: "round3-exp-v1.3"
+  theory: "r3-theory-v0.9"
+  experiment: "round3-exp-v1.4"
 
 provenance:
   git_commit: null
@@ -50,7 +50,7 @@ data:
   paired_limited: 1000
   unpaired_train: 7000
   validation: 1000
-  test: 1000
+  test: 997
   seed: 42
 
 training:
@@ -106,7 +106,7 @@ evaluation:
   selection_pairs: 1000
   selection_batch_size: 4
   selection_dpo_beta: 0.1
-  test_pairs: 1000
+  test_pairs: 997
   ece_bins: 15
   test_heads:
     - "dpo_reference_delta_beta_0.1"

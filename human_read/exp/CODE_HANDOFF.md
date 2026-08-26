@@ -1,19 +1,19 @@
 # 当前代码交接候选：Round3五方法实现
 
-> 当前唯一活动阶段为Round3 `CODE_IMPLEMENTATION`。本文件记录`r3-theory-v0.8`/`round3-exp-v1.3`到`../../code/`的实现交接候选；本地静态复核已完成但尚未获得用户代码审阅，因此不授权commit/push、上传、服务器tests/smoke或formal execution。
+> 当前唯一活动阶段为Round3 `CODE_IMPLEMENTATION`。本文件记录已批准方案B的`r3-theory-v0.9`/`round3-exp-v1.4`到`../../code/`的实现交接候选；本地修订尚未获得用户代码交接确认，因此不授权commit/push、上传、服务器tests/smoke或formal execution。
 
 ## Round3交接状态
 
-- 代码候选：`round3-code-candidate-v0.2`，未提交worktree
-- 获批实验：`round3-exp-v1.3`，用户于2026-08-25明确整体通过
-- 阶段激活：用户于2026-08-26明确要求直接开始Round3
+- 代码候选：`round3-code-candidate-v0.3`，基于clean HEAD `33f0eea`的未提交worktree
+- 获批实验：`round3-exp-v1.4`，用户于2026-08-26明确批准方案B及本地修改
+- 方案B：冻结`test_prefs`选择前隔离3条empty-rejected；保持1K validation，剩余997条全部作为独立test，不从train补样
 - 当前实现：隔离的`src/round3/`、`configs/round3/`、`scripts/round3/`；完整映射见`../../code/CODE_OVERVIEW.md`
-- 覆盖范围：双源确定性数据、Qwen3-1.7B非量化LoRA、DPO-1K、GitHub-loss SSPO、DPO-8K、两个双vLLM动态PE、完整训练态checkpoint、共同1K selection与独立1K双head final test
+- 覆盖范围：双源确定性数据与malformed audit、Qwen3-1.7B非量化LoRA、DPO-1K、GitHub-loss SSPO、DPO-8K、两个双vLLM动态PE、完整训练态checkpoint、共同1K selection与独立997-pair双head final test
 - 明确排除：PE-static、AlpacaEval/MT-Bench、QLoRA、自动pruner及Round1/Round2观测入口
-- 当前验证：全部Round3 shell已通过`bash -n`，`git diff --check`、可执行位与路径/旧接口/禁止项静态搜索均通过；没有import/pytest/data/model/GPU证据
+- 当前验证：v0.3全部Round3 shell的`bash -n`、`git diff --check`、可执行位及旧路径/数量残留静态搜索通过；按门禁未在本地运行Python。旧v0.2在服务器的两个环境、CUDA、`pip check`、5项合同测试、三项revision和model manifest已通过，其data v1因3条empty-rejected正确失败、strong smoke未开始；这些不能冒充新增malformed/997/v2合同的server证据
 - 待交接：用户审阅当前未提交diff；审阅通过后才能由用户决定是否形成clean commit并另行申请服务器tests/strong smoke授权
-- 运行标识：Round3 experiment ID、最终commit、dataset/model revision和physical subbatch都尚未解析，不得从文档猜测
-- Round2保护：行政性`NO_CONCLUSION`不等于服务器任务结束；本交接不授权停止Round2、修改其checkout或删除checkpoint
+- 运行证据：服务器既有attempt为`round3-20260826-01`且只含source revision证据；最终修订commit、physical subbatch和storage projection仍未解析。服务器checkout留有GLM未完成的单文件dirty diff，不能作为候选实现或进入clean门禁
+- Round2保护：只读证据确认其正式任务在step590停止且step580/589/590保留，两个pruner未运行；本交接不授权删除或覆盖其checkpoint
 
 本候选还补齐了实现者不能留给运行者猜测的细节：显式public Git ref到模型/数据full SHA的服务器解析证据、sample ID源行反向审计、reference-cache输入/模型/tokenization绑定、SSPO下一batch round-trip数值容差、final selected checkpoint完整性复核、进程PID/PGID/starttime绑定，以及把source cache/strong-smoke留存纳入空间投影。这些是fail-closed复现与执行安全门禁，不改变五方法科学合同。
 
@@ -25,10 +25,10 @@
 - 第一轮 Experiment：`exp-20260819-01-mvp`（冻结基线，只读引用）
 - 第二轮默认 Experiment：`exp-20260823-01-round2-tp2`；正式运行必须使用新的唯一 ID
 - 实验设计：v0.6完整基线固定于Git commit `d338eb5bedef16d83a42790c3faa97f8f404315b`并由`experiment_archive.md`索引；当前`current_experiment.md`已专用于Round3，不反向改写本Round2交接
-- 历史阶段：曾进入`SERVER_EXECUTION`；当前实时状态未知，不是全局活动阶段。
+- 历史阶段：曾进入`SERVER_EXECUTION`；2026-08-26只读核验确认第一方法在step590停止、第二方法未启动，不是全局活动阶段。
 - 历史代码交接：用户于2026-08-24明确确认 commit `c2c9069a0b1a1187c8e709729b33b15aaec8c454`；其后的多个失败attempt用于修复环境、DTensor/TP hook、vLLM生命周期和rollout长度门禁。
-- 历史执行状态：后续版本曾通过server tests、两条方法的真实TP2 strong smoke并启动正式Round2；服务器真实experiment ID、运行commit与当前step仍必须以实时`status_all.sh`、`controller.json`和各方法`state.json`为准，不得从本地文档猜测。
-- 当前本地源码基线：本次文档整理开始前`SOPPO`为clean HEAD `d338eb5bedef16d83a42790c3faa97f8f404315b`；本次只产生未提交文档diff，未修改训练代码，也未`commit`/`push`。
+- 历史执行状态：后续版本曾通过server tests、两条方法的真实TP2 strong smoke并启动正式Round2；正式experiment已核验为`exp-20260824-05-round2-tp2`，controller在step590以exit 143停止，第二方法未启动，仍无final结果。
+- 当前本地源码基线：方案B修改前本地、origin与服务器共同clean基线为`33f0eea632ba93ede616650484f72c57f35742c6`；当前是未提交Round3源码/文档diff，没有`commit`/`push`。
 - 当前平台适配：3×4090固定GPU0–1 Transformers native TP-LoRA、GPU2 vLLM；两条正式方法串行而非并行。
 - 当前运行边界：不得热改潜在运行中的Round2共享checkout、停止控制器或改写正式配置。双vLLM副本和Qwen3-1.7B现已仅获Round3本地实现授权，仍不能热应用到Round2，也尚未获Round3服务器执行授权。
 - 现场运行、耗时、显存、磁盘、checkpoint清理和待决策项：`../code/ROUND2_LIVE_HANDOFF.md`。
@@ -57,7 +57,7 @@
 - 第一轮 static PE：四条 PE lambda `{.1,.3,.5,1.0}` 已作为冻结基线，只读引用，不在第二轮重跑。
 - batch：logical global64；1/2/4卡分别用梯度累积16/8/4，DPO每卡microbatch固定4；joint每step始终全局8 labeled pairs +56 unlabeled pairs。为避免2048长度OOM，梯度执行统一限制为每rank最多2 pair的backward subbatch；DPO按`2+2`，joint logical `3/4`按`2+1`/`2+2`回传，损失归一化、optimizer step与PE exact-global population不变。三卡被fail-closed拒绝。
 - 优化：SSPO/PE 2 epochs、lr1e-5；AdamW、wd0、cosine、warmup.1、clip1、seed42。
-- checkpoint：第一轮冻结合同为DPO每20 step、SSPO/PE每40 step加final；Round2在线rollout每step必须先发布一个LoRA adapter，默认会产生857个目录/方法，且无optimizer state。因共享盘只余约111G，用户讨论的外置运行时策略是保留step0、每20 step、current/current-1、best与final；是否已启动pruner仍须在服务器核验。
+- checkpoint：第一轮冻结合同为DPO每20 step、SSPO/PE每40 step加final；Round2在线rollout每step必须先发布一个LoRA adapter，且无optimizer state。2026-08-26核验时第一方法保留20个checkpoint（含step580/589/590，best为step480），两个外置pruner进程均不存在；不得继续清理。
 - 第二轮新增轨迹只有两条：`SOPPO-PE-sft-rollout-exp` 与 `SOPPO-PE-rollout-only-exp`。两 DPO、SSPO/Pseudo、静态 PE 等第一轮轨迹不得重复训练、不得覆盖。
 - headroom 与 oracle：DPO-10、DPO-100 与 static lambda 选择均来自第一轮冻结结果；第二轮只读引用，不重新选择。
 - strong smoke：使用与正式训练相同的1/2/4卡档位、bf16/2048及各split最长真实样本；旧集群要求所选数量的A800，standalone必须记录实际SKU；覆盖五种配置、backward subbatch、KDE/PE、finite checks、adapter round-trip。
@@ -103,6 +103,6 @@
 
 首次启动在pytest collection因缺少 `datasets` 失败；第二次启动暴露旧DTensor门禁和EngineCore清理遗漏；第三次启动暴露PEFT/Transformers TP-hook接口错位。用户提交兼容修复 `d03a116` 后，第四次启动的SFT+rollout已完成单步真实TP2/PE并记录每rank约8.65GB allocated峰值。rollout-only生成两条候选/提示时，`min_tokens=512`没有保证全部112条都恰好达到512，因而在训练前被最坏长度门禁拒绝。这些均为历史attempt，不是当前正式任务状态。
 
-后续修复版本已完成两条方法的真实TP2 strong smoke并进入正式长链。当前正式实现每方法856个optimizer step；用户提供的一个快照在第一条方法step35/856，最近20步平均286.1秒，其中rollout生成165.4秒。该数值只是带时间的现场证据，不应被写成实时状态。服务器实时状态、运行commit、磁盘清理器与best checkpoint必须按`../code/ROUND2_LIVE_HANDOFF.md`中的只读命令重新核验。
+后续修复版本已完成两条方法的真实TP2 strong smoke并进入正式长链。正式合同每方法856个optimizer step；2026-08-24性能快照在第一方法step35/856，最近20步平均286.1秒，其中rollout生成165.4秒。2026-08-26只读核验则确认该方法已在step590停止、第二方法未启动；两者都是带时间证据，任何新动作前仍须按`../code/ROUND2_LIVE_HANDOFF.md`重新核验。
 
 代码总览已经记录第二轮两条新增rollout实验的实现、默认值、产物、与第一轮冻结基线的只读合并方式和已知限制。此段历史授权只覆盖当时启动的4B Round2运行；QLoRA或新增Round2 `C_epsilon`仍未授权。双rollout副本和1.7B模型后来只在独立Round3合同下解锁本地实现，不能热应用到Round2，且Round3服务器执行仍未授权。

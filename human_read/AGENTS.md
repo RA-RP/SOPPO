@@ -25,9 +25,9 @@
 
 - Cycle ID：`cycle-20260818-01`
 - 唯一活动阶段：Round3 `CODE_IMPLEMENTATION`
-- Round2交接：2026-08-26用户要求不再等待Round2证据、直接开始Round3；`result/current_result.md`与`result/result_archive.md`已以`NO_CONCLUSION`行政关闭。服务器experiment ID、commit、step、PID、final metrics与keep-20 pruner状态均未知，且没有停止进程、修改checkout或删除checkpoint。
-- Round3激活：`nextCycle/current_plan.md` `round3-activation-plan-v0.1`已于2026-08-26获用户明确通过；`theory/current_theory.md` `r3-theory-v0.8`与`exp/current_experiment.md` `round3-exp-v1.3`已于2026-08-25获明确整体批准。
-- 当前实现范围：Qwen3-1.7B、SSPO双源类型缩放数据、DPO-1K/GitHub-loss SSPO/DPO-8K/两个动态PE、统一250 steps、共同1K selection、独立1K双head test、GPU0单卡训练与GPU1–2双vLLM replica。PE-static与AlpacaEval/MT-Bench不在本轮实现范围。
+- Round2交接：2026-08-26只读核验确认正式experiment已在step590停止，step580/589/590保留、第二方法未启动、两个pruner未运行；旧环境已删除但runs/checkpoints保留，不得清理或覆盖。
+- Round3激活：`nextCycle/current_plan.md` `round3-activation-plan-v0.1`已通过；冻结数据审计后，用户于2026-08-26明确批准方案B，对应`theory/current_theory.md` `r3-theory-v0.9`与`exp/current_experiment.md` `round3-exp-v1.4`。
+- 当前实现范围：Qwen3-1.7B、SSPO双源类型缩放数据、DPO-1K/GitHub-loss SSPO/DPO-8K/两个动态PE、统一250 steps、共同1K selection、独立997-pair双head test、GPU0单卡训练与GPU1–2双vLLM replica。PE-static与AlpacaEval/MT-Bench不在本轮实现范围。
 - 本地代码边界：本地只编辑与静态文本复核，不import/运行/测试项目；未经用户审阅不commit/push。
 - Round3 `SERVER_EXECUTION`、`RESULT_HANDOFF`与`NEXTCYCLE_DISCUSSION`：锁定
 

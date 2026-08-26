@@ -1,6 +1,6 @@
 # 历史交接：Round1/Round2 Theory v0.2 → Exp
 
-> 本文件是2026-08-19已经完成的历史交接，不是当前Round3入口。Round3的`r3-theory-v0.8`与`round3-exp-v1.3`已于2026-08-25获整体通过，并于2026-08-26进入`CODE_IMPLEMENTATION`；当前入口为`../../code/CODE_OVERVIEW.md`与`../exp/CODE_HANDOFF.md`。下文只保留Round1/Round2历史内容。
+> 本文件是2026-08-19已经完成的历史交接，不是当前Round3入口。Round3当前合同已因方案B数据勘误升级为`r3-theory-v0.9`与`round3-exp-v1.4`，并保持`CODE_IMPLEMENTATION`；当前入口为`../../code/CODE_OVERVIEW.md`与`../exp/CODE_HANDOFF.md`。下文只保留Round1/Round2历史内容。
 
 **生成时间**: 2026-08-19  
 **Cycle ID**: `cycle-20260818-01`  

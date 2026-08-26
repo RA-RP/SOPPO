@@ -163,3 +163,11 @@
 
 - 补全此前正文只写“预注册数值容差”却误删具体数值的实现门禁：同一SSPO checkpoint独立重载两次后，running state、scheduler/global step必须精确一致，下一batch loss绝对差不超过`1e-7`，trainable LoRA参数更新最大绝对差不超过`1e-7`且最大相对差不超过`1e-6`。
 - 该门禁只判断序列化/恢复的工程可复现性，不参与方法得分、选点或科学成功判据；超限会阻断formal并返回代码实现阶段。
+
+### Round3 `r3-theory-v0.9` / 方案B冻结数据勘误 — 2026-08-26
+
+- 触发事实：服务器对冻结`ultrafeedback_binarized` revision的只读审计确认`test_prefs` 2,000行中有3行empty-rejected，只剩1,997个有效pair；原v0.8的1K validation +1K test合同按设计fail closed。
+- 用户批准：用户明确表示“我也赞成B，请你本地修改”，批准保持原1,000 validation并将同一`test_prefs` split剩余997个有效pair全部作为independent test，不从`train_prefs`补3条。
+- 数据质量合同：所有source在选择前确定性schema审计；畸形行不进入view，也不加入跨view排除集，写入无原始文本的server-only source-index/reason audit并绑定SHA。冻结source totals、valid/malformed totals和reason aggregates变化即fail closed。
+- 不变项：五方法、1K/8K paired train、7K UltraChat、250 steps、共同1K selection、两个score heads、GPU布局及Round4/5延期均不变；最终指标必须显式报告`N=997`。
+- 门禁：当前仍为`CODE_IMPLEMENTATION`；v0.9/v1.4本地修订不授权commit/push、服务器checkout修改、数据重跑、strong smoke或formal。

@@ -1,4 +1,4 @@
-"""Selected-checkpoint-only Round3 independent 1,000-pair final evaluation."""
+"""Selected-checkpoint-only Round3 independent 997-pair final evaluation."""
 
 from __future__ import annotations
 
@@ -16,7 +16,7 @@ import torch
 from ..model.dpo_loss import compute_sequence_logprob, response_token_count
 from ..model.model_utils import DTYPES, load_adapter_for_inference, load_policy_model, load_tokenizer
 from .config import load_round3_config, validate_round3_config
-from .data import PairCollator, PairDataset, file_sha256
+from .data import PairCollator, PairDataset, VIEW_COUNTS, file_sha256
 from .queue_protocol import canonical_json
 
 
@@ -89,7 +89,7 @@ def _ece(probabilities: np.ndarray, labels: np.ndarray) -> Dict[str, Any]:
 def _metrics(probabilities: Sequence[float], labels: Sequence[int]) -> Dict[str, Any]:
     p = np.asarray(probabilities, dtype=np.float64)
     z = np.asarray(labels, dtype=np.int64)
-    if len(p) != 1000 or not np.isfinite(p).all() or np.any((p < 0) | (p > 1)):
+    if len(p) != VIEW_COUNTS["test"] or not np.isfinite(p).all() or np.any((p < 0) | (p > 1)):
         raise ValueError("Round3 final probabilities are incomplete or invalid")
     tie = p == 0.5
     accuracy_credit = np.where(tie, 0.5, ((p > 0.5) == z).astype(np.float64))
@@ -152,14 +152,14 @@ def main() -> None:
     output_dir.mkdir(parents=True)
     data_dir = Path(config["data"]["data_dir"]).resolve()
     cache_dir = Path(config["data"]["reference_cache_dir"]).resolve()
-    public_path = data_dir / "test_1k.public.jsonl"
-    reference = _reference_cache(cache_dir / "test_1k.reference.jsonl")
+    public_path = data_dir / "test.public.jsonl"
+    reference = _reference_cache(cache_dir / "test.reference.jsonl")
     tokenizer = load_tokenizer(config["model"]["name_or_path"])
     dataset = PairDataset(public_path, tokenizer, require_labels=False, reference_cache=reference)
-    if len(dataset) != 1000:
-        raise ValueError("Round3 independent test must contain exactly 1,000 pairs")
+    if len(dataset) != VIEW_COUNTS["test"]:
+        raise ValueError("Round3 independent test must contain exactly 997 pairs")
     labels_by_id = _private_labels(
-        data_dir / "test_1k.private_labels.jsonl",
+        data_dir / "test.private_labels.jsonl",
         [row["sample_id"] for row in dataset.rows],
     )
     selected = None
@@ -277,7 +277,7 @@ def main() -> None:
         "method_id": method_id,
         "selected_step": int(selected["checkpoint_step"]) if selected else None,
         "best_eval_selection_loss": float(selected["eval_selection_loss"]) if selected else None,
-        "test_view": "independent_test_1k",
+        "test_view": "independent_test_997",
         "truncation": truncation,
         "heads": heads,
     }

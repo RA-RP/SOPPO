@@ -7,6 +7,45 @@ import torch
 
 from src.round3.losses import GitHubSSPOState, github_sspo_objective, joint_dpo_pe_objective, pe_objective
 from src.round3.queue_protocol import route_replica, rollout_seed
+from src.round3.data import VIEW_COUNTS, _paired_record, _unpaired_record
+
+
+def test_malformed_source_rows_are_quarantined_without_text_or_exception():
+    revision = "a" * 40
+    pair = {
+        "prompt_id": "pair-1",
+        "prompt": "question",
+        "chosen": [
+            {"role": "user", "content": "question"},
+            {"role": "assistant", "content": "answer"},
+        ],
+        "rejected": [
+            {"role": "user", "content": "question"},
+            {"role": "assistant", "content": "   "},
+        ],
+    }
+    record, audit = _paired_record(
+        "HuggingFaceH4/ultrafeedback_binarized", revision, "test_prefs", pair, 374
+    )
+    assert record is None
+    assert audit["reason_codes"] == ["empty_rejected"]
+    assert "prompt" not in audit and "chosen" not in audit and "rejected" not in audit
+
+    single = {
+        "id": "single-1",
+        "prompt": "   ",
+        "messages": [
+            {"role": "user", "content": "   "},
+            {"role": "assistant", "content": "answer"},
+        ],
+    }
+    record, audit = _unpaired_record(
+        "HuggingFaceH4/ultrachat_200k", revision, "train_sft", single, 0
+    )
+    assert record is None
+    assert audit["reason_codes"] == ["empty_prompt", "message0_prompt_mismatch"]
+    assert audit["canonical_prompt_sha256"] is None
+    assert VIEW_COUNTS["test"] == 997
 
 
 def test_github_sspo_sequential_initialization_and_no_threshold_ema():

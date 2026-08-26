@@ -3,14 +3,14 @@
 ## 0. 当前状态与授权边界
 
 - Cycle：`cycle-20260818-01` / Round3
-- 实现候选：`round3-code-candidate-v0.2`
-- 获批理论/实验：`r3-theory-v0.8` / `round3-exp-v1.3`
+- 实现候选：`round3-code-candidate-v0.3`
+- 获批理论/实验：`r3-theory-v0.9` / `round3-exp-v1.4`
 - 当前唯一活动阶段：`CODE_IMPLEMENTATION`
-- 用户批准：理论与实验内容于2026-08-25获整体确认；用户于2026-08-26明确要求直接开始Round3代码
-- 代码交接：**本地静态实现与复核已完成，等待用户审阅；服务器执行未授权**
-- 版本：当前是未提交worktree，不能用本地HEAD冒充本实现commit；experiment ID、dataset/model resolved revision、服务器commit、physical subbatch和dependency lock均不得猜测
-- 本地边界：本次只静态编辑源码、YAML、shell与Markdown；没有安装/import依赖，没有运行Python、pytest、数据、模型、训练、评价、聚合或GPU任务，也没有commit/push
-- Round2边界：Round2只作行政性`NO_CONCLUSION`归档，其服务器现场仍未知；Round3代码和脚本不会停止Round2、修改其checkout或删除其checkpoint
+- 用户批准：用户于2026-08-26明确批准方案B数据勘误与本地修改，即1,000 validation +997 independent test、畸形行确定性审计且不从train补样
+- 代码交接：**方案B本地修订与允许范围内的静态复核已完成，等待用户审阅；修订后的服务器执行未授权**
+- 版本：基线HEAD为`33f0eea632ba93ede616650484f72c57f35742c6`，当前是未提交worktree，不能用HEAD冒充本实现commit；physical subbatch与最终dependency lock仍不得猜测
+- 本地边界：本次只静态编辑源码、YAML、shell与Markdown；没有安装/import依赖，没有运行Python、pytest、数据、模型、训练、评价、聚合或GPU任务，也没有commit/push。服务器对旧v0.2的环境/五项合同测试/revision/model证据不能冒充v0.3验证
+- Round2边界：只读证据确认正式任务已在step590停止，step580/589/590保留、第二方法未启动、两个pruner未运行；旧环境已删除但runs/checkpoints不得删除或覆盖
 
 当前实现严格隔离在`src/round3/`、`configs/round3/`与`scripts/round3/`。第一轮和Round2入口保持历史语义，不作为Round3 trainer或rollout worker。
 
@@ -53,7 +53,7 @@ dpo_pe_rollout_only
 | 10个完整训练态checkpoint与resume | `checkpoint.py::save_durable_checkpoint/load_training_state` |
 | 冻结reference cache | `reference_cache.py` |
 | 共同1K DPO selection与更早step tie-break | trainer内selection、`selection.py`独立复核 |
-| independent 1K双head final test | `final_evaluate.py` |
+| independent 997-pair双head final test | `final_evaluate.py` |
 | sample-free同head聚合 | `aggregate.py` |
 | 3×4090、clean commit、数据/模型/磁盘门禁 | `preflight.py`、`storage_gate.py` |
 | 五方法strong smoke与projected peak | `scripts/round3/03_strong_smoke.sh`、`project_storage.py` |
@@ -69,18 +69,19 @@ ultrafeedback_binarized/train_prefs
   └─ 不直接提供validation/test
 
 ultrafeedback_binarized/test_prefs
+  ├─ 先隔离3条empty-rejected source rows
   ├─ 独立namespace先选1,000 validation
-  └─ 排除后再选1,000 independent test
+  └─ 剩余恰好997条全部进入independent test
 
 ultrachat_200k/train_sft
   └─ 排除全部paired prompt并去重后选7,000 singles
 ```
 
-`sample_id`严格包含dataset ID、resolved revision、split、prompt ID和source row index；排序key是`SHA256(namespace || NUL || 42 || NUL || sample_id)`。paired A/B位置使用独立hash，test公开文件没有label，私有label单独留在服务器。preflight重算文件SHA、行数、1K前缀嵌套、public/private ID连接和四个view的canonical prompt零交叉。
+`sample_id`严格包含dataset ID、resolved revision、split、prompt ID和source row index；排序key是`SHA256(namespace || NUL || 42 || NUL || sample_id)`。paired A/B位置使用独立hash，test公开文件没有label，私有label单独留在服务器。畸形行在选择前隔离到无原始文本的`malformed_source_rows.jsonl`；data manifest v2固定source/valid/malformed/reason aggregates、12,197行audit及17,997行view source manifest。preflight重算文件SHA、source identity、reason aggregate、1K前缀嵌套、public/private ID连接和四个view的canonical prompt零交叉。
 
 模型下载脚本要求调用者显式提供resolved revision。manifest记录所有顶层模型/tokenizer文件SHA、Qwen3类型、层数和special-token摘要；配置、preflight和rollout sampling再次核对revision、pad/eos ID与文件manifest。
 
-冻结reference对8K train、1K train、1K validation和1K test预计算response-token总log-prob；cache manifest绑定模型文件、tokenization contract、数据文件SHA和代码commit。原始cache是服务器产物，不回传本地。
+冻结reference对8K train、1K train、1K validation和997 test预计算response-token总log-prob；cache manifest绑定模型文件、tokenization contract、数据文件SHA和代码commit。方案B使用仓库外`dual_source_v2`与`reference_qwen3_1.7b_dual_source_v2`，不删除失败遗留的空v1目录。原始cache是服务器产物，不回传本地。
 
 ## 4. 一个optimizer step
 
@@ -111,7 +112,7 @@ durable checkpoint固定为steps `25..250`每25步一次。每个目录包含：
 
 每个durable checkpoint只在共同1,000-pair validation上计算reference-DPO beta .1 NLL。SSPO selection前后state SHA必须相同；non-finite checkpoint记录无效但不替代数值，十个全部无效则方法工程失败。`selection.py`再次按原始`(loss, earlier_step)`复核`best.json`。
 
-final evaluation只加载每方法`best.json`指向的一个checkpoint以及frozen base，在独立1,000 pair上同时输出：
+final evaluation只加载每方法`best.json`指向的一个checkpoint以及frozen base，在独立997 pair上同时输出：
 
 - `dpo_reference_delta_beta_0.1`；
 - `raw_mean_logp_delta_beta_10`。
@@ -160,7 +161,7 @@ status_all.sh
 
 ## 8. 静态复核与服务器待验证
 
-本地已完成的复核仅包括全部Round3 shell的`bash -n`、`git diff --check`、可执行位、路径/旧接口与禁止项静态搜索，均通过；没有用本地Python import/compile/test冒充服务器证据。
+方案B本地复核已完成：全部Round3 shell的`bash -n`、`git diff --check`、可执行位与路径/旧接口/禁止项静态搜索均通过。按本地门禁没有运行Python import/compile/test。服务器曾对旧v0.2运行5项合同测试并通过，但新畸形审计、997 test与manifest v2必须在修订代码获批后重新做server tests/data/preflight/strong smoke。
 
 服务器代码交接后必须依序验证：
 
@@ -183,7 +184,7 @@ status_all.sh
 
 - 第一轮 Experiment：`exp-20260819-01-mvp`（冻结基线，只读引用）
 - Round2 TP=2 + 单vLLM实现与现场交接见`../human_read/code/ROUND2_LIVE_HANDOFF.md`
-- Round2服务器真实experiment ID、commit、step、PID与pruner状态仍只能从实时服务器证据读取，不能从下文历史快照推断
+- Round2最新只读证据为`exp-20260824-05-round2-tp2`在step590停止；step580/589/590保留、best step480、第二方法未启动、pruner未运行。核验时服务器checkout为`33f0eea`，但该checkout快照不替代controller内的运行provenance；下文更早快照也不能覆盖该证据
 
 第一轮本地只编辑纯文本源码、配置和说明。没有在本地安装/import 项目依赖，没有运行 pytest、数据、模型、训练、评价或 GPU 任务。第一轮运行正确性必须由获批后的服务器 tests/strong smoke 证明。第二轮不得改写第一轮 MVP 代码语义，只能复用公共模块并新增 rollout 相关入口、配置和脚本。
 
@@ -394,4 +395,4 @@ stage03/04/05 合计正好八条 first-round final trajectories，都写在 `run
 - 第二轮 adapter 每 step 都必须发布给在线 rollout，因此会保留大量 LoRA checkpoint；当前不保存 optimizer/scheduler state，不支持 bit-exact 热恢复。
 - 第二轮固定锚点、采样四元组、依赖、GPU等待、vLLM ready和失败清理已获服务器证据；当前需完成PEFT 0.19.1 / Transformers 5.4.0 TP-hook兼容修复的代码交接。
 
-以下是Round2某一历史attempt当时的静态复核快照：旧Slurm路径与部分服务器门禁已有证据，SFT+rollout完成过单步TP/PE，而当时rollout-only尚未完成optimizer step。后续Round2状态曾继续推进，但当前最终状态仍未知；本段不能当作实时运行或Round3验证证据。
+以下是Round2某一历史attempt当时的静态复核快照：旧Slurm路径与部分服务器门禁已有证据，SFT+rollout完成过单步TP/PE，而当时rollout-only尚未完成optimizer step。后续Round2已在step590停止且没有final result；本段不能当作Round3验证证据。

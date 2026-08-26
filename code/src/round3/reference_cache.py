@@ -112,7 +112,7 @@ def main() -> None:
         ("paired_train_8k.jsonl", "paired_train_8k.reference.jsonl", True),
         ("paired_train_1k.jsonl", "paired_train_1k.reference.jsonl", True),
         ("validation_1k.jsonl", "validation_1k.reference.jsonl", True),
-        ("test_1k.public.jsonl", "test_1k.reference.jsonl", False),
+        ("test.public.jsonl", "test.reference.jsonl", False),
     )
     files = {}
     for input_name, output_name, labels in specs:

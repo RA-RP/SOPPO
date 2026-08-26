@@ -9,6 +9,7 @@ import math
 import os
 import shutil
 import subprocess
+from collections import Counter
 from pathlib import Path
 from typing import Any, Dict, Iterable, List
 
@@ -19,9 +20,13 @@ from ..model.model_manifest import verify_manifest
 from ..model.model_utils import load_tokenizer
 from .config import DYNAMIC_METHODS, load_round3_config, validate_round3_config
 from .data import (
+    MALFORMED_SOURCE_ROWS,
     NAMESPACES,
     SEED,
+    SOURCE_AUDIT_CONTRACT,
+    SOURCE_MANIFEST_ROWS,
     TOKENIZATION_CONTRACT,
+    VIEW_COUNTS,
     canonical_text,
     file_sha256,
     sha256_text,
@@ -89,9 +94,10 @@ def _data_evidence(config: Dict[str, Any], require_reference_cache: bool) -> Dic
     manifest_path = root / "manifest.json"
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     if (
-        manifest.get("schema_version") != "round3.data_manifest.v1"
+        manifest.get("schema_version") != "round3.data_manifest.v2"
         or manifest.get("seed") != SEED
         or manifest.get("namespaces") != NAMESPACES
+        or manifest.get("source_audit") != SOURCE_AUDIT_CONTRACT
     ):
         raise ValueError("Round3 data manifest contract/seed/namespaces mismatch")
     repositories = manifest.get("repositories", {})
@@ -139,14 +145,15 @@ def _data_evidence(config: Dict[str, Any], require_reference_cache: bool) -> Dic
             ):
                 raise ValueError(f"Round3 source Arrow-cache evidence mismatch: {path}")
     expected = {
-        "paired_train_8k.jsonl": 8000,
-        "paired_train_1k.jsonl": 1000,
-        "unpaired_train_7k.jsonl": 7000,
-        "validation_1k.jsonl": 1000,
-        "test_1k.public.jsonl": 1000,
-        "test_1k.private_labels.jsonl": 1000,
+        "paired_train_8k.jsonl": VIEW_COUNTS["paired_train_8k"],
+        "paired_train_1k.jsonl": VIEW_COUNTS["paired_train_1k"],
+        "unpaired_train_7k.jsonl": VIEW_COUNTS["unpaired_train_7k"],
+        "validation_1k.jsonl": VIEW_COUNTS["validation"],
+        "test.public.jsonl": VIEW_COUNTS["test"],
+        "test.private_labels.jsonl": VIEW_COUNTS["test"],
     }
-    if set(manifest.get("files", {})) != set(expected) | {"source_manifest.jsonl"}:
+    audit_name = "malformed_source_rows.jsonl"
+    if set(manifest.get("files", {})) != set(expected) | {"source_manifest.jsonl", audit_name}:
         raise ValueError("Round3 data manifest file inventory mismatch")
     loaded = {}
     evidence = {}
@@ -166,30 +173,127 @@ def _data_evidence(config: Dict[str, Any], require_reference_cache: bool) -> Dic
         "paired_train_1k.jsonl": {"sample_id", "prompt", "response_a", "response_b", "label"},
         "unpaired_train_7k.jsonl": {"sample_id", "prompt", "response"},
         "validation_1k.jsonl": {"sample_id", "prompt", "response_a", "response_b", "label"},
-        "test_1k.public.jsonl": {"sample_id", "prompt", "response_a", "response_b"},
-        "test_1k.private_labels.jsonl": {"sample_id", "label"},
+        "test.public.jsonl": {"sample_id", "prompt", "response_a", "response_b"},
+        "test.private_labels.jsonl": {"sample_id", "label"},
     }
     for name, rows in loaded.items():
         if any(set(row) != exact_keys[name] for row in rows):
             raise ValueError(f"Round3 canonical row schema mismatch: {name}")
     if any(
         int(row["label"]) not in {0, 1}
-        for name in ("paired_train_8k.jsonl", "paired_train_1k.jsonl", "validation_1k.jsonl", "test_1k.private_labels.jsonl")
+        for name in ("paired_train_8k.jsonl", "paired_train_1k.jsonl", "validation_1k.jsonl", "test.private_labels.jsonl")
         for row in loaded[name]
     ):
         raise ValueError("Round3 pair/private labels must all be binary")
-    if loaded["paired_train_8k.jsonl"][:1000] != loaded["paired_train_1k.jsonl"]:
+    if (
+        loaded["paired_train_8k.jsonl"][: VIEW_COUNTS["paired_train_1k"]]
+        != loaded["paired_train_1k.jsonl"]
+    ):
         raise ValueError("Round3 1K labeled view is not the ordered prefix of the 8K master")
-    public_ids = [row["sample_id"] for row in loaded["test_1k.public.jsonl"]]
-    private_ids = [row["sample_id"] for row in loaded["test_1k.private_labels.jsonl"]]
-    if public_ids != private_ids or any("label" in row for row in loaded["test_1k.public.jsonl"]):
+    public_ids = [row["sample_id"] for row in loaded["test.public.jsonl"]]
+    private_ids = [row["sample_id"] for row in loaded["test.private_labels.jsonl"]]
+    if public_ids != private_ids or any("label" in row for row in loaded["test.public.jsonl"]):
         raise ValueError("Round3 independent-test public/private isolation failed")
+
+    audit_path = root / audit_name
+    audit_rows = _rows(audit_path)
+    recorded_audit = manifest.get("files", {}).get(audit_name, {})
+    if (
+        len(audit_rows) != MALFORMED_SOURCE_ROWS
+        or int(recorded_audit.get("rows", -1)) != MALFORMED_SOURCE_ROWS
+        or recorded_audit.get("sha256") != file_sha256(audit_path)
+    ):
+        raise ValueError("Round3 malformed-source audit count/SHA mismatch")
+    audit_keys = {
+        "sample_id",
+        "source_id",
+        "canonical_prompt_sha256",
+        "reason_codes",
+        "dataset_id",
+        "resolved_revision",
+        "split",
+        "prompt_id",
+        "source_row_index",
+    }
+    audit_key_by_split = {
+        (config["data"]["ultrafeedback_repo"], "train_prefs"): "train_prefs",
+        (config["data"]["ultrafeedback_repo"], "test_prefs"): "test_prefs",
+        (config["data"]["ultrachat_repo"], "train_sft"): "train_sft",
+    }
+    observed_audit = {
+        key: {"rows": 0, "reasons": Counter()} for key in SOURCE_AUDIT_CONTRACT
+    }
+    observed_order = []
+    for row in audit_rows:
+        if set(row) != audit_keys:
+            raise ValueError("Round3 malformed-source audit schema mismatch")
+        key = audit_key_by_split.get((row["dataset_id"], row["split"]))
+        if key is None:
+            raise ValueError("Round3 malformed-source audit dataset/split mismatch")
+        expected_revision = (
+            config["data"]["ultrafeedback_revision"]
+            if row["dataset_id"] == config["data"]["ultrafeedback_repo"]
+            else config["data"]["ultrachat_revision"]
+        )
+        reasons = row["reason_codes"]
+        prompt_hash = row["canonical_prompt_sha256"]
+        if (
+            row["resolved_revision"] != expected_revision
+            or not isinstance(row["source_row_index"], int)
+            or isinstance(row["source_row_index"], bool)
+            or row["source_row_index"] < 0
+            or not isinstance(row["prompt_id"], str)
+            or not isinstance(reasons, list)
+            or not reasons
+            or reasons != sorted(set(reasons))
+            or any(not isinstance(reason, str) or not reason for reason in reasons)
+            or (
+                prompt_hash is not None
+                and (
+                    not isinstance(prompt_hash, str)
+                    or len(prompt_hash) != 64
+                    or any(character not in "0123456789abcdef" for character in prompt_hash)
+                )
+            )
+        ):
+            raise ValueError("Round3 malformed-source audit field mismatch")
+        provenance = tuple(
+            str(row[name])
+            for name in (
+                "dataset_id",
+                "resolved_revision",
+                "split",
+                "prompt_id",
+                "source_row_index",
+            )
+        )
+        if row["sample_id"] != sha256_text("\0".join(provenance)):
+            raise ValueError("Round3 malformed-source sample ID mismatch")
+        if row["source_id"] != ":".join(provenance):
+            raise ValueError("Round3 malformed-source source ID mismatch")
+        observed_audit[key]["rows"] += 1
+        observed_audit[key]["reasons"].update(reasons)
+        observed_order.append((list(SOURCE_AUDIT_CONTRACT).index(key), row["source_row_index"]))
+    if observed_order != sorted(observed_order):
+        raise ValueError("Round3 malformed-source audit order changed")
+    for key, expected_audit in SOURCE_AUDIT_CONTRACT.items():
+        if (
+            observed_audit[key]["rows"] != expected_audit["malformed_rows"]
+            or dict(sorted(observed_audit[key]["reasons"].items()))
+            != expected_audit["malformed_reason_counts"]
+        ):
+            raise ValueError(f"Round3 malformed-source aggregate mismatch: {key}")
+    evidence[audit_name] = {
+        "rows": MALFORMED_SOURCE_ROWS,
+        "sha256": file_sha256(audit_path),
+    }
+
     source_path = root / "source_manifest.jsonl"
     source_rows = _rows(source_path)
     recorded_source = manifest.get("files", {}).get("source_manifest.jsonl", {})
     if (
-        len(source_rows) != 18000
-        or int(recorded_source.get("rows", -1)) != 18000
+        len(source_rows) != SOURCE_MANIFEST_ROWS
+        or int(recorded_source.get("rows", -1)) != SOURCE_MANIFEST_ROWS
         or recorded_source.get("sha256") != file_sha256(source_path)
     ):
         raise ValueError("Round3 source manifest count/SHA mismatch")
@@ -198,7 +302,7 @@ def _data_evidence(config: Dict[str, Any], require_reference_cache: bool) -> Dic
         "paired_train_1k": "paired_train_1k.jsonl",
         "unpaired_train_7k": "unpaired_train_7k.jsonl",
         "validation": "validation_1k.jsonl",
-        "test": "test_1k.public.jsonl",
+        "test": "test.public.jsonl",
     }
     source_by_view = {view: [] for view in view_files}
     expected_source_keys = {
@@ -258,15 +362,23 @@ def _data_evidence(config: Dict[str, Any], require_reference_cache: bool) -> Dic
             for row, public in zip(source_view, rows)
         ):
             raise ValueError(f"Round3 source manifest prompt hash mismatch: {view}")
-    evidence["source_manifest.jsonl"] = {"rows": 18000, "sha256": file_sha256(source_path)}
+    evidence["source_manifest.jsonl"] = {
+        "rows": SOURCE_MANIFEST_ROWS,
+        "sha256": file_sha256(source_path),
+    }
     view_prompts = {
         "paired_train": {canonical_text(row["prompt"]) for row in loaded["paired_train_8k.jsonl"]},
         "unpaired_train": {canonical_text(row["prompt"]) for row in loaded["unpaired_train_7k.jsonl"]},
         "validation": {canonical_text(row["prompt"]) for row in loaded["validation_1k.jsonl"]},
-        "test": {canonical_text(row["prompt"]) for row in loaded["test_1k.public.jsonl"]},
+        "test": {canonical_text(row["prompt"]) for row in loaded["test.public.jsonl"]},
     }
     for name, values in view_prompts.items():
-        expected_count = 8000 if name == "paired_train" else 7000 if name == "unpaired_train" else 1000
+        expected_count = {
+            "paired_train": VIEW_COUNTS["paired_train_8k"],
+            "unpaired_train": VIEW_COUNTS["unpaired_train_7k"],
+            "validation": VIEW_COUNTS["validation"],
+            "test": VIEW_COUNTS["test"],
+        }[name]
         if len(values) != expected_count:
             raise ValueError(f"Round3 canonical prompt duplicates remain in {name}")
     names = list(view_prompts)
@@ -297,11 +409,27 @@ def _data_evidence(config: Dict[str, Any], require_reference_cache: bool) -> Dic
         or cache_manifest.get("tokenization_contract") != TOKENIZATION_CONTRACT
     ):
         raise ValueError("Round3 reference cache model/tokenization provenance mismatch")
-    for name, input_name, count in (
-        ("paired_train_8k.reference.jsonl", "paired_train_8k.jsonl", 8000),
-        ("paired_train_1k.reference.jsonl", "paired_train_1k.jsonl", 1000),
-        ("test_1k.reference.jsonl", "test_1k.public.jsonl", 1000),
-    ):
+    cache_specs = (
+        (
+            "paired_train_8k.reference.jsonl",
+            "paired_train_8k.jsonl",
+            VIEW_COUNTS["paired_train_8k"],
+        ),
+        (
+            "paired_train_1k.reference.jsonl",
+            "paired_train_1k.jsonl",
+            VIEW_COUNTS["paired_train_1k"],
+        ),
+        (
+            "validation_1k.reference.jsonl",
+            "validation_1k.jsonl",
+            VIEW_COUNTS["validation"],
+        ),
+        ("test.reference.jsonl", "test.public.jsonl", VIEW_COUNTS["test"]),
+    )
+    if set(cache_manifest.get("files", {})) != {spec[0] for spec in cache_specs}:
+        raise ValueError("Round3 reference-cache manifest file inventory mismatch")
+    for name, input_name, count in cache_specs:
         rows = _rows(cache_root / name)
         if len(rows) != count:
             raise ValueError(f"Round3 reference-cache count mismatch: {name}")
