@@ -15,8 +15,20 @@ METHODS = {
     "dpo_8k",
     "dpo_pe_sft_rollout",
     "dpo_pe_rollout_only",
+    "dpo_pe_dpo_reward_sft_rollout",
+    "dpo_pe_dpo_reward_rollout_only",
 }
-DYNAMIC_METHODS = {"dpo_pe_sft_rollout", "dpo_pe_rollout_only"}
+SIMPO_REWARD_METHODS = {"dpo_pe_sft_rollout", "dpo_pe_rollout_only"}
+DPO_REWARD_METHODS = {
+    "dpo_pe_dpo_reward_sft_rollout",
+    "dpo_pe_dpo_reward_rollout_only",
+}
+DYNAMIC_METHODS = SIMPO_REWARD_METHODS | DPO_REWARD_METHODS
+SFT_ROLLOUT_METHODS = {
+    "dpo_pe_sft_rollout",
+    "dpo_pe_dpo_reward_sft_rollout",
+}
+ROLLOUT_ONLY_METHODS = DYNAMIC_METHODS - SFT_ROLLOUT_METHODS
 DPO_METHODS = {"dpo_1k", "dpo_8k"}
 SSPO_METHOD = "sspo_code_loss_stratified_ultrachat_2df9e9a"
 METHOD_TRAIN_GPUS = {
@@ -25,6 +37,8 @@ METHOD_TRAIN_GPUS = {
     "dpo_8k": 2,
     "dpo_pe_sft_rollout": 0,
     "dpo_pe_rollout_only": 0,
+    "dpo_pe_dpo_reward_sft_rollout": 0,
+    "dpo_pe_dpo_reward_rollout_only": 0,
 }
 
 
@@ -62,9 +76,9 @@ def validate_round3_config(config: Dict[str, Any]) -> None:
     ):
         if not isinstance(config.get(section), dict):
             raise ValueError(f"Round3 config missing mapping: {section}")
-    if config["contract"].get("theory") != "r3-theory-v1.0":
+    if config["contract"].get("theory") != "r3-theory-v1.1":
         raise ValueError("Wrong Round3 theory contract")
-    if config["contract"].get("experiment") != "round3-exp-v1.5":
+    if config["contract"].get("experiment") != "round3-exp-v1.6":
         raise ValueError("Wrong Round3 experiment contract")
     _full_sha(config["provenance"].get("git_commit"), "provenance.git_commit")
     experiment_id = config["provenance"].get("experiment_id")
@@ -82,6 +96,9 @@ def validate_round3_config(config: Dict[str, Any]) -> None:
         raise ValueError("Formal Round3 config must not cap optimizer steps")
     if execution_mode == "strong_smoke" and int(config["execution"].get("smoke_max_steps") or 0) != 1:
         raise ValueError("Round3 strong smoke must execute exactly one optimizer step")
+    execution_profile = config["execution"].get("profile")
+    if execution_profile not in {"full", "extension"}:
+        raise ValueError("Round3 execution.profile must be full or extension")
 
     model = config["model"]
     if model.get("repo_id") != "Qwen/Qwen3-1.7B":
@@ -154,7 +171,6 @@ def validate_round3_config(config: Dict[str, Any]) -> None:
         "warmup_ratio": 0.1,
         "max_grad_norm": 1.0,
         "dpo_beta": 0.1,
-        "pe_beta": 10.0,
         "pe_epsilon": 1e-8,
     }
     for key, expected in floats.items():
@@ -168,6 +184,8 @@ def validate_round3_config(config: Dict[str, Any]) -> None:
     name = method.get("name")
     if name not in METHODS:
         raise ValueError(f"Unsupported Round3 method: {name}")
+    if execution_profile == "extension" and name not in DPO_REWARD_METHODS:
+        raise ValueError("Round3 extension profile may run only DPO-reward PE methods")
     expected_train_gpu = METHOD_TRAIN_GPUS[name]
     if int(training.get("train_gpu", -1)) != expected_train_gpu:
         raise ValueError(
@@ -179,6 +197,8 @@ def validate_round3_config(config: Dict[str, Any]) -> None:
         "dpo_8k": (32, 0),
         "dpo_pe_sft_rollout": (4, 28),
         "dpo_pe_rollout_only": (4, 28),
+        "dpo_pe_dpo_reward_sft_rollout": (4, 28),
+        "dpo_pe_dpo_reward_rollout_only": (4, 28),
     }[name]
     actual_batch = (int(method.get("labeled_pairs", -1)), int(method.get("unpaired_units", -1)))
     if actual_batch != required_batch:
@@ -205,8 +225,27 @@ def validate_round3_config(config: Dict[str, Any]) -> None:
             raise ValueError(f"Paper-v3 SSPO fields are forbidden: {sorted(forbidden)}")
     if name in DYNAMIC_METHODS and float(method.get("lambda_pe", -1)) != 0.1:
         raise ValueError("Round3 dynamic methods require lambda_pe=0.1")
+    expected_reward = (
+        ("simpo_mean_logp", 10.0)
+        if name in SIMPO_REWARD_METHODS
+        else ("dpo_reference_logratio_total", 0.1)
+        if name in DPO_REWARD_METHODS
+        else None
+    )
+    if expected_reward is not None and (
+        method.get("pe_reward_type") != expected_reward[0]
+        or float(method.get("pe_beta", float("nan"))) != expected_reward[1]
+    ):
+        raise ValueError(
+            f"Round3 {name} requires pe_reward_type={expected_reward[0]} "
+            f"and pe_beta={expected_reward[1]}"
+        )
     if name not in DYNAMIC_METHODS and method.get("lambda_pe") is not None:
         raise ValueError("Only dynamic PE methods may define lambda_pe")
+    if name not in DYNAMIC_METHODS and (
+        method.get("pe_reward_type") is not None or method.get("pe_beta") is not None
+    ):
+        raise ValueError("Only dynamic PE methods may define a PE reward profile")
 
     rollout = config["rollout"]
     if name in DYNAMIC_METHODS:

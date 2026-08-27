@@ -33,17 +33,18 @@
 ## 当前活动阶段
 
 - 当前 cycle：`cycle-20260818-01`
-- 唯一活动阶段：Round3 `SERVER_EXECUTION`
-- 当前入口：`code/CODE_OVERVIEW.md`、`human_read/theory/current_theory.md` `r3-theory-v1.0`与`human_read/exp/current_experiment.md` `round3-exp-v1.5`
+- 唯一活动阶段：Round3 PE reward amendment `CODE_IMPLEMENTATION`
+- 当前入口：`code/CODE_OVERVIEW.md`、`human_read/theory/current_theory.md` `r3-theory-v1.1`与`human_read/exp/current_experiment.md` `round3-exp-v1.6`
 - 已完成门禁：原`r3-theory-v0.8`/`round3-exp-v1.3`于2026-08-25获批；冻结数据审计发现`test_prefs`只有1,997个有效pair后，用户于2026-08-26明确批准方案B及本地修改，形成`r3-theory-v0.9`/`round3-exp-v1.4`。用户同日授权服务器执行，exact commit `ed1bfca002799f11ea1bad29f6f06e2e15fdd565`已通过6项合同测试、data v2与reference cache；strong smoke随后发现入口`PYTHONPATH`遗漏和SSPO CUDA backward非确定性，按门禁返回`CODE_IMPLEMENTATION`。
 - Round2边界：2026-08-26只读核验确认`exp-20260824-05-round2-tp2`已在step590停止，step580/589/590保留，第二方法未启动，两个pruner均未运行。旧环境已删除但runs/checkpoints仍在；不得删除或覆盖。
-- 当前代码基线：服务器已测旧commit为`ed1bfca002799f11ea1bad29f6f06e2e15fdd565`；用户于2026-08-26明确允许Codex commit/push v0.4、部署其exact commit、重跑完整strong smoke，并在全部门禁通过后直接挂载formal。
+- 当前代码基线：旧formal绑定exact commit `b1beef5550ac47c9c78b98c1729014cc153b1251`，不得热修改；用户于2026-08-27审阅v0.6代码交接后明确认可（"我认可"），据此当日完成commit/push，exact commit以origin/master最新HEAD为准；服务器部署仍须等待旧controller终态并按EXECUTION_GUIDE执行。
 - 协作分工：用户于2026-08-26指定Codex为Round3设计与代码主责，只有Codex可以创作或修订`SOPPO/`内容；GLM只按`code/scripts/round3/GLM_VALIDATION_GUIDE.md`机械部署用户指定的exact commit、执行分阶段命令并回传证据，不得现场编辑/修复源码、commit或push。
-- Round3实现合同：Qwen3-1.7B非量化LoRA；五方法全部1 epoch/250 steps；共同1K selection与独立997-pair双head test。DPO-1K/GPU0、GitHub-loss SSPO/GPU1、DPO-8K/GPU2并发；两个动态PE随后各自以GPU0训练、GPU1/2双vLLM串行独占三卡，并保持step/adapter hash/ACK屏障。PE-static与AlpacaEval/MT-Bench不在Round3实现范围。
-- 当前修复：`round3-20260826-03`已验证v0.4确定性修复，前三个静态方法通过；首个动态方法因vLLM文本入口使用默认special-token行为而停止。v0.5显式复用训练chat/tokenization/左截断合同并直接传递prompt token IDs，同时实现获批资源波次。
-- 当前执行边界：用户已授权Codex提交/推送v0.5、部署新exact commit、新attempt完整验证，并在并发静态smoke、两个动态smoke、checkpoint验证与存储投影全部通过后直接启动formal。旧失败证据不得删除。
-- 锁定阶段：Round3 `RESULT_HANDOFF`与`NEXTCYCLE_DISCUSSION`。
-- 下一阶段条件：formal完成或失败后保存白名单摘要与远程证据索引，并进入`RESULT_HANDOFF`。
+- Round3修订合同：七方法全部1 epoch/250 steps、共同1K selection与独立997-pair双head test。旧两个动态method ID据实登记为raw mean-logp beta10的SimPO-reward PE；新增两个动态方法恢复total-response-logp `pi_theta/pi_ref` beta.1的DPO-reward PE。新旧动态方法除reward profile外完全匹配。PE-static与AlpacaEval/MT-Bench仍不在Round3执行范围。
+- 当前实现：本地新增两个DPO-reward配置、adapter-disabled动态reference评分、两条三卡串行extension长链和跨运行sample-free聚合；只允许静态检查，server tests/strong smoke尚未执行。
+- 当前执行边界：旧formal继续自然结束。新增两方法只能在旧controller终态后，以new experiment ID/new exact reviewed commit执行；必须先完成用户代码交接、独立strong smoke和存储门禁。旧失败证据与全部checkpoint不得删除。
+- Formal挂载：v0.5 exact commit `b1beef5550ac47c9c78b98c1729014cc153b1251`的`round3-20260826-04`于2026-08-27 00:16挂载。11:31只读快照为第五方法185/250、三卡占用、`/data`约79GiB可用；自动pruner关闭。完整门禁与快照记录见`exp/round3-20260826-04/README.md`。
+- 锁定阶段：Round3 extension `SERVER_EXECUTION`、`RESULT_HANDOFF`、`NEXTCYCLE_DISCUSSION`及Round4全部锁定。
+- 下一阶段条件：完成v0.6静态交接并获得用户明确确认后，才可部署服务器测试；旧五方法与新增两方法均形成白名单摘要和远程证据索引后进入Round3 `RESULT_HANDOFF`。
 
 ## 标识与交叉引用
 

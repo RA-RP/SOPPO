@@ -6,7 +6,7 @@
 - `useful_experiments.md`：经复盘后认为对论文有用的历史实验设计。
 - `experiment_archive.md`：所有版本的实验设计，按 cycle/experiment ID 追加。
 
-`CODE_HANDOFF.md`记录Round3代码交接，并在后半保留Round2历史交接。旧exact commit已通过阶段C、data v2与reference cache但strong smoke暴露实现缺陷；用户于2026-08-26明确允许Codex commit/push v0.4、部署新exact commit、完整strong smoke通过后直接挂载formal，当前为`SERVER_EXECUTION`。
+`CODE_HANDOFF.md`记录Round3代码交接，并在后半保留Round2历史交接。旧五方法formal绑定`b1beef5`继续自然运行；2026-08-27用户要求把动态PE恢复为DPO implicit reward并新增两臂，当前为修订后的`CODE_IMPLEMENTATION`，新代码尚未获提交或服务器执行授权。
 
 ## 阶段门禁
 

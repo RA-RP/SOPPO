@@ -4,7 +4,8 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/round3_env.sh"
 round3_require_experiment_id
-CONFIG="$ROUND3_RUN_ROOT/resolved/strong_smoke/dpo_1k.yaml"
+CONFIG_METHOD="${1:-dpo_1k}"
+CONFIG="$ROUND3_RUN_ROOT/resolved/strong_smoke/$CONFIG_METHOD.yaml"
 [[ -f "$CONFIG" ]] || { echo "ERROR: resolve strong-smoke configs first" >&2; exit 1; }
 export PYTHONPATH="$CODE_ROOT:${PYTHONPATH:-}"
 if [[ -f "$ROUND3_REFERENCE_DIR/manifest.json" ]]; then

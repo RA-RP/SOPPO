@@ -82,6 +82,19 @@ round3_require_experiment_id() {
     export ROUND3_RUN_ROOT ROUND3_LOG_ROOT
 }
 
+round3_require_baseline_experiment_id() {
+    if [[ ! "${SOPPO_ROUND3_BASELINE_EXPERIMENT_ID:-}" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]]; then
+        echo "ERROR: set the explicit path-safe SOPPO_ROUND3_BASELINE_EXPERIMENT_ID" >&2
+        return 1
+    fi
+    [[ "$SOPPO_ROUND3_BASELINE_EXPERIMENT_ID" != "$SOPPO_ROUND3_EXPERIMENT_ID" ]] || {
+        echo "ERROR: Round3 extension and baseline experiment IDs must differ" >&2
+        return 1
+    }
+    ROUND3_BASELINE_RUN_ROOT="$RUN_ROOT/$SOPPO_ROUND3_BASELINE_EXPERIMENT_ID"
+    export ROUND3_BASELINE_RUN_ROOT
+}
+
 round3_require_full_sha() {
     local value="$1"
     local name="$2"

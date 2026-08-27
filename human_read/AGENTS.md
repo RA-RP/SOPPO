@@ -24,18 +24,18 @@
 ## 当前状态
 
 - Cycle ID：`cycle-20260818-01`
-- 唯一活动阶段：Round3 `SERVER_EXECUTION`
+- 唯一活动阶段：Round3 PE reward amendment `CODE_IMPLEMENTATION`
 - Round2交接：2026-08-26只读核验确认正式experiment已在step590停止，step580/589/590保留、第二方法未启动、两个pruner未运行；旧环境已删除但runs/checkpoints保留，不得清理或覆盖。
-- Round3激活：`nextCycle/current_plan.md` `round3-activation-plan-v0.1`已通过；用户于2026-08-26先批准方案B，随后明确批准三静态并发/两动态串行，对应`theory/current_theory.md` `r3-theory-v1.0`与`exp/current_experiment.md` `round3-exp-v1.5`。
-- 当前实现范围：Qwen3-1.7B、SSPO双源类型缩放数据、五方法统一250 steps、共同1K selection、独立997-pair双head test；DPO-1K/SSPO/DPO-8K分别在GPU0/1/2并发，两个动态PE各自以GPU0训练和GPU1–2双vLLM串行。PE-static与AlpacaEval/MT-Bench不在本轮实现范围。
+- Round3修订：用户于2026-08-27明确要求恢复早期Theory v0.2的`pi_theta/pi_ref` PE，把旧两个动态臂登记为SimPO-reward，并新增两个DPO-reward动态臂；对应`theory/current_theory.md` `r3-theory-v1.1`与`exp/current_experiment.md` `round3-exp-v1.6`。
+- 当前实现范围：Qwen3-1.7B、SSPO双源缩放数据、七方法统一250 steps、共同1K selection、独立997-pair双head test；旧五方法产物不可覆盖，新两个方法在旧controller终态后以独立extension experiment各自三卡串行。
 - 本地代码边界：本地只编辑与静态文本复核，不import/运行/测试项目；未经用户审阅不commit/push。
-- 服务器事实：exact commit `ed1bfca002799f11ea1bad29f6f06e2e15fdd565`已通过阶段C、data v2和reference cache；`round3-20260826-01`因strong-smoke入口缺少`PYTHONPATH`停止，`round3-20260826-02`在SSPO checkpoint数值重放门禁停止，证据见`../exp/round3-20260826-01/README.md`与`../exp/round3-20260826-02/README.md`。
-- 当前授权：用户于2026-08-26明确要求Codex修复vLLM token入口与并发调度、commit/push、部署新exact commit并持续服务器测试，在所有门禁通过后直接挂载formal。
-- Round3 `RESULT_HANDOFF`与`NEXTCYCLE_DISCUSSION`：锁定
+- 服务器事实：旧五方法formal `round3-20260826-04`绑定exact commit `b1beef5550ac47c9c78b98c1729014cc153b1251`，仍须以实时只读证据确认终态；不得热改checkout、停止controller或删除产物。
+- 当前授权：只解锁本地`round3-code-candidate-v0.6`实现与静态检查。未经用户审阅本次代码交接，不得commit/push、部署、测试或启动两方法extension；Round4保持锁定。
+- Round3 extension `SERVER_EXECUTION`、`RESULT_HANDOFF`、`NEXTCYCLE_DISCUSSION`与Round4：锁定
 
 ## 阅读顺序
 
-1. 当前Round3实现：`theory/current_theory.md`与`exp/current_experiment.md`是已批准规范；当前入口是`../code/CODE_OVERVIEW.md`。
+1. 当前Round3实现：`theory/current_theory.md` v1.1与`exp/current_experiment.md` v1.6是用户明确要求的修订规范；当前入口是`../code/CODE_OVERVIEW.md`，代码交接尚待确认。
 2. Round1/Round2历史：读取`theory/theory_changelog.md`、`exp/experiment_archive.md`和Git历史，不再从两个`current_*`混读。
 3. Round2不完整结果交接：读取`result/current_result.md`与`code/ROUND2_LIVE_HANDOFF.md`；后续服务器操作前必须重新获取实时证据。
 4. Round3当前只实现获批规范；实质偏离时返回`EXP_DISCUSSION`重新批准。

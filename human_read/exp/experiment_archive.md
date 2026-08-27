@@ -285,3 +285,12 @@
 - 新门禁：三卡分别完成确定性checkpoint重放；strong smoke按formal并发拓扑运行；共享输入只读、输出目录隔离；动态方法仍要求双ACK完整population且禁止跨方法复用生成。
 - 失败证据：`round3-20260826-03`前三个静态smoke通过，首个动态方法因vLLM文本tokenizer默认special-token行为与训练`add_special_tokens=False`合同不一致而停止；修复必须显式预tokenize、左截断并传递token IDs。
 - 授权：用户要求Codex持续修改和服务器测试，全部smoke、checkpoint与两倍空间门禁通过后直接启动formal；任何新失败仍fail closed且保留独立attempt。
+
+### `cycle-20260818-01` / Round3 PE reward extension / 设计版本 v1.6 — 2026-08-27
+
+- 状态：用户明确批准理论方向与实验构成修订；对应`r3-theory-v1.1`。本地进入`CODE_IMPLEMENTATION`，服务器部署仍须完成新code handoff。
+- 七方法：保留DPO-1K、GitHub-loss SSPO、DPO-8K及旧两个动态方法；旧动态方法回溯命名为`DPO+PE-SimPO-reward-{SFT+rollout,rollout-only}`，新增`DPO+PE-DPO-reward-{SFT+rollout,rollout-only}`。
+- 唯一新增科学变量：SimPO profile使用raw mean-response-logp、beta10；DPO profile恢复原始total-response-logp reference ratio、beta.1。四动态方法的1K labeled/7K UltraChat、4+28、250 steps、rollout sampling、lambda.1、checkpoint/selection/final均一致。
+- 执行拆分：`round3-20260826-04`及其commit不可改写；它完成后，新两臂在独立extension experiment和commit中顺序独占GPU0 train +GPU1/2 vLLM。跨运行aggregate须验证相同model/data/reference/test manifests、997 sample/label顺序、score heads与final evaluator依赖源码字节一致。
+- 资源：旧formal保留50个checkpoints并生成21K rollouts；extension新增20个checkpoints并生成21K rollouts。extension重新做两臂strong smoke与增量存储投影，门禁失败时不自动删除缓存、Round2或旧Round3证据。
+- 延期：Round4 AlpacaEval/MT-Bench不启动；Round5 PE-static仍只登记。

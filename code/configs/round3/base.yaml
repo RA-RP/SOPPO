@@ -1,6 +1,6 @@
 contract:
-  theory: "r3-theory-v1.0"
-  experiment: "round3-exp-v1.5"
+  theory: "r3-theory-v1.1"
+  experiment: "round3-exp-v1.6"
 
 provenance:
   git_commit: null
@@ -8,6 +8,7 @@ provenance:
 
 execution:
   mode: "formal"
+  profile: "full"
   smoke_max_steps: null
 
 model:
@@ -71,7 +72,6 @@ training:
   warmup_ratio: 0.1
   max_grad_norm: 1.0
   dpo_beta: 0.1
-  pe_beta: 10.0
   pe_epsilon: 0.00000001
 
 method:
@@ -79,6 +79,8 @@ method:
   labeled_pairs: null
   unpaired_units: null
   lambda_pe: null
+  pe_reward_type: null
+  pe_beta: null
 
 rollout:
   enabled: false

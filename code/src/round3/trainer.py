@@ -1,4 +1,4 @@
-"""Single-GPU Round3 trainer for all five approved methods.
+"""Single-GPU Round3 trainer for all seven approved methods.
 
 Logical losses are evaluated on the complete registered population. The
 resolved physical subbatch controls only activation memory: a detached first
@@ -9,6 +9,7 @@ vector-Jacobian product before one optimizer update.
 from __future__ import annotations
 
 import argparse
+from contextlib import nullcontext
 import hashlib
 import json
 import math
@@ -27,8 +28,10 @@ from ..model.dpo_loss import compute_sequence_logprob, response_token_count
 from ..model.model_utils import DTYPES, load_tokenizer, load_trainable_policy
 from .checkpoint import load_training_state, publish_staging_adapter, save_durable_checkpoint
 from .config import (
+    DPO_REWARD_METHODS,
     DPO_METHODS,
     DYNAMIC_METHODS,
+    SFT_ROLLOUT_METHODS,
     SSPO_METHOD,
     load_round3_config,
     validate_round3_config,
@@ -112,10 +115,12 @@ def _first_pass_pairs(
     physical: int,
     device: torch.device,
     dtype: torch.dtype,
+    disable_adapter: bool = False,
 ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
     totals_a, totals_b, means_a, means_b = [], [], [], []
     policy.eval()
-    with torch.no_grad():
+    adapter_context = policy.disable_adapter() if disable_adapter else nullcontext()
+    with torch.no_grad(), adapter_context:
         for _, rows in _chunks(examples, physical):
             batch = _move(collator(list(rows)), device)
             with torch.autocast("cuda", dtype=dtype):
@@ -175,13 +180,33 @@ def _backward_pairs(
         ):
             with torch.autocast("cuda", dtype=dtype):
                 total, mean = _response_scores(policy, batch, side)
-                contribution = contribution + (
-                    total.float() * total_coeff[start:stop].detach()
-                    + mean.float() * mean_coeff[start:stop].detach()
-                ).sum()
+                contribution = contribution + _pair_vjp_surrogate(
+                    total.float(),
+                    mean.float(),
+                    total_coeff[start:stop].detach(),
+                    mean_coeff[start:stop].detach(),
+                )
         if not torch.isfinite(contribution):
             raise FloatingPointError("Non-finite Round3 pair backward contribution")
         contribution.backward()
+
+
+def _pair_vjp_surrogate(
+    totals: torch.Tensor,
+    means: torch.Tensor,
+    total_coefficients: torch.Tensor,
+    mean_coefficients: torch.Tensor,
+) -> torch.Tensor:
+    """One exact VJP contribution; every logical coefficient appears once."""
+    shapes = {
+        tuple(totals.shape),
+        tuple(means.shape),
+        tuple(total_coefficients.shape),
+        tuple(mean_coefficients.shape),
+    }
+    if len(shapes) != 1:
+        raise ValueError("Round3 pair VJP tensors must have identical shapes")
+    return (totals * total_coefficients + means * mean_coefficients).sum()
 
 
 def _backward_singles(
@@ -606,20 +631,63 @@ def _run() -> None:
                 policy, tokenizer, config, source_rows, step
             )
             dynamic_examples = _dynamic_examples(dynamic_pairs, encoder)
-            _, _, dynamic_mean_a, dynamic_mean_b = _first_pass_pairs(
+            dynamic_total_a, dynamic_total_b, dynamic_mean_a, dynamic_mean_b = _first_pass_pairs(
                 policy, dynamic_examples, pair_collator, physical, device, dtype
             )
             labeled_a = policy_total_a.detach().requires_grad_(True)
             labeled_b = policy_total_b.detach().requires_grad_(True)
-            dynamic_a = dynamic_mean_a.detach().requires_grad_(True)
-            dynamic_b = dynamic_mean_b.detach().requires_grad_(True)
             ref_a = torch.tensor([row["ref_logp_a"] for row in labeled_examples], device=device)
             ref_b = torch.tensor([row["ref_logp_b"] for row in labeled_examples], device=device)
             labels = torch.tensor([row["label"] for row in labeled_examples], device=device)
             dpo_loss, dpo_info = dpo_objective(labeled_a, labeled_b, ref_a, ref_b, labels)
-            pe_loss, pe_info = pe_objective(dynamic_a, dynamic_b)
+            pe_reward_type = config["method"]["pe_reward_type"]
+            pe_beta = float(config["method"]["pe_beta"])
+            dynamic_reference_info = None
+            if method in DPO_REWARD_METHODS:
+                reference_total_a, reference_total_b, _, _ = _first_pass_pairs(
+                    policy,
+                    dynamic_examples,
+                    pair_collator,
+                    physical,
+                    device,
+                    dtype,
+                    disable_adapter=True,
+                )
+                dynamic_a = dynamic_total_a.detach().requires_grad_(True)
+                dynamic_b = dynamic_total_b.detach().requires_grad_(True)
+                score_a = dynamic_a - reference_total_a.detach()
+                score_b = dynamic_b - reference_total_b.detach()
+                deltas = torch.cat((score_a.detach(), score_b.detach()))
+                if not torch.isfinite(deltas).all():
+                    raise FloatingPointError("Non-finite dynamic DPO implicit reward")
+                dynamic_reference_info = {
+                    "score_type": "dpo_reference_logratio_total",
+                    "policy_minus_reference_mean": float(deltas.mean()),
+                    "policy_minus_reference_std": float(deltas.std(unbiased=False)),
+                    "policy_minus_reference_abs_max": float(deltas.abs().max()),
+                }
+                if step == 0 and float(deltas.abs().max()) > 1e-6:
+                    raise RuntimeError(
+                        "Fresh Round3 DPO-reward policy must equal its frozen reference"
+                    )
+            else:
+                dynamic_a = dynamic_mean_a.detach().requires_grad_(True)
+                dynamic_b = dynamic_mean_b.detach().requires_grad_(True)
+                score_a = dynamic_a
+                score_b = dynamic_b
+            pe_loss, pe_info = pe_objective(
+                score_a,
+                score_b,
+                beta=pe_beta,
+                epsilon=float(config["training"]["pe_epsilon"]),
+            )
+            pe_info = {
+                "reward_type": pe_reward_type,
+                "beta": pe_beta,
+                **pe_info,
+            }
             rollout_vs_sft = None
-            if method == "dpo_pe_sft_rollout":
+            if method in SFT_ROLLOUT_METHODS:
                 rollout_is_a = []
                 for row in dynamic_pairs:
                     if {row["response_a_source"], row["response_b_source"]} != {
@@ -629,9 +697,10 @@ def _run() -> None:
                         raise ValueError("Round3 SFT+rollout pair source contract changed")
                     rollout_is_a.append(row["response_a_source"] == "rollout_0")
                 rollout_vs_sft = rollout_anchor_statistics(
-                    dynamic_a,
-                    dynamic_b,
+                    score_a,
+                    score_b,
                     torch.tensor(rollout_is_a, device=device, dtype=torch.bool),
+                    beta=pe_beta,
                 )
             loss = joint_dpo_pe_objective(dpo_loss, pe_loss, float(config["method"]["lambda_pe"]))
             coefficients = torch.autograd.grad(loss, (labeled_a, labeled_b, dynamic_a, dynamic_b))
@@ -640,16 +709,28 @@ def _run() -> None:
                 coefficients[0], coefficients[1], _zero_like(coefficients[0]), _zero_like(coefficients[1]),
                 physical, device, dtype,
             )
-            _backward_pairs(
-                policy, dynamic_examples, pair_collator,
-                _zero_like(coefficients[2]), _zero_like(coefficients[3]), coefficients[2], coefficients[3],
-                physical, device, dtype,
-            )
+            if method in DPO_REWARD_METHODS:
+                _backward_pairs(
+                    policy, dynamic_examples, pair_collator,
+                    coefficients[2], coefficients[3], _zero_like(coefficients[2]), _zero_like(coefficients[3]),
+                    physical, device, dtype,
+                )
+            else:
+                _backward_pairs(
+                    policy, dynamic_examples, pair_collator,
+                    _zero_like(coefficients[2]), _zero_like(coefficients[3]), coefficients[2], coefficients[3],
+                    physical, device, dtype,
+                )
             token_counts = rollout_statistics.pop("response_tokens")
             telemetry = {
                 "loss_joint": float(loss.detach()),
                 **dpo_info,
                 "pe": pe_info,
+                **(
+                    {"dynamic_reference": dynamic_reference_info}
+                    if dynamic_reference_info is not None
+                    else {}
+                ),
                 **({"rollout_vs_sft": rollout_vs_sft} if rollout_vs_sft is not None else {}),
                 "rollout": {
                     **rollout_statistics,

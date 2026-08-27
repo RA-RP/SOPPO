@@ -10,12 +10,18 @@ if [[ -f "$ROUND3_RUN_ROOT/controller.json" ]]; then
 else
     echo "controller.json: absent"
 fi
+if [[ -f "$ROUND3_RUN_ROOT/baseline_link.json" ]]; then
+    echo "[immutable baseline link]"
+    "$ROUND3_TRAIN_PYTHON" -m json.tool "$ROUND3_RUN_ROOT/baseline_link.json"
+fi
 for method in \
     dpo_1k \
     sspo_code_loss_stratified_ultrachat_2df9e9a \
     dpo_8k \
     dpo_pe_sft_rollout \
-    dpo_pe_rollout_only; do
+    dpo_pe_rollout_only \
+    dpo_pe_dpo_reward_sft_rollout \
+    dpo_pe_dpo_reward_rollout_only; do
     echo "[$method]"
     for path in \
         "$ROUND3_RUN_ROOT/control/formal/$method/status.json" \
@@ -33,4 +39,3 @@ done
 echo "automatic checkpoint pruner: disabled by resolved contract"
 nvidia-smi
 df -h "$SERVER_BASE"
-

@@ -12,7 +12,16 @@ from typing import Any, Dict, Iterable, List, Tuple
 REQUEST_SCHEMA = "round3.rollout_request.v1"
 RESPONSE_SCHEMA = "round3.rollout_replica_response.v1"
 ROUTING_NAMESPACE = "round3-rollout-replica-v1"
-DYNAMIC_METHODS = {"dpo_pe_sft_rollout", "dpo_pe_rollout_only"}
+DYNAMIC_METHODS = {
+    "dpo_pe_sft_rollout",
+    "dpo_pe_rollout_only",
+    "dpo_pe_dpo_reward_sft_rollout",
+    "dpo_pe_dpo_reward_rollout_only",
+}
+SFT_ROLLOUT_METHODS = {
+    "dpo_pe_sft_rollout",
+    "dpo_pe_dpo_reward_sft_rollout",
+}
 
 
 def canonical_json(payload: Any) -> str:
@@ -78,7 +87,7 @@ def make_request(
     digest = adapter_sha256(checkpoint_path)
     jobs: List[Dict[str, Any]] = []
     seen = set()
-    draws = 1 if method_id == "dpo_pe_sft_rollout" else 2
+    draws = 1 if method_id in SFT_ROLLOUT_METHODS else 2
     sample_rows = list(samples)
     if len(sample_rows) != 28:
         raise ValueError("Round3 dynamic request requires exactly 28 source samples")
@@ -90,7 +99,7 @@ def make_request(
         if sample_id in seen:
             raise ValueError(f"Duplicate dynamic source sample: {sample_id}")
         seen.add(sample_id)
-        if method_id == "dpo_pe_sft_rollout":
+        if method_id in SFT_ROLLOUT_METHODS:
             response = sample.get("response")
             if not isinstance(response, str) or not response:
                 raise ValueError("SFT+rollout source requires a fixed response")
@@ -114,7 +123,7 @@ def make_request(
         "jobs": jobs,
         "anchors": (
             {row["sample_id"]: row["response"] for row in sample_rows}
-            if method_id == "dpo_pe_sft_rollout"
+            if method_id in SFT_ROLLOUT_METHODS
             else None
         ),
     }
@@ -136,7 +145,7 @@ def validate_request(payload: Dict[str, Any]) -> None:
     if not isinstance(digest, str) or len(digest) != 64 or digest != adapter_sha256(checkpoint):
         raise ValueError("Round3 rollout adapter checksum mismatch")
     jobs = payload.get("jobs")
-    expected_jobs = 28 if method_id == "dpo_pe_sft_rollout" else 56
+    expected_jobs = 28 if method_id in SFT_ROLLOUT_METHODS else 56
     if not isinstance(jobs, list) or len(jobs) != expected_jobs:
         raise ValueError("Round3 rollout request has an incomplete logical population")
     keys = set()
@@ -160,7 +169,7 @@ def validate_request(payload: Dict[str, Any]) -> None:
     if len(sample_ids) != 28:
         raise ValueError("Round3 rollout request must cover exactly 28 source IDs")
     anchors = payload.get("anchors")
-    if method_id == "dpo_pe_sft_rollout":
+    if method_id in SFT_ROLLOUT_METHODS:
         if not isinstance(anchors, dict) or set(anchors) != sample_ids or any(not value for value in anchors.values()):
             raise ValueError("SFT+rollout anchors are missing or incomplete")
     elif anchors is not None:
@@ -232,7 +241,7 @@ def merge_replica_responses(
     prompts = {job["sample_id"]: job["prompt"] for job in request["jobs"]}
     pairs = []
     for sample_id in dict.fromkeys(job["sample_id"] for job in request["jobs"]):
-        if request["method_id"] == "dpo_pe_sft_rollout":
+        if request["method_id"] in SFT_ROLLOUT_METHODS:
             candidates = [
                 (request["anchors"][sample_id], "sft"),
                 (generated[(sample_id, 0)]["text"], "rollout_0"),

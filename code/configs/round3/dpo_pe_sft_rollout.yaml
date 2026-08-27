@@ -5,7 +5,8 @@ method:
   labeled_pairs: 4
   unpaired_units: 28
   lambda_pe: 0.1
+  pe_reward_type: "simpo_mean_logp"
+  pe_beta: 10.0
 
 rollout:
   enabled: true
-

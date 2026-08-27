@@ -1,22 +1,27 @@
-# 当前代码交接：Round3五方法实现
+# 当前代码交接：Round3 DPO-reward PE extension
 
-> 当前唯一活动阶段为Round3 `SERVER_EXECUTION`。第三次strong smoke已使三个静态方法通过，并在首个动态方法暴露vLLM tokenization边界；用户于2026-08-26明确批准`round3-code-candidate-v0.5`资源波次与修复，要求Codex持续测试并在全部门禁通过后直接挂载formal。
+> 当前唯一活动阶段为Round3 amendment `CODE_IMPLEMENTATION`。用户于2026-08-27明确要求恢复早期Theory v0.2的reference-relative PE、把旧两臂登记为SimPO-reward对照，并在旧formal之后新增两个DPO-reward动态实验。本文登记`round3-code-candidate-v0.6`；用户已于2026-08-27审阅本交接并明确认可（"我认可"），commit/push据此获授权并当日执行。服务器测试与extension挂载仍待旧controller终态后按`code/scripts/round3/EXECUTION_GUIDE.md`另行推进。
 
 ## Round3交接状态
 
-- 代码版本：v0.4 exact commit `14c0292cba2e0322d93a62330bd99d1f8471f174`已测；v0.5 diff已获commit/push授权，本次提交产生的HEAD即待部署exact commit
-- 获批实验：`round3-exp-v1.5` / `r3-theory-v1.0`，用户于2026-08-26明确批准方案B、三静态并发/两动态串行及本地修改
+- 代码版本：`round3-code-candidate-v0.6`，当前为未提交本地diff；旧formal exact commit仍为`b1beef5550ac47c9c78b98c1729014cc153b1251`
+- 修订依据：`round3-exp-v1.6` / `r3-theory-v1.1`，用户于2026-08-27明确指定reward定义与七方法构成
 - 方案B：冻结`test_prefs`选择前隔离3条empty-rejected；保持1K validation，剩余997条全部作为独立test，不从train补样
 - 当前实现：隔离的`src/round3/`、`configs/round3/`、`scripts/round3/`；完整映射见`../../code/CODE_OVERVIEW.md`
-- 覆盖范围：双源确定性数据与malformed audit、Qwen3-1.7B非量化LoRA、DPO-1K、GitHub-loss SSPO、DPO-8K、两个双vLLM动态PE、完整训练态checkpoint、共同1K selection与独立997-pair双head final test
+- 覆盖范围：保留旧五方法真实语义，旧两个动态method ID显式注册`simpo_mean_logp/beta10`；新增`dpo_pe_dpo_reward_sft_rollout`和`dpo_pe_dpo_reward_rollout_only`，使用total response `log pi_theta-log pi_ref`与beta.1
+- reference实现：动态candidate由current policy生成后，以同一PEFT模型的adapter-disabled、no-grad路径计算冻结reference total log-prob；只增加一次reference前向，不增加常驻第二份模型
+- 梯度实现：DPO-reward PE对policy total log-prob回传，reference detach；SimPO-reward PE继续对policy mean log-prob回传。两者都在完整28-pair population求一次PE系数并只做一个optimizer update
+- 扩展执行：`00_reuse_baseline_revisions.sh`只接受旧controller的`completed/all_methods`终态，冻结旧controller/config/source SHA，并要求extension使用不同的commit-bound reference cache；`03_extension_strong_smoke.sh`只测新增两臂，`run_extension.sh`只串行运行新增两臂
+- 跨运行聚合：`aggregate_extension.py`要求新旧model/data/test/reference outputs一致、997个sample ID与private label顺序一致，并要求final evaluator关键依赖在两个commit间字节等价；不覆盖旧aggregate
 - 明确排除：PE-static、AlpacaEval/MT-Bench、QLoRA、自动pruner及Round1/Round2观测入口
-- 当前验证：两个环境、data v2/reference cache与6项旧合同测试通过；第三次attempt验证DPO-1K/SSPO/DPO-8K及checkpoint重放，首个动态方法在optimizer step前因文本prompt的special-token默认值不一致而停止
-- 当前修复：v0.5保留v0.4确定性后端，显式执行与trainer相同的chat template、`add_special_tokens=False`和末端1024 IDs截断，以vLLM `TokensPrompt`传入并逐ID核对；同时把三个静态方法固定到GPU0/1/2并发，两个动态方法仍串行独占三卡
-- 运行证据：见`../../exp/round3-20260826-01/README.md`、`../../exp/round3-20260826-02/README.md`和`../../exp/round3-20260826-03/README.md`；五方法完整strong smoke与storage projection仍待新attempt
+- 本地静态复核：只允许`bash -n`、`git diff --check`和文本/路径检索；Python tests、数值梯度、adapter-disabled reference等必须在获批服务器阶段验证
+- 旧运行证据：见`../../exp/round3-20260826-04/README.md`；它只能说明v0.5旧五方法，不是v0.6新增两臂的验证
 - Round2保护：只读证据确认其正式任务在step590停止且step580/589/590保留，两个pruner未运行；本交接不授权删除或覆盖其checkpoint
-- 测试分工：Codex独占`SOPPO/`设计与内容修订权限；GLM只按`../../code/scripts/round3/GLM_VALIDATION_GUIDE.md`机械部署exact reviewed commit、执行命令并回传证据，禁止现场编辑源码或自行处理失败
+- 测试分工：Codex独占`SOPPO/`设计与内容修订权限；GLM只能在后续明确任务中部署用户指定的exact reviewed commit、执行服务器命令并回传证据，禁止现场编辑源码、commit或push
 
-本候选还补齐了实现者不能留给运行者猜测的细节：显式public Git ref到模型/数据full SHA的服务器解析证据、sample ID源行反向审计、reference-cache输入/模型/tokenization绑定、SSPO下一batch round-trip数值容差、final selected checkpoint完整性复核、进程PID/PGID/starttime绑定，以及把source cache/strong-smoke留存纳入空间投影。这些是fail-closed复现与执行安全门禁，不改变五方法科学合同。
+### 交接结论
+
+用户已于2026-08-27审阅并明确认可本代码交接，commit/push已获授权并执行；候选尚未完成服务器验收。随后必须等待旧controller终态，创建新experiment ID与新reference-cache目录，依次完成server tests、两条strong smoke、checkpoint验证和extension-only存储投影。任何失败返回`CODE_IMPLEMENTATION`，不得现场改参或启动formal。Round4保持锁定。
 
 ## Round2历史交接（只读）
 

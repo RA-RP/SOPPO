@@ -179,3 +179,11 @@
 - 不变项：数据、模型、loss、batch、seed、250 steps、checkpoint、selection、997-pair test和两个动态方法的current-policy/ACK合同均不变；并发只改变无依赖任务的墙钟调度。
 - 工程门禁：静态并发必须在三张卡上分别通过确定性checkpoint重放和并发production-path strong smoke；共享model/data/reference只读，各run/config/log/checkpoint目录隔离。动态方法不得并发或共享rollout。
 - 执行授权：用户已授权本轮修复的commit/push、服务器新attempt和完整门禁，并在全部strong smoke与两倍存储门禁通过后直接挂载formal。
+
+### `cycle-20260818-01` / Round3 PE reward纠正 / `r3-theory-v1.1` — 2026-08-27
+
+- 触发：用户指出原始Theory v0.2的PE probability使用$\pi_\theta/\pi_{\mathrm{ref}}$，而Round3重写把动态PE改成了reference-free raw mean-logp；两者是不同方法，不能把reference未进入PE误解为reference约束失效。
+- 恢复的主定义：$r_\theta^{\mathrm{DPO}}=0.1(s_\theta-s_{\mathrm{ref}})$，$p_i=\sigma(r_i^A-r_i^B)$，其中$s$为response-token总log-prob。初始化$\pi_\theta=\pi_{\mathrm{ref}}$时任意candidate pair严格$p_i=0.5$；训练后pair logit仍允许为正或负。
+- 回溯命名：旧`round3-exp-v1.5`的两个动态臂不删除、不覆盖，明确登记为`SimPO-reward PE`，即$p_i=\sigma(10[q_\theta^A-q_\theta^B])$、$q$为mean-response-logp；它们只作为reward-definition消融，不能代表原始PE主方法。
+- 新增主方法：在相同SFT+rollout与rollout-only candidate合同下分别新增两个`DPO-reward PE`，形成七方法Round3；数据、labeled DPO、PE aggregation、lambda、optimizer、selection与final test不变。
+- 执行边界：旧exact-commit formal继续自然结束；新增两臂必须等待旧controller终态，以新experiment ID/new exact commit执行并通过跨运行manifest、sample顺序与final-evaluator等价审计。Round4保持锁定。

@@ -1,8 +1,8 @@
-# Round3 GLM测试与部署指南
+# Round3 GLM测试与部署指南（v0.5历史记录）
 
 本指南规定GLM在3×RTX 4090服务器上的角色：GLM只执行命令、部署已经由用户审阅的精确版本、运行测试并回传证据；Round3的研究设计、源码、配置、shell和Markdown只由Codex在本地修改。GLM发现问题后不得自行修代码。
 
-当前合同为`r3-theory-v1.0`、`round3-exp-v1.5`和`round3-code-candidate-v0.5`，唯一活动阶段为`SERVER_EXECUTION`。用户已授权Codex负责部署与持续测试；GLM仅在Codex另行派发具体命令任务时执行，不得从本指南自行启动或修改任何内容。
+本文只对应已挂载旧formal的`r3-theory-v1.0`、`round3-exp-v1.5`和`round3-code-candidate-v0.5`，现为历史验证记录。当前v1.1/v1.6 DPO-reward extension不得照此启动；GLM仅在Codex另行派发具体任务时执行，不得从本指南自行部署、启动或修改任何内容。
 
 ## 1. 角色和绝对边界
 

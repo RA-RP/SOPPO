@@ -5,9 +5,13 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/round3_env.sh"
 round3_require_experiment_id
-METHOD="${1:?usage: 01_resolve_config.sh METHOD [strong_smoke|formal]}"
+METHOD="${1:?usage: 01_resolve_config.sh METHOD [strong_smoke|formal] [all|legacy|extension]}"
 MODE="${2:-formal}"
+PROFILE="${3:-all}"
 [[ "$MODE" == "strong_smoke" || "$MODE" == "formal" ]] || { echo "ERROR: invalid Round3 mode: $MODE" >&2; exit 1; }
+[[ "$PROFILE" == "all" || "$PROFILE" == "legacy" || "$PROFILE" == "extension" ]] || { echo "ERROR: invalid Round3 profile: $PROFILE" >&2; exit 1; }
+EXECUTION_PROFILE=full
+[[ "$PROFILE" == "extension" ]] && EXECUTION_PROFILE=extension
 SOURCE_CONFIG="$ROUND3_CONFIG_DIR/$METHOD.yaml"
 [[ -f "$SOURCE_CONFIG" ]] || { echo "ERROR: unknown Round3 method config: $SOURCE_CONFIG" >&2; exit 1; }
 [[ -x "$ROUND3_TRAIN_PYTHON" ]] || { echo "ERROR: Round3 train environment is missing" >&2; exit 1; }
@@ -23,7 +27,7 @@ case "$METHOD" in
     dpo_1k) TRAIN_GPU=0 ;;
     sspo_code_loss_stratified_ultrachat_2df9e9a) TRAIN_GPU=1 ;;
     dpo_8k) TRAIN_GPU=2 ;;
-    dpo_pe_sft_rollout|dpo_pe_rollout_only) TRAIN_GPU=0 ;;
+    dpo_pe_sft_rollout|dpo_pe_rollout_only|dpo_pe_dpo_reward_sft_rollout|dpo_pe_dpo_reward_rollout_only) TRAIN_GPU=0 ;;
     *) echo "ERROR: no Round3 GPU assignment for $METHOD" >&2; exit 1 ;;
 esac
 
@@ -34,6 +38,7 @@ OVERRIDES=(
     --override "provenance.git_commit=$GIT_COMMIT"
     --override "provenance.experiment_id=$SOPPO_ROUND3_EXPERIMENT_ID"
     --override "execution.mode=$MODE"
+    --override "execution.profile=$EXECUTION_PROFILE"
     --override "model.name_or_path=$ROUND3_MODEL_DIR"
     --override "model.manifest_path=$ROUND3_MODEL_DIR/model_manifest.json"
     --override "model.resolved_revision=$MODEL_REVISION"

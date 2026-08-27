@@ -1,5 +1,7 @@
 # Round3激活规划：跳过Round2证据等待
 
+> 历史激活记录，当前不处于`NEXTCYCLE_DISCUSSION`。2026-08-27用户已在同一Round3内把PE reward修订为`r3-theory-v1.1`/`round3-exp-v1.6`：旧五方法run不可改写，新增两个DPO-reward动态方法；当前活动阶段为该修订的`CODE_IMPLEMENTATION`，Round4仍锁定。下文五方法/v0.9/v1.4内容只说明最初如何激活Round3，不再是当前实现合同。
+
 ## 0. 状态
 
 - 来源Cycle/Round：`cycle-20260818-01` / Round2

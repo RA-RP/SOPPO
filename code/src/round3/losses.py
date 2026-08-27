@@ -41,15 +41,22 @@ def dpo_objective(
 
 
 def pe_objective(
-    mean_logp_a: torch.Tensor,
-    mean_logp_b: torch.Tensor,
+    score_a: torch.Tensor,
+    score_b: torch.Tensor,
     beta: float = 10.0,
     epsilon: float = 1e-8,
 ) -> Tuple[torch.Tensor, Dict[str, Any]]:
-    """Exact logical-population PE loss for all 28 candidate pairs."""
-    if mean_logp_a.numel() != 28 or mean_logp_b.numel() != 28:
+    """Exact 28-pair PE loss over one explicitly selected reward profile.
+
+    For the legacy SimPO-reward arms the scores are raw mean response logp and
+    ``beta=10``.  For the corrected DPO-reward arms they are total-response
+    log-ratios ``log pi_theta - log pi_ref`` and ``beta=0.1``.
+    """
+    if score_a.numel() != 28 or score_b.numel() != 28:
         raise ValueError("Round3 PE requires exactly 28 logical candidate pairs")
-    probabilities = torch.sigmoid(float(beta) * (mean_logp_a - mean_logp_b))
+    if score_a.shape != score_b.shape:
+        raise ValueError("Round3 PE candidate score shapes must match")
+    probabilities = torch.sigmoid(float(beta) * (score_a - score_b))
     loss, info = PELoss(
         epsilon=float(epsilon), distance="l1", detach_denominator=False
     ).to(probabilities.device)(probabilities)

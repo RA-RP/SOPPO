@@ -1,4 +1,4 @@
-"""Project Round3 peak storage from the five production-path strong smokes."""
+"""Project retained Round3 storage from selected production-path strong smokes."""
 
 from __future__ import annotations
 
@@ -13,8 +13,19 @@ METHODS = (
     "dpo_8k",
     "dpo_pe_sft_rollout",
     "dpo_pe_rollout_only",
+    "dpo_pe_dpo_reward_sft_rollout",
+    "dpo_pe_dpo_reward_rollout_only",
 )
-DYNAMIC = {"dpo_pe_sft_rollout", "dpo_pe_rollout_only"}
+DYNAMIC = {
+    "dpo_pe_sft_rollout",
+    "dpo_pe_rollout_only",
+    "dpo_pe_dpo_reward_sft_rollout",
+    "dpo_pe_dpo_reward_rollout_only",
+}
+SFT_ROLLOUT = {
+    "dpo_pe_sft_rollout",
+    "dpo_pe_dpo_reward_sft_rollout",
+}
 
 
 def size(path: Path) -> int:
@@ -47,6 +58,7 @@ def main() -> None:
     parser.add_argument("--rollout-env", required=True)
     parser.add_argument("--platform-log-root", required=True)
     parser.add_argument("--output", required=True)
+    parser.add_argument("--methods", nargs="+", choices=METHODS)
     args = parser.parse_args()
     smoke_root = Path(args.smoke_root).resolve()
     data_dir = Path(args.data_dir).resolve()
@@ -60,14 +72,17 @@ def main() -> None:
         "retained_strong_smoke_artifacts": size(smoke_root),
         "existing_round3_platform_logs": size(Path(args.platform_log_root).resolve()),
     }
+    selected_methods = tuple(args.methods or METHODS)
+    if len(set(selected_methods)) != len(selected_methods):
+        raise ValueError("Round3 storage projection methods must be unique")
     methods = {}
-    for method in METHODS:
+    for method in selected_methods:
         root = smoke_root / method
         checkpoint = size(root / "smoke_checkpoint" / "step_000001")
         if checkpoint <= 0:
             raise FileNotFoundError(f"Representative Round3 smoke checkpoint missing: {method}")
         staging = size(root / "rollouts" / "policy" / "step_000000") if method in DYNAMIC else 0
-        jobs = 28 if method == "dpo_pe_sft_rollout" else 56 if method == "dpo_pe_rollout_only" else 0
+        jobs = 28 if method in SFT_ROLLOUT else 56 if method in DYNAMIC else 0
         # Bound retained JSON/text at 16 UTF-8/JSON bytes per generated token,
         # plus the measured request/response structure from the smoke.
         queue_measured = (
@@ -88,7 +103,8 @@ def main() -> None:
     miscellaneous_reserve = 1024**3
     projected_peak = fixed_total + method_total + miscellaneous_reserve
     result = {
-        "schema_version": "round3.storage_projection.v1",
+        "schema_version": "round3.storage_projection.v2",
+        "projected_methods": list(selected_methods),
         "fixed_bytes": fixed,
         "method_bytes": methods,
         "miscellaneous_reserve_bytes": miscellaneous_reserve,

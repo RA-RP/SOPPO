@@ -1,12 +1,13 @@
 _base_: base.yaml
 
 method:
-  name: "dpo_pe_rollout_only"
+  name: "dpo_pe_dpo_reward_rollout_only"
   labeled_pairs: 4
   unpaired_units: 28
   lambda_pe: 0.1
-  pe_reward_type: "simpo_mean_logp"
-  pe_beta: 10.0
+  pe_reward_type: "dpo_reference_logratio_total"
+  pe_beta: 0.1
 
 rollout:
   enabled: true
+

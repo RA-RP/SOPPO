@@ -65,7 +65,11 @@ for index in "${!static_pids[@]}"; do
 done
 (( static_failed == 0 ))
 
-for method in dpo_pe_sft_rollout dpo_pe_rollout_only; do
+for method in \
+    dpo_pe_sft_rollout \
+    dpo_pe_rollout_only \
+    dpo_pe_dpo_reward_sft_rollout \
+    dpo_pe_dpo_reward_rollout_only; do
     failed_stage="formal_$method"
     update_controller running "$failed_stage"
     bash "$SCRIPT_DIR/run_method.sh" "$method" formal

@@ -15,10 +15,11 @@ from typing import Any, Dict, Iterable, List
 
 import jsonlines
 import torch
+import yaml
 
 from ..model.model_manifest import verify_manifest
 from ..model.model_utils import load_tokenizer
-from .config import DYNAMIC_METHODS, load_round3_config, validate_round3_config
+from .config import DPO_REWARD_METHODS, DYNAMIC_METHODS, load_round3_config, validate_round3_config
 from .data import (
     MALFORMED_SOURCE_ROWS,
     NAMESPACES,
@@ -87,6 +88,86 @@ def _source_resolution_evidence(config: Dict[str, Any]) -> Dict[str, Any]:
         ):
             raise ValueError(f"Round3 resolved source evidence mismatch: {name}")
     return {"path": str(evidence_path), "sha256": file_sha256(evidence_path), "sources": expected}
+
+
+def _extension_baseline_evidence(config: Dict[str, Any]) -> Dict[str, Any] | None:
+    if config["execution"]["profile"] != "extension":
+        return None
+    if config["method"]["name"] not in DPO_REWARD_METHODS:
+        raise ValueError("Round3 extension profile contains a non-extension method")
+    run_dir = Path(config["output"]["run_dir"]).resolve()
+    experiment_root = run_dir.parents[1]
+    link_path = experiment_root / "baseline_link.json"
+    link = json.loads(link_path.read_text(encoding="utf-8"))
+    if link.get("schema_version") != "round3.extension_baseline_link.v1":
+        raise ValueError("Round3 extension baseline-link schema mismatch")
+    baseline_controller = Path(str(link.get("baseline_controller", ""))).resolve()
+    baseline_sources = Path(str(link.get("source_revisions", ""))).resolve()
+    baseline_config_path = Path(str(link.get("baseline_config", ""))).resolve()
+    baseline_id = str(link.get("baseline_experiment_id", ""))
+    expected_baseline_root = experiment_root.parent / baseline_id
+    if (
+        baseline_controller != (expected_baseline_root / "controller.json").resolve()
+        or baseline_sources != (expected_baseline_root / "source_revisions.json").resolve()
+        or baseline_config_path
+        != (expected_baseline_root / "resolved" / "formal" / "dpo_1k.yaml").resolve()
+    ):
+        raise ValueError("Round3 extension baseline paths are outside the linked experiment")
+    copied_sources = experiment_root / "source_revisions.json"
+    if (
+        not baseline_controller.is_file()
+        or not baseline_sources.is_file()
+        or not baseline_config_path.is_file()
+        or not copied_sources.is_file()
+        or link.get("baseline_controller_sha256") != file_sha256(baseline_controller)
+        or link.get("source_revisions_sha256") != file_sha256(baseline_sources)
+        or link.get("baseline_config_sha256") != file_sha256(baseline_config_path)
+        or link.get("copied_source_revisions_sha256") != file_sha256(copied_sources)
+        or baseline_sources.read_bytes() != copied_sources.read_bytes()
+    ):
+        raise ValueError("Round3 extension baseline-link hashes mismatch")
+    controller = json.loads(baseline_controller.read_text(encoding="utf-8"))
+    if (
+        controller.get("state") != "completed"
+        or controller.get("stage") != "all_methods"
+        or controller.get("experiment_id") != link.get("baseline_experiment_id")
+        or controller.get("git_commit") != link.get("baseline_git_commit")
+    ):
+        raise ValueError("Round3 extension baseline controller is not the linked terminal run")
+    baseline_config = yaml.safe_load(baseline_config_path.read_text(encoding="utf-8"))
+    invariant_paths = (
+        ("model", "repo_id"),
+        ("model", "resolved_revision"),
+        ("data", "ultrafeedback_repo"),
+        ("data", "ultrafeedback_revision"),
+        ("data", "ultrachat_repo"),
+        ("data", "ultrachat_revision"),
+        ("data", "data_dir"),
+        ("evaluation", "test_pairs"),
+        ("evaluation", "test_heads"),
+    )
+    if any(
+        baseline_config[section][key] != config[section][key]
+        for section, key in invariant_paths
+    ):
+        raise ValueError("Round3 extension changed a baseline model/data/test invariant")
+    baseline_reference = str(Path(baseline_config["data"]["reference_cache_dir"]).resolve())
+    extension_reference = str(Path(config["data"]["reference_cache_dir"]).resolve())
+    if (
+        link.get("baseline_reference_cache_dir") != baseline_reference
+        or extension_reference == baseline_reference
+    ):
+        raise ValueError("Round3 extension requires a distinct commit-bound reference cache")
+    return {
+        "link": str(link_path),
+        "link_sha256": file_sha256(link_path),
+        "baseline_experiment_id": link["baseline_experiment_id"],
+        "baseline_git_commit": link["baseline_git_commit"],
+        "baseline_config_sha256": link["baseline_config_sha256"],
+        "baseline_reference_cache_dir": baseline_reference,
+        "extension_reference_cache_dir": extension_reference,
+        "source_revisions_sha256": link["source_revisions_sha256"],
+    }
 
 
 def _data_evidence(config: Dict[str, Any], require_reference_cache: bool) -> Dict[str, Any]:
@@ -615,6 +696,7 @@ def main() -> None:
             "resolved_revision": config["model"]["resolved_revision"],
         },
         "source_resolution": _source_resolution_evidence(config),
+        "extension_baseline": _extension_baseline_evidence(config),
         "data": _data_evidence(config, require_reference_cache=args.phase == "method"),
         "gpus": _gpu_evidence(config),
         "storage": _storage_evidence(

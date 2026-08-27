@@ -1,4 +1,4 @@
-"""Sample-free aggregation of frozen-base plus five Round3 final evaluations."""
+"""Sample-free aggregation of frozen-base plus seven Round3 final evaluations."""
 
 from __future__ import annotations
 
@@ -17,6 +17,8 @@ METHODS = (
     "dpo_8k",
     "dpo_pe_sft_rollout",
     "dpo_pe_rollout_only",
+    "dpo_pe_dpo_reward_sft_rollout",
+    "dpo_pe_dpo_reward_rollout_only",
 )
 HEADS = (
     "dpo_reference_delta_beta_0.1",
@@ -66,10 +68,15 @@ def main() -> None:
             "pe_sft_rollout_minus_dpo_1k": _delta(results["dpo_pe_sft_rollout"], results["dpo_1k"], head),
             "pe_rollout_only_minus_dpo_1k": _delta(results["dpo_pe_rollout_only"], results["dpo_1k"], head),
             "pe_sft_rollout_minus_rollout_only": _delta(results["dpo_pe_sft_rollout"], results["dpo_pe_rollout_only"], head),
+            "dpo_reward_pe_sft_rollout_minus_dpo_1k": _delta(results["dpo_pe_dpo_reward_sft_rollout"], results["dpo_1k"], head),
+            "dpo_reward_pe_rollout_only_minus_dpo_1k": _delta(results["dpo_pe_dpo_reward_rollout_only"], results["dpo_1k"], head),
+            "dpo_reward_pe_sft_rollout_minus_rollout_only": _delta(results["dpo_pe_dpo_reward_sft_rollout"], results["dpo_pe_dpo_reward_rollout_only"], head),
+            "dpo_reward_minus_simpo_reward_sft_rollout": _delta(results["dpo_pe_dpo_reward_sft_rollout"], results["dpo_pe_sft_rollout"], head),
+            "dpo_reward_minus_simpo_reward_rollout_only": _delta(results["dpo_pe_dpo_reward_rollout_only"], results["dpo_pe_rollout_only"], head),
         }
     aggregate = {
-        "schema_version": "round3.aggregate.v1",
-        "experiment_contract": "round3-exp-v1.5",
+        "schema_version": "round3.aggregate.v2",
+        "experiment_contract": "round3-exp-v1.6",
         "single_seed_exploratory": True,
         "methods": {method: results[method] for method in METHODS},
         "same_head_only_comparisons": comparisons,

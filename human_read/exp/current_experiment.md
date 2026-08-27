@@ -1,15 +1,15 @@
-# 当前实验设计：Round3 Qwen3-1.7B 五方法合并验证
+# 当前实验设计：Round3 Qwen3-1.7B 七方法 reward-profile 验证
 
 ## 0. 版本、状态与历史边界
 
 - Cycle：`cycle-20260818-01` / Round3
-- 设计版本：`round3-exp-v1.5`
-- 对应理论：`../theory/current_theory.md` `r3-theory-v1.0`
-- 理论状态：用户已于2026-08-26明确批准方案B数据勘误与3×4090资源波次`r3-theory-v1.0`
-- 实验状态：用户已明确批准1,000 validation +997 independent test及“三静态单卡并发、两动态三卡串行”执行安排
-- 当前唯一活动阶段：Round3 `SERVER_EXECUTION`
-- 代码与执行：三个失败attempt均保留；第三次attempt已使DPO-1K、SSPO、DPO-8K及checkpoint verification通过，在首个动态方法因vLLM文本入口tokenization不等同于训练合同而停止。用户已授权修复、提交部署、持续测试并在全部门禁通过后直接挂载formal
-- 当前运行索引：`../../exp/round3-20260826-01/README.md`、`../../exp/round3-20260826-02/README.md`、`../../exp/round3-20260826-03/README.md`
+- 设计版本：`round3-exp-v1.6`
+- 对应理论：`../theory/current_theory.md` `r3-theory-v1.1`
+- 理论状态：用户已于2026-08-27明确确认原始Theory v0.2的DPO implicit reward是正确PE定义
+- 实验状态：用户已明确要求把旧两个动态臂登记为`SimPO-reward PE`，新增两个`DPO-reward PE`；Round4保持锁定
+- 当前唯一活动阶段：Round3 amendment `CODE_IMPLEMENTATION`
+- 代码与执行：旧五方法formal `round3-20260826-04`绑定exact commit `b1beef5550ac47c9c78b98c1729014cc153b1251`继续自然运行，不热修改、不覆盖；新增两臂在旧controller终态后以新experiment ID、new exact commit、独立strong smoke/存储门禁执行
+- 当前运行索引：`../../exp/round3-20260826-01/README.md`、`../../exp/round3-20260826-02/README.md`、`../../exp/round3-20260826-03/README.md`、`../../exp/round3-20260826-04/README.md`
 - Round2边界：服务器只读证据确认其controller已在step590停止，step580/589/590仍保留且pruner未运行；不得删除其run/checkpoint
 - 历史设计：Round1/Round2完整基线位于Git commit `d338eb5bedef16d83a42790c3faa97f8f404315b`；设计演化见`experiment_archive.md`，当前执行证据见`../code/ROUND2_LIVE_HANDOFF.md`
 
@@ -20,16 +20,20 @@
 Round3作为ModelScope `Qwen/Qwen3-1.7B`、单种子的exploratory validation，回答：
 
 1. 有限真实偏好监督的DPO是否相对训练前模型产生可见增长；
-2. GitHub-loss SSPO与两个动态PE的相对行为如何；
+2. GitHub-loss SSPO与四个动态PE的相对行为如何；
 3. 更高paired-label预算的DPO reference与有限标签方法之间有多大差距；
-4. 固定公开单回复锚点+current rollout与rollout-only是否不同。
+4. 固定公开单回复锚点+current rollout与rollout-only是否不同；
+5. 在相同candidate构造下，原始DPO implicit reward能否避免SimPO raw mean-logp的响应来源捷径。
 
-五个任务按三个资源波次执行：
+七个任务分成不可改写的旧formal和后续extension执行：
 
 ```text
 Wave 1: DPO-1K || SSPO-code-loss-stratified-ultrachat@2df9e9a || DPO-8K
-Wave 2: DPO+PE-SFT+rollout
-Wave 3: DPO+PE-rollout-only
+Wave 2: DPO+PE-SimPO-reward-SFT+rollout
+Wave 3: DPO+PE-SimPO-reward-rollout-only
+--- old exact-commit controller reaches terminal; new commit/experiment boundary ---
+Wave 4: DPO+PE-DPO-reward-SFT+rollout
+Wave 5: DPO+PE-DPO-reward-rollout-only
 ```
 
 单模型、单种子结果只能解释为探索性趋势，不能宣称统计显著性或最终理论确认。
@@ -50,9 +54,9 @@ Wave 3: DPO+PE-rollout-only
 | role | 固定数量 | 来源与用途 |
 | --- | ---: | --- |
 | paired train master | 8,000 pairs | `ultrafeedback_binarized/train_prefs`；DPO-8K |
-| limited labeled view | 1,000 pairs | 8K master的嵌套子集；DPO-1K、SSPO、两个动态PE |
-| unpaired train | 7,000 singles | `ultrachat_200k/train_sft`；SSPO、两个动态PE |
-| paired validation | 1,000 pairs | `ultrafeedback_binarized/test_prefs`；五方法共同checkpoint selection |
+| limited labeled view | 1,000 pairs | 8K master的嵌套子集；DPO-1K、SSPO、四个动态PE |
+| unpaired train | 7,000 singles | `ultrachat_200k/train_sft`；SSPO、四个动态PE |
+| paired validation | 1,000 pairs | `ultrafeedback_binarized/test_prefs`；七方法共同checkpoint selection |
 | paired independent test | 997 pairs | `ultrafeedback_binarized/test_prefs`；1,000 validation之后的全部有效剩余；selected-checkpoint-only test |
 
 这是SSPO双源合同的缩小版，不是GitHub 10%数量原样复现。`DPO-8K`使用额外paired feedback作为高标签reference，不称为全数据100% oracle；`DPO-1K`/`DPO-8K`名称替代旧`DPO-10`/`DPO-100`。
@@ -87,7 +91,7 @@ SHA256(UTF8(namespace || "\0" || seed || "\0" || sample_id)), seed=42
 
 1. 先隔离`test_prefs`的3条畸形行；对剩余1,997个有效pair用`round3-paired-validation-v3`排序选1,000 validation，再对剩余记录以`round3-paired-independent-test-v3`排序并要求恰好得到997 test。两者canonical prompt必须唯一且无交集；不得动态接受其他数量，也不得从`train_prefs`补3条。
 2. 从`train_prefs`排除validation/test prompt后，用`round3-uf-paired-train-8k-v1`排序选8,000 master pairs；排序前8,000构成DPO-8K，前1,000同时构成所有limited-label方法共享的DPO-1K view。
-3. 从`ultrachat_200k/train_sft`排除全部paired master/validation/test prompt并按canonical prompt去重，再用`round3-uc-unpaired-train-7k-v1`排序选7,000 singles。SSPO与两个动态PE共享这7,000 source IDs和顺序。
+3. 从`ultrachat_200k/train_sft`排除全部paired master/validation/test prompt并按canonical prompt去重，再用`round3-uc-unpaired-train-7k-v1`排序选7,000 singles。SSPO与四个动态PE共享这7,000 source IDs和顺序。
 4. paired A/B位置使用独立`round3-paired-ab-swap-v1` hash最低bit确定；A为chosen时$z=1$，A为rejected时$z=0$。同一pair在所有方法、selection和test中的A/B位置一致。
 
 动态candidate pair的A/B位置使用`SHA256("round3-dynamic-ab-swap-v1\0" || method_id || "\0" || optimizer_step || "\0" || sample_id)`摘要最低bit确定。该换位只消除固定位置约定，不能改变28-pair population、跨副本路由或复用生成文本。
@@ -100,15 +104,15 @@ SHA256(UTF8(namespace || "\0" || seed || "\0" || sample_id)), seed=42
 
 - 模型ID：ModelScope `Qwen/Qwen3-1.7B`，即post-trained Instruct/hybrid-thinking版本，不使用`Qwen/Qwen3-1.7B-Base`；
 - 下载命令：`modelscope download --model Qwen/Qwen3-1.7B --local_dir ./dir`；不得在model ID后追加`README.md`；
-- 五方法共享同一本地模型目录、resolved revision、模型/tokenizer/chat-template文件SHA-256与special-token manifest；
+- 七方法共享同一本地模型目录、resolved revision、模型/tokenizer/chat-template文件SHA-256与special-token manifest；
 - 所有固定数据编码和动态生成均使用模型原生Qwen3 chat template，显式`enable_thinking=false`并使用response-only loss mask；
 - Qwen3兼容环境必须满足`transformers>=4.51.0`。SSPO仓库原始`transformers==4.46.1`环境不得直接复用；实现阶段移植commit `2df9e9a`的loss/trainer语义并在Qwen3兼容依赖栈上验收。
 
-实际resolved revision与文件manifest只能在执行面下载后冻结；五方法中途不得改变revision、template或special tokens。
+实际resolved revision与文件manifest只能在执行面下载后冻结；七方法中途不得改变revision、template或special tokens。
 
 ### 3.2 DPO与PE loss合同
 
-DPO-1K、DPO-8K及两个动态PE方法的labeled分支统一使用冻结初始Qwen3-1.7B作为reference。令$s_\theta$和$s_{\mathrm{ref}}$为response tokens上的**总**log-prob，$z_i=1$表示A更优：
+DPO-1K、DPO-8K及四个动态PE方法的labeled分支统一使用冻结初始Qwen3-1.7B作为reference。令$s_\theta$和$s_{\mathrm{ref}}$为response tokens上的**总**log-prob，$z_i=1$表示A更优：
 
 $$
 d_i^{\mathrm{DPO}}
@@ -120,12 +124,21 @@ L_{\mathrm{DPO}}
 =\operatorname{mean}_i[-z_i\log\sigma(d_i^{\mathrm{DPO}})-(1-z_i)\log\sigma(-d_i^{\mathrm{DPO}})].
 $$
 
-PE candidate pair使用reference-free mean-response-logp：
+两个新增主方法的PE candidate pair使用原始DPO implicit reward：
 
 $$
-p_i=\sigma\left(10[q_\theta(x_i,y_{iA})-q_\theta(x_i,y_{iB})]\right),
+p_i^{\mathrm{DPO}}=\sigma\left(0.1[(s_\theta^A-s_{\mathrm{ref}}^A)-(s_\theta^B-s_{\mathrm{ref}}^B)]\right),
 \qquad \mathbf q_i=[p_i,1-p_i]^\top.
 $$
+
+旧formal中的两个动态方法回溯登记为SimPO-reward对照，其PE candidate probability保持既有执行事实：
+
+$$
+p_i^{\mathrm{SimPO}}=\sigma\left(10[q_\theta(x_i,y_{iA})-q_\theta(x_i,y_{iB})]\right),
+\qquad q_\theta=\operatorname{mean\_response\_logp}_\theta.
+$$
+
+v1.6 source/resolved config必须显式写出`pe_reward_type`与`pe_beta`，不得再根据method名称或全局默认值猜测。历史v1.5 resolved configs尚无该字段，只能由其exact code、全局`training.pe_beta=10`与telemetry确认实际SimPO-reward公式；不得改写旧文件。DPO-reward还必须记录动态candidate的policy/ref total-logp finite审计以及policy等于reference时$p=0.5$的合同测试。fresh step0的PE population对称，首步更新由joint objective中的labeled DPO分支打破对称；这属于预期定义，不得用raw likelihood噪声或人为扰动替代。
 
 固定$\epsilon=10^{-8}$、L1距离且denominator不detach：
 
@@ -139,7 +152,7 @@ $$
 L_{PE}=\frac12\left(\lVert\widehat{\mathbf e}_+-[1,0]^\top\rVert_1+\lVert\widehat{\mathbf e}_--[0,1]^\top\rVert_1\right).
 $$
 
-$L_{PE}$必须对一个optimizer step完整的28个candidate pairs精确计算；物理microbatch或顺序subbatch不得改变population或梯度。两个动态PE方法使用
+$L_{PE}$必须对一个optimizer step完整的28个candidate pairs精确计算；物理microbatch或顺序subbatch不得改变population或梯度。四个动态PE方法使用
 
 $$
 L_{\mathrm{joint}}=\frac{L_{\mathrm{DPO}}+0.1L_{PE}}{1.1}.
@@ -147,7 +160,7 @@ $$
 
 ### 3.3 LoRA、optimizer与precision
 
-| 配置 | 五方法固定值 |
+| 配置 | 七方法固定值 |
 | --- | --- |
 | finetuning | LoRA；不使用QLoRA或其他量化训练 |
 | rank / alpha / dropout | 8 / 16 / 0 |
@@ -159,11 +172,11 @@ $$
 | clipping | max grad norm 1.0 |
 | precision | BF16 forward/autocast；`bf16=true, fp16=false, pure_bf16=false`；trainable LoRA与optimizer state为FP32 |
 
-不做method-specific lr sweep。统一`1e-5`是本轮五方法公平性与预算选择，不冒充SSPO论文分别调参的复现结果。
+不做method-specific lr sweep。统一`1e-5`是本轮七方法公平性与预算选择，不冒充SSPO论文分别调参的复现结果。
 
 ### 3.4 序列、截断与长度审计
 
-五方法统一：
+七方法统一：
 
 ```yaml
 max_length: 2048
@@ -183,21 +196,23 @@ $$
 
 ### 3.5 PE固定权重
 
-两个动态PE方法均固定§3.2的`lambda_pe=0.1`，有效权重约为`0.9091/0.0909`。该`lambda_pe`与SSPO的`sspo_gamma_decay=0.001`不是同一参数；本轮不做lambda sweep或scheduler。
+四个动态PE方法均固定§3.2的`lambda_pe=0.1`，有效权重约为`0.9091/0.0909`。该`lambda_pe`与SSPO的`sspo_gamma_decay=0.001`不是同一参数；本轮不做lambda sweep或scheduler。
 
 ## 4. epoch、batch与step
 
 - seed：42，单种子
-- epoch：五个任务全部为1
-- optimizer steps：五个任务全部为250
+- epoch：七个任务全部为1
+- optimizer steps：七个任务全部为250
 
 | # | 方法 | train view | 每个optimizer step | 一轮使用/生成 |
 | ---: | --- | --- | --- | --- |
 | 1 | DPO-1K | 1,000 paired labeled | 4 labeled pairs | 1,000 pairs |
 | 2 | SSPO code-loss | 同一1,000 labeled +7,000 UltraChat singles | 4 labeled +28 singles | 1,000 pairs +7,000 singles |
 | 3 | DPO-8K | 8,000 paired master pool | 32 labeled pairs | 8,000 pairs |
-| 4 | DPO+PE-SFT+rollout | 同一1,000 labeled +7,000 UltraChat anchors/prompts | 4 labeled +28 candidate pairs | 生成7,000条rollout |
-| 5 | DPO+PE-rollout-only | 同一1,000 labeled +7,000 UltraChat prompts | 4 labeled +28 candidate pairs | 生成14,000条rollout |
+| 4 | DPO+PE-SimPO-reward-SFT+rollout | 同一1,000 labeled +7,000 UltraChat anchors/prompts | 4 labeled +28 candidate pairs | 生成7,000条rollout |
+| 5 | DPO+PE-SimPO-reward-rollout-only | 同一1,000 labeled +7,000 UltraChat prompts | 4 labeled +28 candidate pairs | 生成14,000条rollout |
+| 6 | DPO+PE-DPO-reward-SFT+rollout | 与方法4相同 | 4 labeled +28 candidate pairs | 独立生成7,000条rollout |
+| 7 | DPO+PE-DPO-reward-rollout-only | 与方法5相同 | 4 labeled +28 candidate pairs | 独立生成14,000条rollout |
 
 整数对齐固定为：
 
@@ -205,9 +220,9 @@ $$
 1000/4=7000/28=8000/32=250.
 $$
 
-除DPO-8K的paired-label预算外，其余四方法共享同一1K labeled view；三个unpaired方法共享同一7K UltraChat source IDs与顺序。五方法optimizer updates均为250，但response数与生成成本不同，不能宣称token-compute matched。
+除DPO-8K的paired-label预算外，其余六方法共享同一1K labeled view；SSPO与四个动态方法共享同一7K UltraChat source IDs与顺序。七方法optimizer updates均为250，但response数与生成成本不同，不能宣称token-compute matched。
 
-## 5. 五个方法的训练目标
+## 5. 七个方法的训练目标
 
 ### 5.1 DPO-1K
 
@@ -245,17 +260,25 @@ $$
 
 使用全部8,000 paired master records，每步32 pairs，只计算§3.2的reference-based DPO loss，250步完整遍历一次。其前1,000条与DPO-1K完全相同；该方法只解释额外paired supervision headroom，不称为全量oracle。
 
-### 5.4 DPO+PE-SFT+rollout
+### 5.4 DPO+PE-SimPO-reward-SFT+rollout
 
-每步4 paired labeled +28 UltraChat prompts。每个prompt使用该UltraChat row的固定公开assistant response作为锚点和一条本方法current-policy rollout，形成28个方向未知candidate pairs并计算§3.2联合loss；250步共生成7,000条rollout。
+保留旧method ID `dpo_pe_sft_rollout`以绑定既有产物；v1.6 registry/source config显式登记`pe_reward_type=simpo_mean_logp`与`pe_beta=10`，但不回写旧v1.5 resolved config。每步4 paired labeled +28 UltraChat prompts；每个prompt使用固定公开assistant response和一条本方法current-policy rollout形成28个方向未知candidate pairs，250步共生成7,000条rollout。该方法是reference-free reward消融，不是原始PE主方法。
 
-### 5.5 DPO+PE-rollout-only
+### 5.5 DPO+PE-SimPO-reward-rollout-only
 
-每步4 paired labeled +28 UltraChat prompts。每个prompt由本方法current policy独立生成两条回复，形成28个方向未知candidate pairs并计算§3.2联合loss；250步共生成14,000条回复，不得复制同一生成结果或共享另一方法的生成结果。
+保留旧method ID `dpo_pe_rollout_only`；v1.6 registry/source config显式登记`pe_reward_type=simpo_mean_logp`与`pe_beta=10`，不覆盖旧运行证据。每个prompt由本方法current policy独立生成两条回复，形成28个方向未知candidate pairs；250步共生成14,000条回复。
 
-### 5.6 Dynamic rollout sampling
+### 5.6 DPO+PE-DPO-reward-SFT+rollout
 
-两个动态方法的训练rollout使用完全相同的采样分布：
+新增method ID `dpo_pe_dpo_reward_sft_rollout`，candidate构造、source IDs、A/B换位、rollout sampling、labeled DPO与联合权重均与§5.4相同；唯一科学变量是`pe_reward_type=dpo_reference_logratio_total`、`pe_beta=0.1`。动态生成的每条candidate都必须由冻结base reference以adapter-disabled、no-grad路径计算response总log-prob；不得使用raw mean-logp或静态fixed-pair cache冒充动态reference score。
+
+### 5.7 DPO+PE-DPO-reward-rollout-only
+
+新增method ID `dpo_pe_dpo_reward_rollout_only`，除使用§3.2的DPO implicit reward外与§5.5相同。两条rollout都必须分别计算policy total-logp与frozen-reference total-logp，不能共享另一方法的生成或reference score。
+
+### 5.8 Dynamic rollout sampling
+
+四个动态方法的训练rollout使用完全相同的采样分布：
 
 ```yaml
 enable_thinking: false
@@ -271,23 +294,23 @@ eos_token_id: [151645, 151643]
 pad_token_id: 151643
 ```
 
-special-token IDs必须与resolved tokenizer manifest一致，不一致则预检失败而不是静默覆盖。rollout-only的两条回复使用相同参数、不同`draw_index`和独立随机流；不得复制同一回复。训练随机种子由`base_seed=42, optimizer_step, sample_id, draw_index`确定。两个动态方法共享sampling合同和source IDs，但分别由自己的current policy生成，禁止跨方法或跨step复用文本。
+special-token IDs必须与resolved tokenizer manifest一致，不一致则预检失败而不是静默覆盖。rollout-only的两条回复使用相同参数、不同`draw_index`和独立随机流；不得复制同一回复。训练随机种子由`base_seed=42, optimizer_step, sample_id, draw_index`确定。四个动态方法共享sampling合同和source IDs，但分别由自己的current policy生成，禁止跨方法或跨step复用文本。
 
 其余三种方法训练时不生成回复，因此不存在训练temperature。当前最终test也是固定pair评分，没有test rollout或temperature。
 
 ## 6. Checkpoint与共同selection eval
 
-五个任务固定在以下step保存durable checkpoint并计算共同`eval_selection_loss`：
+七个任务固定在以下step保存durable checkpoint并计算共同`eval_selection_loss`：
 
 ```text
 25, 50, 75, 100, 125, 150, 175, 200, 225, 250/final
 ```
 
-step250与final是同一checkpoint，不保存重复副本。训练objective和checkpoint-selection objective严格分离；五个方法都用§6.1同一个`eval_selection_loss`选择checkpoint。
+step250与final是同一checkpoint，不保存重复副本。训练objective和checkpoint-selection objective严格分离；七个方法都用§6.1同一个`eval_selection_loss`选择checkpoint。
 
 ### 6.1 共同labeled validation view
 
-五方法共享同一冻结的1,000 labeled pairs、相同A/B换位、pair顺序、Qwen3 chat template、截断和样本权重。eval batch统一为4 pairs，即每个checkpoint 250 batches。令§3.2的DPO logit为$d_i^{\mathrm{DPO}}$：
+七方法共享同一冻结的1,000 labeled pairs、相同A/B换位、pair顺序、Qwen3 chat template、截断和样本权重。eval batch统一为4 pairs，即每个checkpoint 250 batches。令§3.2的DPO logit为$d_i^{\mathrm{DPO}}$：
 
 $$
 L_{\mathrm{eval\_select}}
@@ -296,7 +319,7 @@ $$
 
 所有方法统一使用冻结初始Qwen3-1.7B reference、$\beta_{\mathrm{DPO}}=0.1$和response总log-prob。该loss只负责选点，不改变SSPO或PE的训练loss。reference log-prob允许对冻结validation view预计算一次，但必须绑定model/tokenizer/template/data manifest并在服务器交接时通过直接复算抽查。
 
-Round3不计算checkpoint级`eval_sspo_loss`、`eval_pe_loss`或`eval_joint_loss`，也不运行dynamic rollout diagnostic panel。训练过程仍按step记录loss components、$p$熵/极端比例、SSPO threshold/pseudo-positive rate和rollout长度等无样本级聚合telemetry；SFT+rollout额外把A/B方向对齐到来源，记录28个pair中的`rollout_hard_wins/rate`与`rollout_soft_positive_mass/mean`，不保存逐样本$p_i$。这些是训练完整性证据，不是eval、不参与选点或方法排序。
+Round3不计算checkpoint级`eval_sspo_loss`、`eval_pe_loss`或`eval_joint_loss`，也不运行dynamic rollout diagnostic panel。训练过程仍按step记录loss components、active `pe_reward_type`、$p$熵/极端比例、SSPO threshold/pseudo-positive rate和rollout长度等无样本级聚合telemetry；两个SFT+rollout方法额外把A/B方向对齐到来源，分别按其active reward记录28个pair中的`rollout_hard_wins/rate`与`rollout_soft_positive_mass/mean`。DPO-reward臂还记录policy/ref log-ratio的finite、均值、标准差与初始化零差审计，但不保存逐样本$p_i$。这些是训练完整性证据，不是eval、不参与选点或方法排序。
 
 ### 6.2 Selection与non-finite policy
 
@@ -391,11 +414,11 @@ AlpacaEval 2.0 length-controlled win rate与MT-Bench平均分登记为Round4候�
 ## 8. 预先判断、完整性失败与解释边界
 
 - DPO-1K相对训练前模型的变化只按§7.1共同raw-score辅助口径解释；
-- GitHub-loss SSPO、两个动态PE与DPO-1K的test差异分别报告；
+- GitHub-loss SSPO、四个动态PE与DPO-1K的test差异分别报告；同candidate构造下额外报告DPO-reward减SimPO-reward的同head差值；
 - DPO-8K只报告paired-supervision gap，不称为全量oracle或同源hidden-label oracle；
 - SSPO与DPO-1K同时改变labeled objective和unpaired机制，整体差异不能只归因于unpaired分支；
 - 置信度变尖但Accuracy不升、Brier恶化或发生预测坍缩，不能解释为结构监督有效；
-- SFT+rollout与rollout-only只支持“固定历史单回复锚点 vs纯在线rollout”的解释；
+- SFT+rollout与rollout-only只支持“固定历史单回复锚点 vs纯在线rollout”的解释；reward-profile比较只支持DPO implicit reward与raw mean-logp的训练轨迹差异；
 - 单种子只作探索性趋势，不宣称统计显著性。
 
 以下属于实现完整性失败，而不是科学负面结果：
@@ -404,6 +427,8 @@ AlpacaEval 2.0 length-controlled win rate与MT-Bench平均分登记为Round4候�
 - 任一训练step不满足预注册batch组成或不是epoch=1/250 steps；
 - SSPO没有使用sequential running statistics、clamp、min-chosen threshold、prior-weighted$R_U$与scheduler，或混入论文KDE机制；
 - SSPO checkpoint没有保存/恢复running state，或共同selection改写该state；
+- DPO-reward PE未对每条动态candidate计算冻结reference总log-prob、使用mean-logp ratio、让reference梯度可训练，或在policy=reference合同测试中不产生$p=0.5$；
+- logical-loss系数在物理subbatch backward中被重复、遗漏或重标度；必须用独立toy-model VJP测试证明重算梯度等于直接完整population梯度；
 - 任一vLLM副本未ACK当前`method_id/optimizer_step/adapter_sha256`、使用stale adapter或跨step复用rollout，或rollout-only复制同一回复；
 - loss/gradient非有限、selected checkpoint缺失或test参与选择；
 - Round3生成AlpacaEval/MT-Bench回答、调用judge API或运行本地替代judge。
@@ -412,27 +437,27 @@ AlpacaEval 2.0 length-controlled win rate与MT-Bench平均分登记为Round4候�
 
 ## 9. 执行架构、规模、存储与产物
 
-五个任务各为250 optimizer steps，各保留10个durable checkpoints，共50个。SFT+rollout训练生成7,000条，rollout-only训练生成14,000条；不存在checkpoint级diagnostic rollout额外生成。Round3的AlpacaEval/MT-Bench生成量与API预算均为0。
+七个任务各为250 optimizer steps，各保留10个durable checkpoints，共70个。两个SFT+rollout方法各生成7,000条、两个rollout-only方法各生成14,000条，总动态生成42,000条；不存在checkpoint级diagnostic rollout额外生成。旧formal已经承担前五方法的50个checkpoint和21,000条生成；extension只新增20个checkpoint与21,000条生成。Round3的AlpacaEval/MT-Bench生成量与API预算均为0。
 
 ### 9.1 3×RTX 4090固定职责
 
 - 第一波并发启动三个相互独立的单GPU训练进程：DPO-1K固定物理GPU0、SSPO固定GPU1、DPO-8K固定GPU2；每个进程内部只见逻辑`cuda:0`，不使用DDP或跨卡loss分片；
 - 三个静态方法只共享只读model/data/reference cache；resolved config、optimizer、RNG、run/log/checkpoint目录完全隔离。formal前必须以相同并发拓扑完成production-path strong smoke和各卡checkpoint重放；
 - 静态波次以三方法全部进入终态为barrier；任一共享preflight/provenance/存储错误使整个formal fail closed，方法局部失败不得覆盖其他方法证据；
-- 两个动态PE方法运行时，GPU1运行vLLM replica 0，GPU2运行vLLM replica 1；GPU0顺序收集完整28-pair logical population，再以两遍或代数等价方式计算精确PE梯度；
-- 两个动态方法分别独占三卡并严格串行，不得互相并发、共享adapter或复用另一方法/step的生成文本；
+- 四个动态PE方法运行时，GPU1运行vLLM replica 0，GPU2运行vLLM replica 1；GPU0顺序收集完整28-pair logical population，再以两遍或代数等价方式计算精确PE梯度；
+- 四个动态方法分别独占三卡并严格串行，不得互相并发、共享adapter或复用另一方法/step的生成文本；新增DPO-reward两臂必须等待旧formal controller终态，不能修改其checkout或run目录；
 - 物理subbatch大小只能由production-path strong smoke在不改变logical batch的前提下解析；DPO/selection在完整logical batch上精确聚合sample mean后才更新，SSPO必须在完整4 chosen、4 rejected、28 unpaired上各计算一次statistics并只按chosen→rejected→unpaired各更新running state一次。可用两遍重算或代数等价聚合，不得将物理subbatch当成新SSPO batch或中途optimizer step；
 - rollout样本按`SHA256("round3-rollout-replica-v1\0" || method_id || "\0" || optimizer_step || "\0" || sample_id || "\0" || draw_index)`的摘要末位bit确定副本；每条文本只由一个副本生成，两副本不共享已生成文本；
 - 每个optimizer step生成前，两副本都必须显式ACK同一`(method_id, optimizer_step, adapter_sha256)`。任一ACK缺失、不匹配或使用stale adapter都使该step fail closed，不得混合返回值继续训练。
 
-训练前对五个方法共享的冻结reference所需log-prob统一预计算；cache放在Git仓库外，严格绑定model/tokenizer/template/data manifest。
+训练前对固定paired train/validation/test view所需reference log-prob统一预计算；cache放在Git仓库外，严格绑定model/tokenizer/template/data manifest。动态rollout文本事先不存在，DPO-reward PE必须在GPU0训练进程中通过同一冻结base、禁用LoRA adapter的no-grad前向实时评分；SFT固定anchor的reference score允许另建绑定7K source IDs与tokenization manifest的cache，但本版默认也走同一在线reference评分路径以减少新增派生资产。
 
 ### 9.2 环境、目录与磁盘门禁
 
 - 训练环境固定在`<SERVER_BASE>/envs/round3-train/`，rollout环境固定在`<SERVER_BASE>/envs/round3-rollout/`；两者都在Git仓库外，不复用或修改Round2环境；
 - train env使用Qwen3兼容的Transformers/PEFT/PyTorch栈，rollout env独立锁定vLLM栈；精确版本只能在获批后的服务器tests/strong smoke通过后写入lock与environment manifest；
-- 五个任务使用独立Round3 run directory、resolved config和fact summary，不覆盖Round2或其他方法产物；
-- 每个durable checkpoint至少保存adapter、optimizer/scheduler state、RNG state和global step；SSPO额外保存running statistics。全50个durable checkpoints都保留，不启用keep-N或其他自动pruner；
+- 七个任务使用独立Round3 run directory、resolved config和fact summary，不覆盖Round2或其他方法产物；extension使用独立experiment root，旧五方法通过只读证据索引参与跨运行聚合；
+- 每个durable checkpoint至少保存adapter、optimizer/scheduler state、RNG state和global step；SSPO额外保存running statistics。全70个durable checkpoints都保留，不启用keep-N或其他自动pruner；
 - vLLM每step的current-policy发布是带`adapter_sha256`的临时staging artifact，不冒充durable checkpoint。其原子发布和生命周期必须在代码交接时单独验收；本文不授权对当前服务器任何已有adapter/checkpoint执行删除或清理；
 - formal前先用production-path strong smoke实际写出代表性checkpoint、reference cache和dynamic policy staging，据此计算`projected_peak_bytes`。仅当独立Round3执行路径的`free_bytes >= 2 * projected_peak_bytes`时允许formal；否则fail closed，不自动删除Round2或任何已有产物。
 
@@ -440,11 +465,12 @@ AlpacaEval 2.0 length-controlled win rate与MT-Bench平均分登记为Round4候�
 
 预期产物：
 
-- 五份resolved config；
+- 七份resolved config；其中旧五份保持原exact-commit证据，新两份属于extension；
 - source/派生view/reference-cache/checkpoint manifest与SHA-256；
 - 每个checkpoint的共同`eval_selection_loss`与训练telemetry摘要；
-- 五个best-checkpoint指针；
-- 五份selected-checkpoint及frozen-base的独立997-pair双head聚合指标；
+- 七个best-checkpoint指针；
+- 七份selected-checkpoint及frozen-base的独立997-pair双head聚合指标；
+- 跨运行aggregate必须验证相同model/data/reference/test manifest、997个sample ID顺序、score heads和final evaluator语义，并显式保存两个experiment ID与两个exact commits；不得复制或伪装旧run为新commit产物；
 - SSPO state/checkpoint完整性摘要、dynamic rollout/replica synchronization聚合摘要；
 - 失败、终止或无结论证据。
 
@@ -452,7 +478,7 @@ AlpacaEval 2.0 length-controlled win rate与MT-Bench平均分登记为Round4候�
 
 ## 10. 已闭合设计、执行时解析项与门禁
 
-本版已关闭数据源/数量/确定性抽样、五方法构成、PE-static延后、DPO-1K/8K定义、统一250-step/checkpoint、$\gamma_{\min}$、共同selection、唯final test、GPU角色、环境隔离和存储门禁等设计分支。实现者不得从旧代码猜测或恢复已删除分支。
+本版已关闭数据源/数量/确定性抽样、七方法构成、两个PE reward profile、PE-static延后、DPO-1K/8K定义、统一250-step/checkpoint、$\gamma_{\min}$、共同selection、唯final test、GPU角色、环境隔离和存储门禁等设计分支。实现者不得从旧代码猜测或恢复已删除分支。
 
 以下是只能在获批后的服务器preflight/tests/strong smoke中解析的运行事实，不是未决的科学设计：
 
@@ -461,4 +487,4 @@ AlpacaEval 2.0 length-controlled win rate与MT-Bench平均分登记为Round4候�
 3. Round3 experiment ID、当时3×RTX 4090实时硬件/磁盘证据、精确dependency locks、最终源码commit和数值验收摘要；
 4. strong-smoke实测的峰值显存、checkpoint/cache/staging尺寸、`projected_peak_bytes`及两倍空闲空间门禁结果。
 
-Round4和Round5登记项不阻塞Round3设计闭合，也不能在Round3代码阶段顺手实现。2026-08-25批准的`r3-theory-v0.8`/`round3-exp-v1.3`假设`test_prefs`有2,000个有效pair；服务器冻结数据审计使该假设fail closed。2026-08-26用户批准方案B形成`r3-theory-v0.9`/`round3-exp-v1.4`：保持1,000 validation、使用997 independent test、确定性隔离审计且不从train补样。三次strong-smoke attempt随后依次暴露入口路径、CUDA确定性和vLLM tokenizer默认值问题，均按门禁停止并保留。用户同日明确认可三静态并发/两动态串行，形成并批准`r3-theory-v1.0`/`round3-exp-v1.5`，并授权修复、重新执行与通过全部门禁后直接挂载formal。
+Round4和Round5登记项不阻塞Round3设计闭合，也不能在Round3代码阶段顺手实现。2026-08-25批准的`r3-theory-v0.8`/`round3-exp-v1.3`假设`test_prefs`有2,000个有效pair；服务器冻结数据审计使该假设fail closed。2026-08-26用户批准方案B形成`r3-theory-v0.9`/`round3-exp-v1.4`，随后批准资源波次形成`r3-theory-v1.0`/`round3-exp-v1.5`并挂载旧五方法formal。2026-08-27用户明确判定reference-free PE定义错误，要求恢复早期Theory v0.2的DPO implicit reward；旧两动态臂据实登记为SimPO-reward对照，新增两DPO-reward主方法，形成`r3-theory-v1.1`/`round3-exp-v1.6`。旧run不可改写；extension必须新建experiment并在共同证据校验后跨运行聚合。Round4在该修订完成结果交接前保持锁定。
