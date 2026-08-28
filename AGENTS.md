@@ -42,9 +42,10 @@
 - Round3修订合同：七方法全部1 epoch/250 steps、共同1K selection与独立997-pair双head test。旧两个动态method ID据实登记为raw mean-logp beta10的SimPO-reward PE；新增两个动态方法恢复total-response-logp `pi_theta/pi_ref` beta.1的DPO-reward PE。新旧动态方法除reward profile外完全匹配。PE-static与AlpacaEval/MT-Bench仍不在Round3执行范围。
 - 当前实现：本地新增两个DPO-reward配置、adapter-disabled动态reference评分、两条三卡串行extension长链和跨运行sample-free聚合；只允许静态检查，server tests/strong smoke尚未执行。
 - 当前执行边界：旧formal继续自然结束。新增两方法只能在旧controller终态后，以new experiment ID/new exact reviewed commit执行；必须先完成用户代码交接、独立strong smoke和存储门禁。旧失败证据与全部checkpoint不得删除。
-- Formal挂载：v0.5 exact commit `b1beef5550ac47c9c78b98c1729014cc153b1251`的`round3-20260826-04`于2026-08-27 00:16挂载。11:31只读快照为第五方法185/250、三卡占用、`/data`约79GiB可用；自动pruner关闭。完整门禁与快照记录见`exp/round3-20260826-04/README.md`。
+- Formal挂载与完成：v0.5 exact commit `b1beef5550ac47c9c78b98c1729014cc153b1251`的`round3-20260826-04`于2026-08-27 00:16挂载，12:56达到`completed/all_methods`终态（exit 0）。五方法250/250、997-pair双head final test与sample-free聚合完成；结果摘要与证据索引见`exp/round3-20260826-04/README.md`。三卡已释放，`/data`剩余约74G。
+- Extension前置：v0.6已获用户代码交接认可并commit/push（origin/master HEAD）。extension部署仍需：旧controller终态（已满足）、服务器部署v0.6 exact commit、新experiment ID、baseline link、server tests、两臂strong smoke与extension-only投影门禁。当前磁盘74G对比预计约104G的2×门禁要求存在约30G缺口，需要用户对门禁合同修订或删减对象作出明确决策后才可推进。
 - 锁定阶段：Round3 extension `SERVER_EXECUTION`、`RESULT_HANDOFF`、`NEXTCYCLE_DISCUSSION`及Round4全部锁定。
-- 下一阶段条件：完成v0.6静态交接并获得用户明确确认后，才可部署服务器测试；旧五方法与新增两方法均形成白名单摘要和远程证据索引后进入Round3 `RESULT_HANDOFF`。
+- 下一阶段条件：extension部署须先解决存储门禁缺口决策；旧五方法与新增两方法均形成白名单摘要和远程证据索引后进入Round3 `RESULT_HANDOFF`。
 
 ## 标识与交叉引用
 

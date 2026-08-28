@@ -166,7 +166,7 @@ keep-20后两个方法约保留88个里程碑adapter，预计约5–7GB，另加
 
 ## 9. 给下一位agent的第一轮只读检查
 
-1. 完整阅读根`AGENTS.md`、`SOPPO/AGENTS.md`、本文件、`human_read/exp/CODE_HANDOFF.md`、`human_read/exp/experiment_archive.md`中的Round2 v0.6条目、`code/CODE_OVERVIEW.md`与`machine/standalone_3x4090_server.md`；当前`human_read/exp/current_experiment.md`已专用于Round3，不是本次运行依据。
+1. 完整阅读根`AGENTS.md`、`SOPPO/AGENTS.md`、本文件、`human_read/exp/CODE_HANDOFF.md`、`human_read/exp/experiment_archive.md`中的Round2 v0.6条目、`code/CODE_OVERVIEW.md`与`machine/4090-3/standalone_3x4090_server.md`；当前`human_read/exp/current_experiment.md`已专用于Round3，不是本次运行依据。
 2. 让用户提供或在服务器执行`status_all.sh`、`controller.json`、两个`state.json`、最新metrics尾部和`nvidia-smi`；不要猜当前step。
 3. 核实keep-20 pruner是否真的启动、旧keep-40是否仍在、step20是否存在。
 4. 在用户明确决定“继续当前4B / 新4B优化 / 新1.7B设计”前，不停止当前训练、不修改服务器checkout、不提交代码。
@@ -175,5 +175,5 @@ keep-20后两个方法约保留88个里程碑adapter，预计约5–7GB，另加
 ## 10. 可复制给下一位code agent的开场白
 
 ```text
-你将接手本地研究工作区 /Users/rarp/Desktop/ICLR。请先完整阅读根 AGENTS.md、SOPPO/AGENTS.md、SOPPO/human_read/code/ROUND2_LIVE_HANDOFF.md、SOPPO/human_read/exp/CODE_HANDOFF.md、SOPPO/human_read/exp/experiment_archive.md中的Round2 v0.6条目、SOPPO/code/CODE_OVERVIEW.md、machine/CURRENT_STATE.md 和 machine/standalone_3x4090_server.md；不要把专用于Round3草案的`human_read/exp/current_experiment.md`当成本次运行依据。再向我复述你理解的职责、当前阶段、正在运行的4B Round2合同、服务器风险与尚未批准的决策。当前3×4090服务器上可能仍有正式长链运行；在获得实时证据前不要猜experiment ID、commit、step或PID，不要停止任务、修改服务器checkout或删除checkpoint。先只读核验 status_all.sh、controller.json、两个state.json、metrics尾部、nvidia-smi、df和keep-20 pruner状态。QLoRA、双vLLM副本和Qwen3-1.7B只是候选方案，不是执行授权。尤其注意：未经我审阅，不得自行git commit或git push；本地只允许静态阅读/编辑与文本检查，测试、数据、模型和GPU工作只能在相应服务器阶段授权下执行。
+你将接手本地研究工作区 /Users/rarp/Desktop/ICLR。请先完整阅读根 AGENTS.md、SOPPO/AGENTS.md、SOPPO/human_read/code/ROUND2_LIVE_HANDOFF.md、SOPPO/human_read/exp/CODE_HANDOFF.md、SOPPO/human_read/exp/experiment_archive.md中的Round2 v0.6条目、SOPPO/code/CODE_OVERVIEW.md、machine/CURRENT_STATE.md 和 machine/4090-3/standalone_3x4090_server.md；不要把专用于Round3草案的`human_read/exp/current_experiment.md`当成本次运行依据。再向我复述你理解的职责、当前阶段、正在运行的4B Round2合同、服务器风险与尚未批准的决策。当前3×4090服务器上可能仍有正式长链运行；在获得实时证据前不要猜experiment ID、commit、step或PID，不要停止任务、修改服务器checkout或删除checkpoint。先只读核验 status_all.sh、controller.json、两个state.json、metrics尾部、nvidia-smi、df和keep-20 pruner状态。QLoRA、双vLLM副本和Qwen3-1.7B只是候选方案，不是执行授权。尤其注意：未经我审阅，不得自行git commit或git push；本地只允许静态阅读/编辑与文本检查，测试、数据、模型和GPU工作只能在相应服务器阶段授权下执行。
 ```
