@@ -87,6 +87,10 @@ for module in [
 import torch
 
 expected_gpus = int(os.environ["ROUND4_EXPECTED_GPUS"])
+if importlib.metadata.version("setuptools") != "78.1.0":
+    raise SystemExit(
+        "unexpected setuptools: " + importlib.metadata.version("setuptools")
+    )
 if not torch.__version__.startswith("2.5.1+cu124"):
     raise SystemExit(f"unexpected torch build: {torch.__version__}")
 if torch.version.cuda != "12.4":
@@ -100,7 +104,15 @@ print(f"python={sys.version.split()[0]}")
 print(f"torch={torch.__version__}")
 print(f"torch_cuda={torch.version.cuda}")
 print(f"visible_gpus={torch.cuda.device_count()}")
-for distribution in ["transformers", "datasets", "peft", "trl", "alpaca-eval", "bitsandbytes"]:
+for distribution in [
+    "transformers",
+    "datasets",
+    "peft",
+    "trl",
+    "alpaca-eval",
+    "bitsandbytes",
+    "setuptools",
+]:
     print(f"{distribution}={importlib.metadata.version(distribution)}")
 PY
 

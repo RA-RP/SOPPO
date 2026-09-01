@@ -64,7 +64,13 @@ grep -Ev '^[[:space:]]*-e[[:space:]]+\.[[:space:]]*($|#)' "$REQUIREMENTS_SOURCE"
 if grep -Eq '^[[:space:]]*-e[[:space:]]+\.[[:space:]]*($|#)' "$RUNTIME_REQUIREMENTS"; then
     fail "editable local package entry was not removed from runtime requirements"
 fi
-printf '%s\n' 'torch==2.5.1+cu124' > "$CONSTRAINTS"
+# AlpacaEval 0.6.2 still imports pkg_resources. Newer setuptools releases no
+# longer ship that compatibility module, so keep the last verified wheel
+# available in this package instead of letting pip select the newest wheel.
+printf '%s\n' \
+    'torch==2.5.1+cu124' \
+    'setuptools==78.1.0' \
+    > "$CONSTRAINTS"
 
 # Download the CUDA build and its NVIDIA runtime dependencies only from PyTorch's official cu124 index.
 "$BUILDER_PYTHON" -m pip download \
