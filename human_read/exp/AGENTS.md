@@ -6,7 +6,7 @@
 - `useful_experiments.md`：经复盘后认为对论文有用的历史实验设计。
 - `experiment_archive.md`：所有版本的实验设计，按 cycle/experiment ID 追加。
 
-`CODE_HANDOFF.md`记录Round3代码交接，并在后半保留Round2历史交接。旧五方法formal绑定`b1beef5`继续自然运行；2026-08-27用户要求把动态PE恢复为DPO implicit reward并新增两臂，当前为修订后的`CODE_IMPLEMENTATION`，新代码尚未获提交或服务器执行授权。
+`CODE_HANDOFF.md`只记录Round3/Round2历史代码交接，不是Round4入口。当前Round4处于`THEORY_DISCUSSION`，`current_experiment.md`只是锁定草案；理论未明确通过前不得进入实验批准或代码实现。
 
 ## 阶段门禁
 

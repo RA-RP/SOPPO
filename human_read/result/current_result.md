@@ -1,50 +1,52 @@
-# Round2结果交接：用户行政关闭、后续证据勘误
+# Round3结果交接：五方法结果保留、amendment行政关闭
 
 ## 0. 版本与状态
 
-- Cycle ID：`cycle-20260818-01` / Round2
-- Experiment ID：`exp-20260824-05-round2-tp2`（2026-08-26后续只读核验）
-- 服务器终止证据：controller在step590停止，exit code 143；未把该终止解释为科学成功或失败
-- 对应设计：Round2 v0.6历史合同，见`../exp/experiment_archive.md`与`../code/ROUND2_LIVE_HANDOFF.md`
-- 结果版本：`round2-result-administrative-close-v0.1`
-- 状态：`NO_CONCLUSION`；已取得停止/保留状态证据，但没有完整final evaluation或aggregate
-- 用户交接决定：2026-08-26明确指示“Round2先不管了，直接开始Round3”
-- 交接语义：用户选择不再等待Round2结果作为Round3的前置证据；后续虽确认进程已停止，仍无足够结果证据判断方法效果
-- 当前唯一活动阶段：Round3 `SERVER_EXECUTION`（v0.4重新验证；本文件仍只交接Round2的`NO_CONCLUSION`结果）
+- Cycle：`cycle-20260818-01` / Round3
+- Formal experiment：`round3-20260826-04`
+- 执行设计与代码：`r3-theory-v1.0` / `round3-exp-v1.5` / exact commit `b1beef5550ac47c9c78b98c1729014cc153b1251`
+- 未执行修订：`r3-theory-v1.1` / `round3-exp-v1.6` 的两个DPO-reward PE extension
+- 结果版本：`round3-result-administrative-close-v0.1`
+- 状态：`COMPLETE_FORMAL_WITH_UNEXECUTED_AMENDMENT`；五方法formal有完整聚合，amendment没有新增实验结果
+- 用户决定：2026-09-01明确要求不再保留Round4为锁定候选，直接覆盖进入Round4
+- 交接语义：保留并如实登记Round3五方法结果，不运行两个DPO-reward extension，不用缺失extension结果补写结论
 
 ## 1. 执行完整性
 
-2026-08-24现场快照见`../code/ROUND2_LIVE_HANDOFF.md`；2026-08-26又完成只读核验，确认以下执行状态。这些证据仍不能替代final evaluation或aggregate。
+- controller于2026-08-27 12:56达到`completed/all_methods`，exit 0；五方法均完成250/250 optimizer steps，各保留10个durable checkpoints。
+- 共同1K validation选点、独立997-pair双head final test与sample-free aggregate完成。
+- selected steps：DPO-1K 225、SSPO 25、DPO-8K 250、SimPO-reward PE SFT+rollout 250、SimPO-reward PE rollout-only 225。
+- `r3-theory-v1.1`后来要求的两个DPO-reward PE没有进入服务器执行，不存在对应checkpoint、test或Alpaca结果。
+- 旧run、失败attempt、Round2产物和全部checkpoint保持原位；本次行政切换未发起服务器命令、未停止任务、未删除产物。
 
-- 实际完成的实验组：第一方法运行到step590后停止；第二方法未启动
-- 最终resolved config、commit与data/model manifest：未回传
-- 两条formal的完成/失败状态：第一方法未完成预注册856 steps，controller exit 143；第二方法未启动
-- independent evaluation/aggregate：未知
-- checkpoint保留：step580/589/590存在，best指向step480；共保留20个checkpoint
-- keep-20 pruner状态：两个PID文件均为陈旧记录，对应进程不存在
-- 核验时资源：三张GPU空闲；`/data`约96G可用、使用率98%，仍是高风险共享文件系统
+## 2. 已观察事实
 
-本次核验没有运行`stop_all.sh`、发送信号、修改服务器checkout或删除checkpoint。旧Round2环境已由外部操作删除，runs/checkpoints仍在；Round3服务器执行前仍须重新只读核验并fail closed。
+独立997-pair的DPO reference-delta head accuracy（tie计0.5）为：
 
-## 2. 观察事实与预先判断
+| 方法 | Accuracy |
+| --- | ---: |
+| frozen base | 0.5000 |
+| SSPO | 0.5155 |
+| DPO-1K | 0.6479 |
+| SimPO-reward PE SFT+rollout | 0.6459 |
+| SimPO-reward PE rollout-only | 0.6349 |
+| DPO-8K | 0.6790 |
 
-没有可核验的最终聚合指标，因此：
+同head下，DPO-8K比DPO-1K高3.11pp；SSPO比DPO-1K低13.24pp；两个SimPO-reward PE分别比DPO-1K低0.20pp和1.30pp。raw mean-logp beta10 head的各方法accuracy集中在约0.589–0.594且置信度高度饱和，区分力较弱。
 
-- 不判定任一Round2方法优于另一方法；
-- 不判定任一Round2预测被支持或反驳；
-- 不把2026-08-24的中途step快照当成final result；
-- 不把exit 143或step590写成训练完成，也不从中推断方法优劣。
+## 3. 解释与结论边界
 
-## 3. 结论边界
+- 这些结果支持“本次单种子设置下，1K DPO已学习到明显偏好信号，8K labeled预算进一步提高”；不支持统计显著性或跨模型外推。
+- 本次GitHub-loss SSPO在预注册1:7、250-step、统一lr设置下没有达到DPO-1K表现；不能据此否定所有SSPO定义或调参设置。
+- 两个历史动态臂实际是SimPO raw mean-logp reward profile；其PE责任在训练中近乎饱和。它们不能代表reference-relative StaticPE，也不能用于否定未执行的DPO-reward extension。
+- Round3没有AlpacaEval/MT-Bench结果。Round4必须重新生成和评价，不能从paired test推断生成式benchmark得分。
+- 用户选择直接进入Round4意味着不再为Round3 amendment补实验；这是研究路线行政决定，不是DPO-reward PE的科学负面结果。
 
-- Round2对论文主张不提供可用实证结论。
-- Round3设计不宣称是由Round2实验结果支持；它是用户已独立审阅并批准的新方案。
-- 本次只追加执行状态勘误，不回写或美化`NO_CONCLUSION`；若未来回收final指标，仍须另行追加结果记录。
+## 4. 证据与交接确认
 
-## 4. 结果交接确认
-
-- 完整快照归档：是；见`result_archive.md`的`round2-result-administrative-close-v0.1`
-- 执行完整性、事实、局限与无结论边界：已按证据缺失如实记录
-- 用户明确交接指令：是；2026-08-26要求不再等待Round2、直接开始Round3
-- 交接状态：`COMPLETE_WITH_PARTIAL_EXECUTION_EVIDENCE_NO_FINAL_RESULT`
-- 确认日期：2026-08-26
+- 本地白名单摘要：`../../../exp/round3-20260826-04/README.md`
+- 服务器原始证据索引、aggregate路径与日志SHA见上述README；逐样本预测、模型和checkpoint留在服务器。
+- 完整结果快照已追加到`result_archive.md`。
+- 用户明确行政交接：2026-09-01“直接覆盖成round4”。
+- 结果交接状态：`COMPLETE_BY_EXPLICIT_ADMINISTRATIVE_TRANSITION`
+- 下一入口：`../nextCycle/current_plan.md`，随后新cycle进入Round4 `THEORY_DISCUSSION`。

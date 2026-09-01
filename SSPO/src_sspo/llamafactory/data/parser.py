@@ -48,6 +48,7 @@ class DatasetAttr:
     chosen: Optional[str] = None
     rejected: Optional[str] = None
     unlabeled: Optional[str] = None  # For SSPO training
+    unlabeled_b: Optional[str] = None  # Fixed second candidate for StaticPE training
     kto_tag: Optional[str] = None
     # alpaca columns
     prompt: Optional[str] = "instruction"
@@ -136,7 +137,17 @@ def get_dataset_list(dataset_names: Optional[Sequence[str]], dataset_dir: str) -
         dataset_attr.set_attr("num_samples", dataset_info[name])
 
         if "columns" in dataset_info[name]:
-            column_names = ["system", "tools", "images", "videos", "chosen", "rejected", "kto_tag", "unlabeled"]
+            column_names = [
+                "system",
+                "tools",
+                "images",
+                "videos",
+                "chosen",
+                "rejected",
+                "kto_tag",
+                "unlabeled",
+                "unlabeled_b",
+            ]
             if dataset_attr.formatting == "alpaca":
                 column_names.extend(["prompt", "query", "response", "history"])
             else:

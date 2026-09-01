@@ -132,7 +132,34 @@ def run_dpo(
         trainer.save_metrics("train", train_result.metrics)
         trainer.save_state()
         if trainer.is_world_process_zero() and finetuning_args.plot_loss:
-            plot_loss(training_args.output_dir, keys=["loss", "eval_loss", "rewards/accuracies", "eval_rewards/accuracies"])
+            plot_keys = ["loss", "eval_loss", "rewards/accuracies", "eval_rewards/accuracies"]
+            if finetuning_args.pref_loss == "staticpe":
+                plot_keys.extend(
+                    [
+                        "staticpe/loss_dpo",
+                        "staticpe/loss_pe",
+                        "staticpe/loss_dpo_weighted",
+                        "staticpe/loss_pe_weighted",
+                        "staticpe/loss_total",
+                        "eval_staticpe/loss_dpo",
+                        "eval_staticpe/loss_pe",
+                        "eval_staticpe/loss_total",
+                    ]
+                )
+            elif finetuning_args.pref_loss == "sspo":
+                plot_keys.extend(
+                    [
+                        "sspo/loss_labeled",
+                        "sspo/loss_unlabeled",
+                        "sspo/loss_total",
+                        "sspo/gamma",
+                        "eval_sspo/loss_labeled",
+                        "eval_sspo/loss_unlabeled",
+                        "eval_sspo/loss_total",
+                    ]
+                )
+
+            plot_loss(training_args.output_dir, keys=plot_keys)
 
     if training_args.do_eval:
         metrics = trainer.evaluate(metric_key_prefix="eval")

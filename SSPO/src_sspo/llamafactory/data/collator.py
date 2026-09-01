@@ -195,6 +195,7 @@ class PairwiseDataCollatorWithPadding(MultiModalDataCollatorForSeq2Seq):
         chosen_features = []
         rejected_features = []
         unlabeled_features = []
+        unlabeled_b_features = []
     
         for feature in features:
             # Check data type using data_types field
@@ -219,7 +220,7 @@ class PairwiseDataCollatorWithPadding(MultiModalDataCollatorForSeq2Seq):
                 }
                 rejected_features.append(rejected_feature)
             
-            if data_type == "unlabeled" or data_type == "both":
+            if data_type in ["unlabeled", "both", "unlabeled_pair", "both_pair"]:
                 unlabeled_feature = {
                     "input_ids": feature["unlabeled_input_ids"],
                     "attention_mask": feature["unlabeled_attention_mask"],
@@ -228,6 +229,16 @@ class PairwiseDataCollatorWithPadding(MultiModalDataCollatorForSeq2Seq):
                     "videos": feature.get("videos", [])
                 }
                 unlabeled_features.append(unlabeled_feature)
+
+            if data_type in ["unlabeled_pair", "both_pair"]:
+                unlabeled_b_feature = {
+                    "input_ids": feature["unlabeled_b_input_ids"],
+                    "attention_mask": feature["unlabeled_b_attention_mask"],
+                    "labels": feature["unlabeled_b_labels"],
+                    "images": feature.get("images", []),
+                    "videos": feature.get("videos", [])
+                }
+                unlabeled_b_features.append(unlabeled_b_feature)
         
         # Data validation
         if len(chosen_features) != len(rejected_features):
@@ -237,11 +248,12 @@ class PairwiseDataCollatorWithPadding(MultiModalDataCollatorForSeq2Seq):
             rejected_features = rejected_features[:min_len]
             logger.warning(f"Chosen and rejected features mismatch. Using minimum: {min_len}")
         
-        # Combine data (order: chosen, rejected, unlabeled)
+        # Combine data (order: chosen, rejected, unlabeled-A, unlabeled-B)
         concatenated_features = []
         concatenated_features.extend(chosen_features)
         concatenated_features.extend(rejected_features)
         concatenated_features.extend(unlabeled_features)
+        concatenated_features.extend(unlabeled_b_features)
         
         # Call base padding logic
         batch = super().__call__(concatenated_features)
@@ -250,11 +262,13 @@ class PairwiseDataCollatorWithPadding(MultiModalDataCollatorForSeq2Seq):
         num_chosen = len(chosen_features)
         num_rejected = len(rejected_features)
         num_unlabeled = len(unlabeled_features)
+        num_unlabeled_b = len(unlabeled_b_features)
         
         # Add each quantity as individual tensors
         batch["num_chosen"] = torch.tensor([num_chosen], dtype=torch.int32)
         batch["num_rejected"] = torch.tensor([num_rejected], dtype=torch.int32)
         batch["num_unlabeled"] = torch.tensor([num_unlabeled], dtype=torch.int32)
+        batch["num_unlabeled_b"] = torch.tensor([num_unlabeled_b], dtype=torch.int32)
 
         return batch
 

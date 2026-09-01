@@ -23,22 +23,22 @@
 
 ## 当前状态
 
-- Cycle ID：`cycle-20260818-01`
-- 唯一活动阶段：Round3 PE reward amendment `CODE_IMPLEMENTATION`
-- Round2交接：2026-08-26只读核验确认正式experiment已在step590停止，step580/589/590保留、第二方法未启动、两个pruner未运行；旧环境已删除但runs/checkpoints保留，不得清理或覆盖。
-- Round3修订：用户于2026-08-27明确要求恢复早期Theory v0.2的`pi_theta/pi_ref` PE，把旧两个动态臂登记为SimPO-reward，并新增两个DPO-reward动态臂；对应`theory/current_theory.md` `r3-theory-v1.1`与`exp/current_experiment.md` `round3-exp-v1.6`。
-- 当前实现范围：Qwen3-1.7B、SSPO双源缩放数据、七方法统一250 steps、共同1K selection、独立997-pair双head test；旧五方法产物不可覆盖，新两个方法在旧controller终态后以独立extension experiment各自三卡串行。
-- 本地代码边界：本地只编辑与静态文本复核，不import/运行/测试项目；未经用户审阅不commit/push。
-- 服务器事实：旧五方法formal `round3-20260826-04`绑定exact commit `b1beef5550ac47c9c78b98c1729014cc153b1251`，仍须以实时只读证据确认终态；不得热改checkout、停止controller或删除产物。
-- 当前授权：只解锁本地`round3-code-candidate-v0.6`实现与静态检查。未经用户审阅本次代码交接，不得commit/push、部署、测试或启动两方法extension；Round4保持锁定。
-- Round3 extension `SERVER_EXECUTION`、`RESULT_HANDOFF`、`NEXTCYCLE_DISCUSSION`与Round4：锁定
+- Cycle ID：`cycle-20260901-01` / Round4
+- 唯一活动阶段：`THEORY_DISCUSSION`
+- Round3交接：旧五方法formal已完成并行政结项；DPO-reward extension未运行且不再推进，既有远程产物只读保留。
+- 当前理论：`theory/current_theory.md` `r4-theory-v0.2`，讨论中、未获用户明确通过。
+- 当前实验：`exp/current_experiment.md` `round4-exp-draft-v0.2`，仅为锁定草案。
+- 当前范围：Qwen3-1.7B、UltraFeedback/UltraChat各0.1、epoch1，对比DPO、SSPO、StaticPE；DPO effective batch16，SSPO/StaticPE effective batch64；目标评价为AlpacaEval 2.0。
+- 本地代码边界：只有legacy候选盘点；未经理论和实验依次批准，不进入Round4实现。不得commit/push、部署、测试、smoke、镜像、训练或评价。
+- 目标硬件与流程：FusionOne 8×A100为用户已实机验证事实；先创建/占用2张，4090-3准备镜像/数据并经SSH传入，全部smoke与formal在同一2卡上顺序执行。具体显存/拓扑/映射仍待preflight。
+- `EXP_DISCUSSION`及全部后续阶段：锁定。
 
 ## 阅读顺序
 
-1. 当前Round3实现：`theory/current_theory.md` v1.1与`exp/current_experiment.md` v1.6是用户明确要求的修订规范；当前入口是`../code/CODE_OVERVIEW.md`，代码交接尚待确认。
+1. 当前Round4理论：先读`theory/current_theory.md` v0.1；只有理论获用户明确通过后，才讨论`exp/current_experiment.md`锁定草案。
 2. Round1/Round2历史：读取`theory/theory_changelog.md`、`exp/experiment_archive.md`和Git历史，不再从两个`current_*`混读。
 3. Round2不完整结果交接：读取`result/current_result.md`与`code/ROUND2_LIVE_HANDOFF.md`；后续服务器操作前必须重新获取实时证据。
-4. Round3当前只实现获批规范；实质偏离时返回`EXP_DISCUSSION`重新批准。
+4. Round4既有StaticPE代码只是legacy候选，不代表理论或实验已经冻结；正式代码入口须在`CODE_IMPLEMENTATION`建立。
 5. 代码交接获用户明确确认后才可执行；结果与下一轮仍按状态机顺序推进。
 
 各子目录的 `AGENTS.md` 规定具体字段和更新动作。

@@ -294,3 +294,28 @@
 - 执行拆分：`round3-20260826-04`及其commit不可改写；它完成后，新两臂在独立extension experiment和commit中顺序独占GPU0 train +GPU1/2 vLLM。跨运行aggregate须验证相同model/data/reference/test manifests、997 sample/label顺序、score heads与final evaluator依赖源码字节一致。
 - 资源：旧formal保留50个checkpoints并生成21K rollouts；extension新增20个checkpoints并生成21K rollouts。extension重新做两臂strong smoke与增量存储投影，门禁失败时不自动删除缓存、Round2或旧Round3证据。
 - 延期：Round4 AlpacaEval/MT-Bench不启动；Round5 PE-static仍只登记。
+
+### Round4三方法、容器迁移与生成式评价 / `round4-exp-draft-v0.1` — 2026-09-01
+
+- 状态：`LOCKED_PRE_DISCUSSION_DRAFT`；cycle ID与experiment ID均为`TBD`。当前Round3尚未完成结果交接和下一轮规划，本草案未获理论或实验批准，不解锁代码实现、commit/push、镜像构建、服务器smoke或formal。
+- 方法解释：暂按“共三种方法”登记为`DPO-label-only`、`SSPO`、`StaticPE`，不是三个SSPO变体。为了形成主要只差无标签机制的对照，候选建议SSPO使用DPO-base；若选择作者默认SimPO-base，必须将labeled objective差异列为额外实验变量。
+- 共同模型：`Qwen/Qwen3-1.7B`同一不可变revision，native non-thinking `qwen3`模板，LoRA r8/all linear、BF16、lr `1e-5`、DPO beta `0.1`、cutoff 1024、epoch 1与seed 42作为候选共同设置；精确依赖lock和模型文件manifest由获批服务器preflight解析。
+- 共同数据来源：UltraFeedback Binarized `0.1`提供共享labeled view；UltraChat `0.1`提供SSPO/StaticPE共享unlabeled view。DPO只读取完全相同的labeled IDs，不得把unlabeled空行送入DPO trainer。StaticPE的A是UltraChat原始回答，B是冻结初始化Qwen3的一次性贪心非思考生成；A/B稳定hash换位，空生成和完全重复候选fail closed或进入预注册隔离计数。
+- 目标：DPO为labeled DPO mean；StaticPE为`(L_DPO+0.1L_PE)/1.1`；SSPO保留其labeled/unlabeled/gamma三项日志。三方法都必须保存按optimizer step的分项loss、eval loss、adapter与resolved config。
+- formal batch决定：用户于2026-09-01选择DPO effective batch16。SSPO和StaticPE为每设备4、2 GPU、梯度累积8，名义effective batch64行；DPO为每设备1、2 GPU、梯度累积8，effective batch16。三方法都保持epoch1，不重复或丢弃labeled数据来强凑相同步数。按预期6,113 labeled、20,785 unlabeled和`val_size=0.1`粗算，joint约379 steps、DPO约344 steps；冻结实际行数后记录精确值和相对误差。
+- eval：三方法共享同一held-out labeled eval view及相同batch/order；最终生成式候选为完整805条AlpacaEval 2.0，报告LC和普通win rate。是否同时评价frozen base、是否纳入MT-Bench、Alpaca evaluator从当前原型的`0.6.2`升级到官方较新的release、judge实际model snapshot与费用上限均未批准。
+- 4090-3 production-path smoke：三方法分别顺序运行，训练恰好2个optimizer steps；24GB专用physical micro-batch允许小于formal值，但不得改变loss定义。StaticPE和SSPO fixture必须确定性保证两个step合计同时覆盖labeled与unlabeled分支，不能因batch过小只测到PE/unlabeled；随后执行至少一个eval batch、adapter保存、LoRA merge、merged model离线重载、少量固定Alpaca指令生成和一次真实judge请求。所有输出使用独立smoke experiment ID，禁止写入formal目录。
+- 镜像与FusionOne候选：exact code commit和dependency lock先完成用户交接；镜像不包含数据、模型、API key或服务器凭据，使用不可变非`latest` tag并记录digest。只有4090-3实时验证Docker权限及仓库外scratch空间充足时才允许在该机build；否则使用另行授权的可联网制作机。FusionOne录入后先验证实际GPU SKU/显存、driver/CUDA、GPU可见性、共享内存/IPC、用户与挂载权限，再运行无数据import和production-path smoke。
+- 完整流程门禁：`code review → explicit commit/push approval → exact-commit pull → environment/image tests → 4090 smoke → image digest → FusionOne import → container preflight → A100/A800 smoke → formal`。任何失败保留摘要并返回相应上游阶段；smoke通过不允许跳过formal前数据/model/hash和存储门禁。
+- 预期formal产物：三份resolved config、共同model/data manifests、每方法分项loss曲线、eval摘要、merged-model manifest、805条生成的server-only逐样本文件、Alpaca annotations/judge raw日志server-only、LC/win-rate无样本聚合、环境/镜像digest与远程证据索引。
+- 回传白名单：配置、版本、hash、无样本聚合Markdown/JSON/CSV、汇总图和远程路径索引。数据、模型、adapter/merged checkpoint、逐样本生成、annotations、原始日志、API信息与平台凭据全部留在服务器执行面。
+- 当前阻塞决策：SSPO base；formal三方法并发方式；4090 Docker/scratch；Alpaca evaluator/judge/version/预算；frozen base与MT-Bench是否纳入。用户已决定DPO effective batch16，并明确要求行政关闭Round3、直接切换Round4；FusionOne 8×A100由用户确认已实机验证。
+
+### `cycle-20260901-01` / Round4两卡A100顺序执行修订 / `round4-exp-draft-v0.2` — 2026-09-01
+
+- 状态：`LOCKED_DRAFT_DURING_THEORY_DISCUSSION`；对应`r4-theory-v0.2`尚未获批，不解锁任何实现或执行。
+- 不变项：DPO/SSPO/StaticPE三方法、Qwen3-1.7B、双源各0.1、epoch1、DPO effective16、SSPO/StaticPE effective64、StaticPE lambda0.1与AlpacaEval 2.0目标不变。
+- 资源修订：用户先占用2张A100；三方法共享同一GPU对顺序执行，删除三组2卡/共6卡并发候选。
+- smoke修订：删除4090-3训练smoke；所有2-step train/eval/merge/reload/Alpaca API smoke移到目标2×A100容器。
+- 准备链：4090-3构建非`latest`无凭据镜像并配置不自动训练的安全启动入口；下载冻结数据后经SSH直传A100仓库外目录，目标端SHA完全一致才可进入schema/data preflight。
+- 前置阻塞：4090-3历史证据仍显示无构建工具、scratch不足；A100侧还需明确模型来自已验证只读挂载还是独立校验传输。

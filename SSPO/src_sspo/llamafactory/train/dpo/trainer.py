@@ -46,6 +46,7 @@ from typing_extensions import override
 from ...extras.constants import IGNORE_INDEX
 from ...extras.packages import is_transformers_version_greater_than
 from ...extras import logging
+from ...data.sampler import StaticPETwoStreamSampler
 from ..callbacks import SaveProcessorCallback
 from ..trainer_utils import create_custom_optimizer, create_custom_scheduler, get_batch_logps, nested_detach
 
@@ -104,6 +105,12 @@ class CustomDPOTrainer(DPOTrainer):
         self.sspo_gamma_0 = finetuning_args.sspo_gamma_0
         self.sspo_gamma_decay = finetuning_args.sspo_gamma_decay
         self.sspo_prior = finetuning_args.sspo_prior
+
+        # StaticPE hyperparameters
+        self.staticpe_lambda = finetuning_args.staticpe_lambda
+        self.staticpe_epsilon = finetuning_args.staticpe_epsilon
+        self.staticpe_min_labeled_per_batch = finetuning_args.staticpe_min_labeled_per_batch
+        self.staticpe_min_unlabeled_per_batch = finetuning_args.staticpe_min_unlabeled_per_batch
         
         #! EDIT : Add moving average params for reward normalization
         self.reward_norm_momentum = 0.95  # moving average momentum value
@@ -153,10 +160,32 @@ class CustomDPOTrainer(DPOTrainer):
 
     @override
     def _get_train_sampler(self) -> Optional["torch.utils.data.Sampler"]:
+        if self.loss_type == "staticpe":
+            return StaticPETwoStreamSampler(
+                data_types=self.train_dataset["data_types"],
+                batch_size=self.args.train_batch_size,
+                seed=self.args.seed,
+                min_labeled_per_batch=self.staticpe_min_labeled_per_batch,
+                min_unlabeled_per_batch=self.staticpe_min_unlabeled_per_batch,
+            )
+
         if self.finetuning_args.disable_shuffling:
             return torch.utils.data.SequentialSampler(self.train_dataset)
 
         return super()._get_train_sampler()
+
+    @override
+    def _get_eval_sampler(self, eval_dataset) -> Optional["torch.utils.data.Sampler"]:
+        if self.loss_type == "staticpe":
+            return StaticPETwoStreamSampler(
+                data_types=eval_dataset["data_types"],
+                batch_size=self.args.eval_batch_size,
+                seed=self.args.seed,
+                min_labeled_per_batch=self.staticpe_min_labeled_per_batch,
+                min_unlabeled_per_batch=self.staticpe_min_unlabeled_per_batch,
+            )
+
+        return super()._get_eval_sampler(eval_dataset)
 
     @override
     def get_batch_samples(self, epoch_iterator, num_batches):
@@ -186,6 +215,93 @@ class CustomDPOTrainer(DPOTrainer):
         logits = pi_logratios - gamma_logratios
         simpo_loss = -F.logsigmoid(self.beta * logits)
         return simpo_loss
+
+    def _gather_variable_tensor(self, tensor: "torch.Tensor") -> "torch.Tensor":
+        """Differentiably gather a variable-length 1-D tensor from all ranks."""
+        if not (torch.distributed.is_available() and torch.distributed.is_initialized()):
+            return tensor
+
+        world_size = torch.distributed.get_world_size()
+        local_size = torch.tensor([tensor.numel()], device=tensor.device, dtype=torch.long)
+        gathered_sizes = [torch.zeros_like(local_size) for _ in range(world_size)]
+        torch.distributed.all_gather(gathered_sizes, local_size)
+        sizes = [int(size.item()) for size in gathered_sizes]
+        if sum(sizes) == 0:
+            return tensor
+
+        max_size = max(sizes)
+        padded = F.pad(tensor.reshape(-1), (0, max_size - tensor.numel()))
+        from torch.distributed.nn.functional import all_gather
+
+        gathered = all_gather(padded)
+        return torch.cat([rank_tensor[:rank_size] for rank_tensor, rank_size in zip(gathered, sizes)], dim=0)
+
+    def staticpe_loss(
+        self,
+        policy_chosen_logps: "torch.Tensor",
+        policy_rejected_logps: "torch.Tensor",
+        policy_unlabeled_logps: "torch.Tensor",
+        policy_unlabeled_b_logps: "torch.Tensor",
+        reference_chosen_logps: "torch.Tensor",
+        reference_rejected_logps: "torch.Tensor",
+        reference_unlabeled_logps: "torch.Tensor",
+        reference_unlabeled_b_logps: "torch.Tensor",
+    ) -> Tuple["torch.Tensor", Dict[str, "torch.Tensor"]]:
+        """Compute labeled DPO plus StaticPE over the global candidate population."""
+        device = policy_unlabeled_logps.device
+        zero = (
+            policy_chosen_logps.sum()
+            + policy_rejected_logps.sum()
+            + policy_unlabeled_logps.sum()
+            + policy_unlabeled_b_logps.sum()
+        ) * 0.0
+
+        dpo_logits = self.beta * (
+            (policy_chosen_logps - policy_rejected_logps)
+            - (reference_chosen_logps - reference_rejected_logps)
+        )
+        global_dpo_logits = self._gather_variable_tensor(dpo_logits)
+        dpo_loss = -F.logsigmoid(global_dpo_logits).mean() if global_dpo_logits.numel() > 0 else zero
+
+        reward_a = self.beta * (policy_unlabeled_logps - reference_unlabeled_logps)
+        reward_b = self.beta * (policy_unlabeled_b_logps - reference_unlabeled_b_logps)
+        probabilities = torch.sigmoid(reward_a - reward_b)
+        global_probabilities = self._gather_variable_tensor(probabilities)
+
+        if global_probabilities.numel() > 0:
+            q = torch.stack([global_probabilities, 1.0 - global_probabilities], dim=-1)
+            weights_1 = global_probabilities
+            weights_2 = 1.0 - global_probabilities
+            c_1 = (weights_1.unsqueeze(-1) * q).sum(dim=0) / (weights_1.sum() + self.staticpe_epsilon)
+            c_2 = (weights_2.unsqueeze(-1) * q).sum(dim=0) / (weights_2.sum() + self.staticpe_epsilon)
+            target_1 = torch.tensor([1.0, 0.0], device=device, dtype=q.dtype)
+            target_2 = torch.tensor([0.0, 1.0], device=device, dtype=q.dtype)
+            pe_loss = 0.5 * (torch.abs(c_1 - target_1).sum() + torch.abs(c_2 - target_2).sum())
+        else:
+            c_1 = torch.zeros(2, device=device)
+            c_2 = torch.zeros(2, device=device)
+            pe_loss = zero
+
+        # Keep the approved component weights fixed even when a physical
+        # micro-batch contains no labeled row. Gradient accumulation averages
+        # these distributed micro-batch objectives at the optimizer step.
+        normalizer = 1.0 + self.staticpe_lambda
+        loss = (dpo_loss + self.staticpe_lambda * pe_loss) / normalizer
+
+        statistics = {
+            "dpo_loss": dpo_loss,
+            "pe_loss": pe_loss,
+            "weighted_dpo_loss": dpo_loss / normalizer,
+            "weighted_pe_loss": self.staticpe_lambda * pe_loss / normalizer,
+            "probability_mean": global_probabilities.mean() if global_probabilities.numel() > 0 else zero,
+            "c1_first": c_1[0],
+            "c1_second": c_1[1],
+            "c2_first": c_2[0],
+            "c2_second": c_2[1],
+            "reward_a_mean": reward_a.mean() if reward_a.numel() > 0 else zero,
+            "reward_b_mean": reward_b.mean() if reward_b.numel() > 0 else zero,
+        }
+        return loss, statistics
     
     #! EDIT : add unlabeled data for SSPO training
     def sspo_loss(
@@ -258,7 +374,7 @@ class CustomDPOTrainer(DPOTrainer):
                 else:
                     threshold = policy_unlabeled_logps_adjusted.mean()
                 
-                diff = self.beta * (policy_unlabeled_logps_adjusted - threshold)
+                diff = self.beta * (policy_unlabeled_logps_adjusted - threshold) ##if batch without labeled sample let loss=0.5
                 log_sigmoid_diff = F.logsigmoid(diff)
                 
                 u_loss_greater = self.sspo_prior * (-log_sigmoid_diff)
@@ -344,7 +460,7 @@ class CustomDPOTrainer(DPOTrainer):
     @override
     def concatenated_forward(
         self, model: "PreTrainedModel", batch: Dict[str, "torch.Tensor"]
-    ) -> Tuple["torch.Tensor", "torch.Tensor", "torch.Tensor", "torch.Tensor", "torch.Tensor"]:
+    ) -> Tuple["torch.Tensor", ...]:
         """
         Data distribution logic for SSPO training
         """
@@ -355,8 +471,11 @@ class CustomDPOTrainer(DPOTrainer):
         num_chosen = batch['num_chosen'].item() if 'num_chosen' in batch else 0
         num_rejected = batch['num_rejected'].item() if 'num_rejected' in batch else 0
         num_unlabeled = batch['num_unlabeled'].item() if 'num_unlabeled' in batch else 0
-        
-        all_logits: "torch.Tensor" = model(**batch, return_dict=True, use_cache=False).logits.to(torch.float32)
+        num_unlabeled_b = batch['num_unlabeled_b'].item() if 'num_unlabeled_b' in batch else 0
+
+        count_keys = {"num_chosen", "num_rejected", "num_unlabeled", "num_unlabeled_b"}
+        model_batch = {key: value for key, value in batch.items() if key not in count_keys}
+        all_logits: "torch.Tensor" = model(**model_batch, return_dict=True, use_cache=False).logits.to(torch.float32)
         all_logps, valid_length = get_batch_logps(logits=all_logits, labels=batch["labels"])
         
         if self.loss_type in ["ipo", "orpo", "simpo", "sspo"]:
@@ -364,6 +483,13 @@ class CustomDPOTrainer(DPOTrainer):
         
         device = all_logps.device
         split_sizes = [num_chosen, num_rejected, num_unlabeled]
+        if self.loss_type == "staticpe":
+            if num_unlabeled != num_unlabeled_b:
+                raise ValueError(
+                    "StaticPE requires the same number of unlabeled-A and unlabeled-B candidates, "
+                    f"but got {num_unlabeled} and {num_unlabeled_b}."
+                )
+            split_sizes.append(num_unlabeled_b)
         
         logps_list = torch.split(all_logps, split_sizes)
         logits_list = torch.split(all_logits, split_sizes)
@@ -372,14 +498,33 @@ class CustomDPOTrainer(DPOTrainer):
         chosen_logps = logps_list[0].to(device) if num_chosen > 0 else torch.tensor([], device=device)
         rejected_logps = logps_list[1].to(device) if num_rejected > 0 else torch.tensor([], device=device)
         unlabeled_logps = logps_list[2].to(device) if num_unlabeled > 0 else torch.tensor([], device=device)
+        unlabeled_b_logps = (
+            logps_list[3].to(device) if self.loss_type == "staticpe" and num_unlabeled_b > 0
+            else torch.tensor([], device=device)
+        )
 
         chosen_logits = logits_list[0].to(device) if num_chosen > 0 else torch.tensor([], device=device)
         rejected_logits = logits_list[1].to(device) if num_rejected > 0 else torch.tensor([], device=device)
         unlabeled_logits = logits_list[2].to(device) if num_unlabeled > 0 else torch.tensor([], device=device)
+        unlabeled_b_logits = (
+            logits_list[3].to(device) if self.loss_type == "staticpe" and num_unlabeled_b > 0
+            else torch.tensor([], device=device)
+        )
 
         chosen_length = length_list[0].to(device) if num_chosen > 0 else torch.tensor([], device=device)
 
-        if self.loss_type == "sspo":
+        if self.loss_type == "staticpe":
+            return (
+                chosen_logps,
+                rejected_logps,
+                unlabeled_logps,
+                unlabeled_b_logps,
+                chosen_logits,
+                rejected_logits,
+                unlabeled_logits,
+                unlabeled_b_logits,
+            )
+        elif self.loss_type == "sspo":
             return (
                 chosen_logps, rejected_logps, unlabeled_logps,
                 chosen_logits, rejected_logits, unlabeled_logits,
@@ -398,12 +543,17 @@ class CustomDPOTrainer(DPOTrainer):
     @override
     def compute_reference_log_probs(
         self, model: "PreTrainedModel", batch: Dict[str, "torch.Tensor"]
-    ) -> Tuple[Optional["torch.Tensor"], Optional["torch.Tensor"], Optional["torch.Tensor"]]:
+    ) -> Tuple[
+        Optional["torch.Tensor"],
+        Optional["torch.Tensor"],
+        Optional["torch.Tensor"],
+        Optional["torch.Tensor"],
+    ]:
         """
         Computes log probabilities of the reference model.
         """
         if not self.finetuning_args.use_ref_model:
-            return None, None, None
+            return None, None, None, None
 
         if self.ref_model is None:
             ref_model = model
@@ -413,19 +563,23 @@ class CustomDPOTrainer(DPOTrainer):
             ref_context = nullcontext()
 
         with torch.no_grad(), ref_context:
-            if self.loss_type == "sspo":
+            if self.loss_type == "staticpe":
+                reference_outputs = self.concatenated_forward(ref_model, batch)
+                return tuple(output.to(model.device) for output in reference_outputs[:4])
+            elif self.loss_type == "sspo":
                 reference_outputs = self.concatenated_forward(ref_model, batch)
                 if len(reference_outputs) >= 9:
                     reference_chosen_logps, reference_rejected_logps, reference_unlabeled_logps = reference_outputs[:3]
                     return (reference_chosen_logps.to(model.device), 
                             reference_rejected_logps.to(model.device), 
-                            reference_unlabeled_logps.to(model.device))
+                            reference_unlabeled_logps.to(model.device),
+                            None)
                 else:
                     reference_chosen_logps, reference_rejected_logps = reference_outputs[:2]
-                    return reference_chosen_logps.to(model.device), reference_rejected_logps.to(model.device), None
+                    return reference_chosen_logps.to(model.device), reference_rejected_logps.to(model.device), None, None
             else:
                 reference_chosen_logps, reference_rejected_logps = self.concatenated_forward(ref_model, batch)[:2]
-                return reference_chosen_logps.to(model.device), reference_rejected_logps.to(model.device), None
+                return reference_chosen_logps.to(model.device), reference_rejected_logps.to(model.device), None, None
 
     @override
     def get_batch_loss_metrics(
@@ -441,7 +595,78 @@ class CustomDPOTrainer(DPOTrainer):
         prefix = "eval_" if train_eval == "eval" else ""
         device = next(model.parameters()).device
 
-        if self.loss_type == "sspo":
+        if self.loss_type == "staticpe":
+            (
+                policy_chosen_logps,
+                policy_rejected_logps,
+                policy_unlabeled_logps,
+                policy_unlabeled_b_logps,
+                policy_chosen_logits,
+                policy_rejected_logits,
+                policy_unlabeled_logits,
+                policy_unlabeled_b_logits,
+            ) = self.concatenated_forward(model, batch)
+
+            (
+                reference_chosen_logps,
+                reference_rejected_logps,
+                reference_unlabeled_logps,
+                reference_unlabeled_b_logps,
+            ) = self.compute_reference_log_probs(model, batch)
+            if any(
+                logps is None
+                for logps in [
+                    reference_chosen_logps,
+                    reference_rejected_logps,
+                    reference_unlabeled_logps,
+                    reference_unlabeled_b_logps,
+                ]
+            ):
+                raise RuntimeError("StaticPE requires a frozen reference model for both labeled and unlabeled rows.")
+
+            losses, statistics = self.staticpe_loss(
+                policy_chosen_logps,
+                policy_rejected_logps,
+                policy_unlabeled_logps,
+                policy_unlabeled_b_logps,
+                reference_chosen_logps,
+                reference_rejected_logps,
+                reference_unlabeled_logps,
+                reference_unlabeled_b_logps,
+            )
+
+            chosen_rewards = self.beta * (policy_chosen_logps - reference_chosen_logps)
+            rejected_rewards = self.beta * (policy_rejected_logps - reference_rejected_logps)
+            metrics[f"{prefix}staticpe/loss_dpo"] = statistics["dpo_loss"].item()
+            metrics[f"{prefix}staticpe/loss_pe"] = statistics["pe_loss"].item()
+            metrics[f"{prefix}staticpe/loss_dpo_weighted"] = statistics["weighted_dpo_loss"].item()
+            metrics[f"{prefix}staticpe/loss_pe_weighted"] = statistics["weighted_pe_loss"].item()
+            metrics[f"{prefix}staticpe/loss_total"] = losses.item()
+            metrics[f"{prefix}staticpe/p_mean"] = statistics["probability_mean"].item()
+            metrics[f"{prefix}staticpe/c1_first"] = statistics["c1_first"].item()
+            metrics[f"{prefix}staticpe/c1_second"] = statistics["c1_second"].item()
+            metrics[f"{prefix}staticpe/c2_first"] = statistics["c2_first"].item()
+            metrics[f"{prefix}staticpe/c2_second"] = statistics["c2_second"].item()
+            metrics[f"{prefix}staticpe/reward_a"] = statistics["reward_a_mean"].item()
+            metrics[f"{prefix}staticpe/reward_b"] = statistics["reward_b_mean"].item()
+            metrics[f"{prefix}staticpe/lambda"] = self.staticpe_lambda
+            metrics[f"{prefix}rewards/chosen"] = chosen_rewards.mean().item() if chosen_rewards.numel() > 0 else 0.0
+            metrics[f"{prefix}rewards/rejected"] = rejected_rewards.mean().item() if rejected_rewards.numel() > 0 else 0.0
+            metrics[f"{prefix}rewards/accuracies"] = (
+                (chosen_rewards > rejected_rewards).float().mean().item()
+                if chosen_rewards.numel() > 0 else 0.5
+            )
+            metrics[f"{prefix}logps/chosen"] = policy_chosen_logps.mean().item() if policy_chosen_logps.numel() > 0 else 0.0
+            metrics[f"{prefix}logps/rejected"] = policy_rejected_logps.mean().item() if policy_rejected_logps.numel() > 0 else 0.0
+            metrics[f"{prefix}logps/unlabeled_a"] = policy_unlabeled_logps.mean().item() if policy_unlabeled_logps.numel() > 0 else 0.0
+            metrics[f"{prefix}logps/unlabeled_b"] = policy_unlabeled_b_logps.mean().item() if policy_unlabeled_b_logps.numel() > 0 else 0.0
+            metrics[f"{prefix}logits/chosen"] = policy_chosen_logits.mean().item() if policy_chosen_logits.numel() > 0 else 0.0
+            metrics[f"{prefix}logits/rejected"] = policy_rejected_logits.mean().item() if policy_rejected_logits.numel() > 0 else 0.0
+            metrics[f"{prefix}logits/unlabeled_a"] = policy_unlabeled_logits.mean().item() if policy_unlabeled_logits.numel() > 0 else 0.0
+            metrics[f"{prefix}logits/unlabeled_b"] = policy_unlabeled_b_logits.mean().item() if policy_unlabeled_b_logits.numel() > 0 else 0.0
+            return losses, metrics
+
+        elif self.loss_type == "sspo":
             has_data = (
                 batch['num_chosen'].item() > 0 or batch['num_rejected'].item() > 0
             )
@@ -456,7 +681,7 @@ class CustomDPOTrainer(DPOTrainer):
 
             # logger.info(f"Using {'DPO' if self.finetuning_args.use_ref_model else 'SimPO'} based SSPO in GPU {torch.cuda.current_device()}")
             
-            reference_chosen_logps, reference_rejected_logps, reference_unlabeled_logps = self.compute_reference_log_probs(model, batch)
+            reference_chosen_logps, reference_rejected_logps, reference_unlabeled_logps, _ = self.compute_reference_log_probs(model, batch)
 
             losses, simpo_losses, orpo_losses, unlabeled_losses, chosen_rewards, rejected_rewards, unlabeled_rewards = self.compute_preference_loss(
                 policy_chosen_logps,
@@ -485,6 +710,11 @@ class CustomDPOTrainer(DPOTrainer):
             metrics[f"{prefix}orpo_loss"] = orpo_losses.mean().item() if chosen_rewards.numel() > 0 and rejected_rewards.numel() > 0 else 0.0
             metrics[f"{prefix}simpo_loss"] = simpo_losses.mean().item() if chosen_rewards.numel() > 0 and rejected_rewards.numel() > 0 else 0.0
             metrics[f"{prefix}unlabeled_loss"] = unlabeled_losses.mean().item() if unlabeled_rewards.numel() > 0 else 0.0
+            # Stable, base-agnostic names. Keep the legacy aliases above so
+            # existing SSPO dashboards remain readable.
+            metrics[f"{prefix}sspo/loss_labeled"] = simpo_losses.mean().item() if simpo_losses.numel() > 0 else 0.0
+            metrics[f"{prefix}sspo/loss_unlabeled"] = unlabeled_losses.mean().item() if unlabeled_losses.numel() > 0 else 0.0
+            metrics[f"{prefix}sspo/loss_total"] = losses.mean().item()
 
             t = self.state.global_step
             current_gamma = max(self.sspo_gamma_min, self.sspo_gamma_0 * math.exp(-self.sspo_gamma_decay * t))
@@ -508,7 +738,7 @@ class CustomDPOTrainer(DPOTrainer):
                 policy_chosen_logps_avg,
             ) = self.concatenated_forward(model, batch)
 
-            reference_chosen_logps, reference_rejected_logps, _ = self.compute_reference_log_probs(model, batch)
+            reference_chosen_logps, reference_rejected_logps, _, _ = self.compute_reference_log_probs(model, batch)
             losses, chosen_rewards, rejected_rewards = self.compute_preference_loss(
                 policy_chosen_logps,
                 policy_rejected_logps,

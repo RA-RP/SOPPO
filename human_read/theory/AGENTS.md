@@ -7,7 +7,7 @@
 
 辅助/历史文件：
 
-- `theory_qa_current.md`：当前Round3决定与未决项的快速索引，不替代完整理论；
+- `theory_qa_current.md`：历史Round3决定与未决项的快速索引，不替代当前Round4完整理论；
 - `theory_qa_archive.md`：旧轮QA历史；
 - `EXP_HANDOFF.md`：Round1/Round2已经完成的历史Theory→Exp交接，不是Round3入口。
 

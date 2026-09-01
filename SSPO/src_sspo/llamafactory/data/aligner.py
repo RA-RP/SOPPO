@@ -86,53 +86,53 @@ def convert_alpaca(
     """
     Converts alpaca format dataset to the standard format.
     """
+    def get_string(column_name: Optional[str]) -> str:
+        value = example.get(column_name) if column_name else None
+        return value if isinstance(value, str) else ""
+
     prompt = []
-    if dataset_attr.history and isinstance(example[dataset_attr.history], list):
-        for old_prompt, old_response in example[dataset_attr.history]:
+    history = example.get(dataset_attr.history) if dataset_attr.history else None
+    if isinstance(history, list):
+        for old_prompt, old_response in history:
             prompt.append({"role": Role.USER.value, "content": old_prompt})
             prompt.append({"role": Role.ASSISTANT.value, "content": old_response})
 
     query = []
-    if dataset_attr.prompt and example[dataset_attr.prompt]:
-        query.append(example[dataset_attr.prompt])
+    prompt_text = get_string(dataset_attr.prompt)
+    query_text = get_string(dataset_attr.query)
+    if prompt_text:
+        query.append(prompt_text)
 
-    if dataset_attr.query and example[dataset_attr.query]:
-        query.append(example[dataset_attr.query])
+    if query_text:
+        query.append(query_text)
 
     prompt.append({"role": Role.USER.value, "content": "\n".join(query)})  # "prompt\nquery"
 
-    if dataset_attr.kto_tag and isinstance(example[dataset_attr.kto_tag], bool):  # kto example
-        response = [{"role": Role.ASSISTANT.value, "content": example[dataset_attr.response]}]
-        if example[dataset_attr.kto_tag]:
+    kto_tag = example.get(dataset_attr.kto_tag) if dataset_attr.kto_tag else None
+    chosen = get_string(dataset_attr.chosen)
+    rejected = get_string(dataset_attr.rejected)
+    unlabeled = get_string(dataset_attr.unlabeled)
+    unlabeled_b = get_string(dataset_attr.unlabeled_b)
+
+    if isinstance(kto_tag, bool):  # kto example
+        response = [{"role": Role.ASSISTANT.value, "content": get_string(dataset_attr.response)}]
+        if kto_tag:
             response = response + [{"role": Role.ASSISTANT.value, "content": ""}]
         else:
             response = [{"role": Role.ASSISTANT.value, "content": ""}] + response
-
-    elif (
-        dataset_attr.ranking
-        and isinstance(example[dataset_attr.chosen], str)
-        and isinstance(example[dataset_attr.rejected], str)
-        and not isinstance(example[dataset_attr.unlabeled], str)
-    ):  # pairwise example (DPO, ORPO, SIMPO)
+    elif dataset_attr.ranking and ((chosen and rejected) or unlabeled):
+        # Ranking rows always reserve the first three response slots for
+        # chosen, rejected and unlabeled-A. StaticPE adds unlabeled-B as a
+        # fourth slot, while ordinary DPO and SSPO remain backward compatible.
         response = [
-            {"role": Role.ASSISTANT.value, "content": example[dataset_attr.chosen]},
-            {"role": Role.ASSISTANT.value, "content": example[dataset_attr.rejected]},
-            {"role": Role.ASSISTANT.value, "content": example[dataset_attr.unlabeled]},
+            {"role": Role.ASSISTANT.value, "content": chosen},
+            {"role": Role.ASSISTANT.value, "content": rejected},
+            {"role": Role.ASSISTANT.value, "content": unlabeled},
         ]
-    elif dataset_attr.response and isinstance(example[dataset_attr.response], str):  # normal example
-        response = [{"role": Role.ASSISTANT.value, "content": example[dataset_attr.response]}]
-    
-    elif (
-        dataset_attr.ranking
-        and isinstance(example[dataset_attr.chosen], str)
-        and isinstance(example[dataset_attr.rejected], str)
-        and isinstance(example[dataset_attr.unlabeled], str)
-    ):  # SSPO example
-        response = [
-            {"role": Role.ASSISTANT.value, "content": example[dataset_attr.chosen]},
-            {"role": Role.ASSISTANT.value, "content": example[dataset_attr.rejected]},
-            {"role": Role.ASSISTANT.value, "content": example[dataset_attr.unlabeled]},
-        ]
+        if dataset_attr.unlabeled_b is not None:
+            response.append({"role": Role.ASSISTANT.value, "content": unlabeled_b})
+    elif get_string(dataset_attr.response):  # normal example
+        response = [{"role": Role.ASSISTANT.value, "content": get_string(dataset_attr.response)}]
     else:  # unsupervised
         response = []
 

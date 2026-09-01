@@ -36,3 +36,21 @@
 - 资源与风险：本地只做静态编辑；服务器阶段必须先核验Round2潜在运行、GPU与磁盘，不停止或删除旧产物
 - 最终状态：已批准；Round3 `CODE_IMPLEMENTATION`于2026-08-26激活
 - 后续复盘：待Round3代码交接和服务器验收
+
+### `cycle-20260818-01` Round3 → `cycle-20260901-01` Round4 — 2026-09-01 — `round4-activation-plan-v0.1`
+
+- 对应结果：`../result/current_result.md` `round3-result-administrative-close-v0.1`
+- 证据摘要：Round3五方法formal完成；DPO-1K/DPO-8K形成paired基线，GitHub-loss SSPO与SimPO-reward PE未超过DPO-1K；DPO-reward amendment未执行。
+- 对理论的处理：不把未执行amendment视为负面结果；Round4改为DPO、SSPO、StaticPE三方法直接比较，并增加AlpacaEval 2.0。
+- 选定行动：同一Qwen3-1.7B和10%双源数据；DPO只读labeled；DPO effective batch16，SSPO/StaticPE effective batch64；先4090-3 2-step全链smoke，再迁移不可变镜像到FusionOne 8×A100。
+- 成功条件：三方法数据/model/init/eval可追溯，loss分项持久化，adapter merge/reload通过，完整805条Alpaca输出与官方LC/win rate齐全。
+- 资源与风险：4090 Docker/scratch待实时验证；FusionOne 8×A100由用户确认已实机验证；私有凭据和大体积资产禁止进入Git/镜像。
+- 最终状态：用户明确批准目标切换；新cycle从Round4 `THEORY_DISCUSSION`开始，下游仍锁定。
+
+### `cycle-20260901-01` Round4执行顺序更新 — 2026-09-01 — `round4-activation-plan-v0.2`
+
+- 用户决定：为优先占用目标资源，先创建/占用FusionOne的2张A100。
+- 更新顺序：4090-3准备镜像和冻结数据 → SSH直传A100仓库外数据盘并校验SHA → 2×A100容器preflight → 三方法顺序2-step smoke → 单独formal授权 → 同卡顺序训练与AlpacaEval。
+- 删除项：4090-3训练smoke和三方法6卡并发不再属于Round4计划。
+- 风险：4090-3的Docker/BuildKit与scratch仍须实时解决；A100侧模型供给方式仍待冻结。
+- 门禁：本更新不越过Round4 `THEORY_DISCUSSION`，不构成任何服务器动作授权。

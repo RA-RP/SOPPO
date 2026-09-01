@@ -32,20 +32,17 @@
 
 ## 当前活动阶段
 
-- 当前 cycle：`cycle-20260818-01`
-- 唯一活动阶段：Round3 PE reward amendment `CODE_IMPLEMENTATION`
-- 当前入口：`code/CODE_OVERVIEW.md`、`human_read/theory/current_theory.md` `r3-theory-v1.1`与`human_read/exp/current_experiment.md` `round3-exp-v1.6`
-- 已完成门禁：原`r3-theory-v0.8`/`round3-exp-v1.3`于2026-08-25获批；冻结数据审计发现`test_prefs`只有1,997个有效pair后，用户于2026-08-26明确批准方案B及本地修改，形成`r3-theory-v0.9`/`round3-exp-v1.4`。用户同日授权服务器执行，exact commit `ed1bfca002799f11ea1bad29f6f06e2e15fdd565`已通过6项合同测试、data v2与reference cache；strong smoke随后发现入口`PYTHONPATH`遗漏和SSPO CUDA backward非确定性，按门禁返回`CODE_IMPLEMENTATION`。
-- Round2边界：2026-08-26只读核验确认`exp-20260824-05-round2-tp2`已在step590停止，step580/589/590保留，第二方法未启动，两个pruner均未运行。旧环境已删除但runs/checkpoints仍在；不得删除或覆盖。
-- 当前代码基线：旧formal绑定exact commit `b1beef5550ac47c9c78b98c1729014cc153b1251`，不得热修改；用户于2026-08-27审阅v0.6代码交接后明确认可（"我认可"），据此当日完成commit/push，exact commit以origin/master最新HEAD为准；服务器部署仍须等待旧controller终态并按EXECUTION_GUIDE执行。
-- 协作分工：用户于2026-08-26指定Codex为Round3设计与代码主责，只有Codex可以创作或修订`SOPPO/`内容；GLM只按`code/scripts/round3/GLM_VALIDATION_GUIDE.md`机械部署用户指定的exact commit、执行分阶段命令并回传证据，不得现场编辑/修复源码、commit或push。
-- Round3修订合同：七方法全部1 epoch/250 steps、共同1K selection与独立997-pair双head test。旧两个动态method ID据实登记为raw mean-logp beta10的SimPO-reward PE；新增两个动态方法恢复total-response-logp `pi_theta/pi_ref` beta.1的DPO-reward PE。新旧动态方法除reward profile外完全匹配。PE-static与AlpacaEval/MT-Bench仍不在Round3执行范围。
-- 当前实现：本地新增两个DPO-reward配置、adapter-disabled动态reference评分、两条三卡串行extension长链和跨运行sample-free聚合；只允许静态检查，server tests/strong smoke尚未执行。
-- 当前执行边界：旧formal继续自然结束。新增两方法只能在旧controller终态后，以new experiment ID/new exact reviewed commit执行；必须先完成用户代码交接、独立strong smoke和存储门禁。旧失败证据与全部checkpoint不得删除。
-- Formal挂载与完成：v0.5 exact commit `b1beef5550ac47c9c78b98c1729014cc153b1251`的`round3-20260826-04`于2026-08-27 00:16挂载，12:56达到`completed/all_methods`终态（exit 0）。五方法250/250、997-pair双head final test与sample-free聚合完成；结果摘要与证据索引见`exp/round3-20260826-04/README.md`。三卡已释放，`/data`剩余约74G。
-- Extension前置：v0.6已获用户代码交接认可并commit/push（origin/master HEAD）。extension部署仍需：旧controller终态（已满足）、服务器部署v0.6 exact commit、新experiment ID、baseline link、server tests、两臂strong smoke与extension-only投影门禁。当前磁盘74G对比预计约104G的2×门禁要求存在约30G缺口，需要用户对门禁合同修订或删减对象作出明确决策后才可推进。
-- 锁定阶段：Round3 extension `SERVER_EXECUTION`、`RESULT_HANDOFF`、`NEXTCYCLE_DISCUSSION`及Round4全部锁定。
-- 下一阶段条件：extension部署须先解决存储门禁缺口决策；旧五方法与新增两方法均形成白名单摘要和远程证据索引后进入Round3 `RESULT_HANDOFF`。
+- 当前 cycle：`cycle-20260901-01` / Round4
+- 唯一活动阶段：`THEORY_DISCUSSION`
+- 当前入口：`human_read/theory/current_theory.md` `r4-theory-v0.2`
+- 理论状态：讨论中，尚未获得用户明确通过；`human_read/exp/current_experiment.md`只是`round4-exp-draft-v0.2`锁定草案。
+- Round4范围：同一`Qwen/Qwen3-1.7B`、UltraFeedback/UltraChat默认各0.1、epoch1，对比DPO-label-only、SSPO与StaticPE，并补充统一的AlpacaEval 2.0评价链。
+- 已明确决定：StaticPE `lambda=0.1`；每方法2 GPU、GA8；SSPO/StaticPE每设备4、effective batch64；DPO每设备1、effective batch16；三者不重复或截断数据来强凑相同步数。
+- 目标资源与流程：用户于2026-09-01确认亲自验证FusionOne存在8张A100，并决定先创建/占用2张。4090-3只准备镜像和下载数据，再经SSH把数据传到A100仓库外目录；三方法的smoke和formal均共用这2张A100顺序执行。单卡显存、拓扑、容器GPU映射、挂载和传输SHA仍在preflight采集。
+- Round3边界：formal `round3-20260826-04`的旧五方法已完成并行政结项；拟议DPO-reward extension未运行，取消其继续执行，不删除或覆盖既有runs/checkpoints/证据。
+- 当前代码：`SSPO/SSPO/`中保留此前StaticPE legacy候选，但尚未成为Round4正式实现；`code/CODE_OVERVIEW.md`只作盘点。
+- 锁定阶段：`EXP_DISCUSSION`、`CODE_IMPLEMENTATION`、`SERVER_EXECUTION`、`RESULT_HANDOFF`与`NEXTCYCLE_DISCUSSION`全部锁定。不得commit/push、部署、测试、smoke、构建/上传镜像、训练或评价。
+- 下一阶段条件：用户明确通过`r4-theory-v0.2`后，才进入`EXP_DISCUSSION`并逐项冻结SSPO base、StaticPE PE population语义、AlpacaEval版本/judge、seed与MT-Bench范围。
 
 ## 标识与交叉引用
 

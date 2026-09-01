@@ -187,3 +187,23 @@
 - 回溯命名：旧`round3-exp-v1.5`的两个动态臂不删除、不覆盖，明确登记为`SimPO-reward PE`，即$p_i=\sigma(10[q_\theta^A-q_\theta^B])$、$q$为mean-response-logp；它们只作为reward-definition消融，不能代表原始PE主方法。
 - 新增主方法：在相同SFT+rollout与rollout-only candidate合同下分别新增两个`DPO-reward PE`，形成七方法Round3；数据、labeled DPO、PE aggregation、lambda、optimizer、selection与final test不变。
 - 执行边界：旧exact-commit formal继续自然结束；新增两臂必须等待旧controller终态，以新experiment ID/new exact commit执行并通过跨运行manifest、sample顺序与final-evaluator等价审计。Round4保持锁定。
+
+### Round4三方法候选登记 / `round4-theory-draft-v0.1` — 2026-09-01
+
+- 状态：`LOCKED_PRE_DISCUSSION_DRAFT`；尚未创建新cycle，当前唯一活动阶段仍是Round3 amendment `CODE_IMPLEMENTATION`。本条不构成Round3结果交接、Round4理论批准、实验批准、代码交接或执行授权。
+- 用户输入：下一轮候选暂按三种方法理解为DPO、SSPO、StaticPE；共同Qwen3-1.7B与UltraFeedback/UltraChat各10%来源，DPO只使用labeled数据；StaticPE沿用冻结初始化模型一次性生成第二candidate、`lambda=0.1`和DPO-base labeled branch。
+- 理论对照意图：优先把三者labeled branch统一为DPO-base，使比较集中于“无unlabeled机制 / SSPO single-response risk / StaticPE fixed-pair conditional encoding”。SSPO使用DPO-base还是作者默认SimPO-base仍未关闭，不能提前宣称已做到单变量比较。
+- 评价候选：AlpacaEval 2.0 LC与普通win rate；MT-Bench从旧Round4默认候选降为未决项。evaluator版本、805条数据revision、base是否参评、generation、judge snapshot、费用和失败策略均待Round4讨论冻结。
+- 执行候选：exact commit经用户批准后在4090-3拉取；24GB专用smoke对每种方法训练2个optimizer steps，并覆盖eval、LoRA merge/reload、Alpaca输出和真实judge调用；镜像使用非`latest` tag与digest录入FusionOne。smoke只证明工程闭环，不是科学结果。
+- 基础设施：既有快照表明4090-3当时没有可用Docker daemon且数据盘接近满载；用户于2026-09-01确认已实机验证FusionOne存在8张A100。Round4按8×A100目标资源登记，单卡显存、拓扑、容器GPU映射和挂载仍由任务preflight自动采集。
+- 安全边界：私有账号、密码、内部地址和镜像仓库实值只从本机原始手册或平台界面由操作者填写，禁止进入Git、配置、日志、实验记录或回答。
+
+### `cycle-20260901-01` / Round4激活与执行拓扑修订 / `r4-theory-v0.2` — 2026-09-01
+
+- 激活：用户明确要求行政关闭Round3并直接覆盖为Round4，创建`cycle-20260901-01`并进入`THEORY_DISCUSSION`；Round3旧五方法结果只读保留，DPO-reward extension取消执行。
+- 方法与batch：三方法为DPO-label-only、SSPO与StaticPE；用户选择DPO effective batch16，SSPO/StaticPE保持effective batch64，均为2 GPU、GA8、epoch1。
+- 资源事实：用户确认已实机验证FusionOne存在8张A100，并决定先创建/占用其中2张；单卡显存、拓扑、映射和挂载仍由preflight解析。
+- 流程修订：撤销4090-3训练smoke和三方法6卡并发候选。4090-3只负责镜像准备、冻结数据下载与SSH中转；三方法smoke和formal共用同一2张A100顺序执行。
+- 完整性：数据从4090-3传入A100仓库外目录，以源manifest和目标端SHA-256复核闭环；镜像使用安全启动入口，不自动训练，也不包含数据、模型或凭据。
+- 已知风险：4090-3历史快照缺少Docker/BuildKit且scratch紧张。该状态必须实时核验；若未改变，指定build步骤不能执行，不能删除旧实验强行腾空间。
+- 门禁：本次是讨论中理论修订，不构成理论整体批准，也不授权commit/push、镜像、下载/传输、A100资源创建、smoke或formal。

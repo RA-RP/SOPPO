@@ -140,7 +140,7 @@ class RLHFArguments:
         default=0.0,
         metadata={"help": "The supervised fine-tuning loss coefficient in DPO training."},
     )
-    pref_loss: Literal["sigmoid", "hinge", "ipo", "kto_pair", "orpo", "simpo"] = field(
+    pref_loss: Literal["sigmoid", "hinge", "ipo", "kto_pair", "orpo", "simpo", "sspo", "staticpe"] = field(
         default="sigmoid",
         metadata={"help": "The type of DPO loss to use."},
     )
@@ -181,6 +181,25 @@ class RLHFArguments:
     sspo_base: Optional[Literal["dpo", "simpo"]] = field(
         default="simpo",
         metadata={"help": "The base model for SSPO training."}
+    )
+
+    # StaticPE uses DPO on labeled pairs and a conditional-encoding loss on
+    # fixed unlabeled candidate pairs.
+    staticpe_lambda: float = field(
+        default=0.1,
+        metadata={"help": "The StaticPE conditional-encoding loss weight."},
+    )
+    staticpe_epsilon: float = field(
+        default=1e-8,
+        metadata={"help": "Numerical epsilon used in StaticPE conditional encodings."},
+    )
+    staticpe_min_labeled_per_batch: int = field(
+        default=0,
+        metadata={"help": "Minimum number of labeled pairs in each StaticPE batch."},
+    )
+    staticpe_min_unlabeled_per_batch: int = field(
+        default=2,
+        metadata={"help": "Minimum number of unlabeled candidate pairs in each StaticPE batch."},
     )
     
     ppo_buffer_size: int = field(
@@ -499,16 +518,12 @@ class FinetuningArguments(
         self.freeze_vision_tower = self.freeze_vision_tower or self.train_mm_proj_only
         self.freeze_multi_modal_projector = self.freeze_multi_modal_projector and not self.train_mm_proj_only
         
-        if self.stage == "dpo" and self.pref_loss != "sspo":
-            if self.pref_loss == "sigmoid":
-                self.use_ref_model = True
-            else:
-                self.use_ref_model = False
+        if self.stage == "dpo" and self.pref_loss == "sspo":
+            self.use_ref_model = self.sspo_base == "dpo"
+        elif self.stage == "dpo":
+            self.use_ref_model = self.pref_loss in ["sigmoid", "staticpe"]
         else:
-            if self.sspo_base == "dpo":
-                self.use_ref_model = True
-            else:
-                self.use_ref_model = False
+            self.use_ref_model = False
 
         assert self.finetuning_type in ["lora", "freeze", "full"], "Invalid fine-tuning method."
         assert self.ref_model_quantization_bit in [None, 8, 4], "We only accept 4-bit or 8-bit quantization."
@@ -522,6 +537,18 @@ class FinetuningArguments(
 
         if self.stage == "dpo" and self.pref_loss != "sigmoid" and self.dpo_label_smoothing > 1e-6:
             raise ValueError("`dpo_label_smoothing` is only valid for sigmoid loss function.")
+
+        if self.pref_loss == "staticpe" and self.staticpe_lambda < 0:
+            raise ValueError("`staticpe_lambda` must be non-negative.")
+
+        if self.pref_loss == "staticpe" and self.staticpe_epsilon <= 0:
+            raise ValueError("`staticpe_epsilon` must be positive.")
+
+        if self.pref_loss == "staticpe" and self.staticpe_min_labeled_per_batch < 0:
+            raise ValueError("`staticpe_min_labeled_per_batch` must be non-negative.")
+
+        if self.pref_loss == "staticpe" and self.staticpe_min_unlabeled_per_batch < 1:
+            raise ValueError("`staticpe_min_unlabeled_per_batch` must be at least 1.")
 
         if self.use_llama_pro and self.finetuning_type == "full":
             raise ValueError("`use_llama_pro` is only valid for Freeze or LoRA training.")

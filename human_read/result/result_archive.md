@@ -43,3 +43,16 @@
 - 资源快照：核验时三张GPU空闲；`/data`约96G可用、使用率98%。这是带时间证据，不是永久实时状态。
 - 安全边界：核验没有发送停止信号、修改服务器checkout或删除checkpoint；旧Round2环境后来已由外部操作删除，runs/checkpoints仍须保留。
 - 结论边界：没有final metrics，不能判断任一方法效果，也不能把step590或exit 143解释为训练完成。
+
+### `cycle-20260818-01` / `round3-20260826-04` — 2026-09-01 — `COMPLETE_FORMAL_WITH_UNEXECUTED_AMENDMENT`
+
+- 对应设计版本：formal为`r3-theory-v1.0` / `round3-exp-v1.5`；后续未执行amendment为`r3-theory-v1.1` / `round3-exp-v1.6`。
+- 原始证据目录：服务器索引见`../../exp/round3-20260826-04/README.md`，sample-free aggregate、controller和日志证据均已登记。
+- 代码与配置版本：formal exact commit `b1beef5550ac47c9c78b98c1729014cc153b1251`。
+- 执行完整性：五方法全部250/250、共同selection、独立997-pair双head test和aggregate完成；两个DPO-reward extension未运行。
+- 关键观察：reference-delta accuracy为base .5000、SSPO .5155、DPO-1K .6479、SimPO-reward PE SFT+rollout .6459、rollout-only .6349、DPO-8K .6790；raw mean-logp head高度饱和且区分力弱。
+- 当前解释：本设置下DPO-1K有效、DPO-8K提供额外label-budget收益；GitHub-loss SSPO和两个SimPO-reward PE未超过DPO-1K。不能外推到未执行的DPO-reward或StaticPE。
+- 替代解释/混杂：单种子、统一而非方法专属调参、SSPO labeled objective和无标签机制同时变化、raw reward来源捷径。
+- 结论边界：Round3无生成式benchmark；不把amendment未执行解释为科学失败。
+- 用户交接：2026-09-01明确要求直接覆盖进入Round4，因此Round3以行政方式完成结果交接，不再补跑extension。
+- 服务器安全边界：未停止任务、未删除旧run/checkpoint、未修改服务器checkout。

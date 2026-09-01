@@ -1143,6 +1143,45 @@ _register_template(
 )
 
 
+# Qwen3 non-thinking mode. The empty thinking block is part of the prompt,
+# following the hard switch used by Qwen3 when enable_thinking=False.
+_register_template(
+    name="qwen3",
+    format_user=StringFormatter(
+        slots=["<|im_start|>user\n{{content}}<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n"]
+    ),
+    format_assistant=StringFormatter(slots=["{{content}}<|im_end|>\n"]),
+    format_system=StringFormatter(slots=["<|im_start|>system\n{{content}}<|im_end|>\n"]),
+    format_function=FunctionFormatter(slots=["{{content}}", "<|im_end|>\n"], tool_format="qwen"),
+    format_observation=StringFormatter(
+        slots=[
+            "<|im_start|>user\n<tool_response>\n{{content}}\n</tool_response><|im_end|>\n"
+            "<|im_start|>assistant\n<think>\n\n</think>\n\n"
+        ]
+    ),
+    format_tools=ToolFormatter(tool_format="qwen"),
+    default_system="You are a helpful assistant.",
+    stop_words=["<|im_end|>"],
+)
+
+
+# Qwen3 thinking mode. Assistant responses should already contain a complete
+# <think>...</think> block followed by the final answer.
+_register_template(
+    name="qwen3-think",
+    format_user=StringFormatter(slots=["<|im_start|>user\n{{content}}<|im_end|>\n<|im_start|>assistant\n"]),
+    format_assistant=StringFormatter(slots=["{{content}}<|im_end|>\n"]),
+    format_system=StringFormatter(slots=["<|im_start|>system\n{{content}}<|im_end|>\n"]),
+    format_function=FunctionFormatter(slots=["{{content}}", "<|im_end|>\n"], tool_format="qwen"),
+    format_observation=StringFormatter(
+        slots=["<|im_start|>user\n<tool_response>\n{{content}}\n</tool_response><|im_end|>\n<|im_start|>assistant\n"]
+    ),
+    format_tools=ToolFormatter(tool_format="qwen"),
+    default_system="You are a helpful assistant.",
+    stop_words=["<|im_end|>"],
+)
+
+
 # copied from chatml template
 _register_template(
     name="qwen2_vl",
