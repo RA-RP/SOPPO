@@ -1,5 +1,8 @@
-# python >= 3.10.0
-torch==2.5.1 # install torch first
+# Package lower bound: Python >= 3.10. Round4 runtime: CPython 3.12.x.
+# Round4 must install torch from the official CUDA 12.4 index first:
+# python -m pip install "torch==2.5.1" --index-url https://download.pytorch.org/whl/cu124
+# The unqualified pin below accepts the resolved 2.5.1+cu124 local version.
+torch==2.5.1
 accelerate==1.0.1
 aiofiles==23.2.1
 aiohappyeyeballs==2.4.4

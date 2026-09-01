@@ -3,12 +3,12 @@
 ## 0. 版本、状态与边界
 
 - Cycle：`cycle-20260901-01` / Round4
-- 理论版本：`r4-theory-v0.2`
-- 当前唯一活动阶段：`THEORY_DISCUSSION`
-- 状态：`DISCUSSION / NOT YET APPROVED`
-- 来源：用户于2026-09-01明确要求行政关闭Round3 amendment并直接切换Round4；该指令批准了新cycle和研究方向，不等于批准本理论正文
+- 理论版本：`r4-theory-v1.0`
+- 当前唯一活动阶段：`SERVER_EXECUTION`
+- 状态：`APPROVED`
+- 用户确认：2026-09-01，用户明确授权“直接到code阶段，想改什么改什么”；该授权按当前Round4理论与实验对象记录为明确通过，并授权在不改变研究问题的前提下冻结剩余工程选择
 - Round3边界：五方法formal结果只读保留；两个DPO-reward extension不再执行，不能用“未运行”推断方法效果
-- 下游门禁：Round4实验定稿、代码实现、commit/push、4090镜像/数据准备、A100资源创建、smoke与formal全部锁定
+- 代码交接：`round4-code-v1.0`于2026-09-01获用户明确批准提交并完成4090-3任务；4090-3只负责离线依赖、冻结数据/模型与manifest，不执行训练
 
 ## 1. 研究问题
 
@@ -62,17 +62,17 @@ $$
 L_{\mathrm{DPO}}=\operatorname{mean}_i[-\log\sigma(d_i)].
 $$
 
-DPO-label-only只优化该目标。StaticPE的labeled branch也严格使用该目标。为了把SSPO与二者解释为主要只差无标签机制，本版建议SSPO同样采用DPO-base；若改用作者默认SimPO-base，Round4就成为“labeled objective + unlabeled mechanism”的联合比较，必须改写预测与解释边界。
+DPO-label-only只优化该目标。StaticPE的labeled branch和SSPO的labeled branch也严格使用该DPO-base目标，使三方法主要只差无标签机制；Round4不采用作者默认SimPO-base。
 
 ### 3.2 SSPO
 
-SSPO候选保留作者GitHub code-loss的主要机制：对labeled winning/losing与UltraChat single response计算reward标准化，以labeled winning reward的最小值作为threshold，在prior-weighted的两侧风险之间选择unlabeled loss，并通过$\gamma_t$混合：
+SSPO保留作者GitHub code-loss的主要无标签机制：对labeled winning/losing与UltraChat single response计算reward标准化，以labeled winning reward的最小值作为threshold，在prior-weighted的两侧风险之间选择unlabeled loss，并通过$\gamma_t$混合：
 
 $$
 L_{\mathrm{SSPO}}=\gamma_t L_{\mathrm{labeled}}+(1-\gamma_t)L_{\mathrm{unlabeled}}.
 $$
 
-需要在理论批准前关闭的唯一方法定义分支是$L_{\mathrm{labeled}}$采用DPO-base还是SimPO-base。running mean/variance、threshold、prior和$\gamma_t$属于SSPO内部机制，不与StaticPE的$\lambda$等同。
+$L_{\mathrm{labeled}}$固定采用DPO-base。running mean/variance、threshold、prior和$\gamma_t$属于SSPO内部机制，不与StaticPE的$\lambda$等同。
 
 ### 3.3 StaticPE
 
@@ -111,16 +111,11 @@ $$
 
 PE不读取candidate的真实优劣标签；它鼓励模型产生内部一致、可分离的方向概率。初始化policy等于reference时所有$p_i=0.5$，首个非对称更新由labeled DPO分支提供。
 
-### 3.4 PE统计群体的未决语义
+### 3.4 PE统计群体的冻结语义
 
 当前legacy原型在每个两卡全局physical micro-batch上可微汇总$p_i$并计算一组$c_1/c_2$，再对8个micro-batch累积梯度。formal设置下每个全局physical batch有8行，其中约6行unlabeled；这不等价于把effective batch64中的约50条unlabeled一次性合并后只计算一组$c_1/c_2$。
 
-因此Round4理论批准前必须明确选择：
-
-- `microbatch-PE`：接受当前实现，optimizer step优化8个小群体PE目标的平均；
-- `optimizer-population-PE`：要求对完整effective batch的unlabeled群体计算单一PE目标，需要两遍/解析梯度实现。
-
-两种定义不同，不能只以显存实现细节处理。当前v0.1暂不替用户默认选择。
+Round4固定采用`physical-microbatch-PE`：每次forward先跨当前两张DDP卡聚合该physical micro-batch中的unlabeled样本，形成一组全局$c_1/c_2$；一个optimizer step优化8个physical-microbatch PE目标的梯度累计。它明确不等同于在effective batch64上只形成一个PE目标，报告和代码不得混用两种口径。
 
 ## 4. Batch、step与公平性
 
@@ -155,9 +150,9 @@ PE不读取candidate的真实优劣标签；它鼓励模型产生内部一致、
 
 三种selected/final模型候选都在相同805条指令上生成一次回答，主要报告length-controlled win rate，同时报告普通win rate和平均输出长度。LC用于降低回答长度对judge偏好的混杂，但仍是自动裁判结果，不替代人类评价。
 
-正式评价必须冻结evaluator版本、数据revision、reference outputs、generation参数、judge配置与实际API可用性。当前legacy原型固定`alpaca_eval==0.6.2`，而官方仓库已有较新release；Round4实验设计必须选择一个版本并对三方法完全一致，不能训练后升级其中一条结果。
+正式评价固定`alpaca_eval==0.6.2`、`weighted_alpaca_eval_gpt4_turbo`和`get_length_controlled_winrate`；数据revision、reference outputs、generation参数、judge实际解析值与API可用性进入执行manifest。三方法与frozen base完全共用该合同，不能训练后只升级其中一条结果。
 
-MT-Bench不属于当前Round4默认范围，只有用户在实验设计阶段明确加入后才分配生成和judge预算。
+MT-Bench退出Round4，不分配生成或judge预算。
 
 ## 7. $C_{\gamma}$角色
 
@@ -172,19 +167,12 @@ Round4主问题是三种训练目标与生成式表现，不把$C_{\gamma}$作�
 - merged model只用于推理/评价交付，训练证据仍绑定原adapter与base revision。
 - 4090-3只承担镜像与数据中转准备，不再承担Round4训练smoke；其构建权限、scratch和网络连通性必须实时验证。
 - 三方法smoke与formal都在同一批先占用的2张A100上顺序执行；smoke通过只说明工程闭环，不代表formal已获授权。
-- 从4090-3经SSH传入A100的数据必须落在Git仓库和镜像层之外，以source manifest、字节数和SHA-256闭环；模型是否同路传输由实验设计另行冻结。
+- 从4090-3经SSH传入A100的数据和冻结Qwen3模型必须落在Git仓库和镜像层之外，分别以source manifest、字节数和SHA-256闭环；模型不得进入镜像层。
 
-## 9. 当前已决定与待讨论
+## 9. 冻结决定
 
 用户已决定：Round4三方法、Qwen3-1.7B、UltraFeedback/UltraChat各10%、DPO只用labeled、StaticPE `lambda=0.1`、epoch1、两卡、SSPO/StaticPE effective batch64、DPO effective batch16、eval每卡4、FusionOne 8×A100资源存在及AlpacaEval 2.0。执行顺序改为4090-3先准备镜像和数据并通过SSH传输，优先创建/占用2张A100，随后所有训练smoke和formal均在这2张卡上顺序进行；不再在4090-3执行训练smoke。
 
-理论仍待明确确认：
+其余选择冻结为：SSPO labeled branch使用DPO-base；StaticPE使用跨两卡同步的`physical-microbatch-PE`；frozen base进入同合同AlpacaEval作为训练前headroom；本轮只运行seed42并按探索性结果报告；MT-Bench退出Round4；冻结Qwen3模型与数据一样由4090-3生成独立manifest并校验传至A100，且不进入镜像层。
 
-1. SSPO采用DPO-base还是SimPO-base；本版建议DPO-base以减少混杂；
-2. StaticPE采用`microbatch-PE`还是完整`optimizer-population-PE`；
-3. frozen base是否也进入AlpacaEval，作为训练前headroom；
-4. 是否保持单种子42，还是增加独立随机种子；
-5. MT-Bench是否正式退出Round4。
-6. A100侧的冻结Qwen3模型从已有只读挂载复用，还是与数据一样从4090-3校验传输；模型不进入镜像层。
-
-只有用户明确通过`r4-theory-v0.2`后，才进入`EXP_DISCUSSION`。
+`r4-theory-v1.0`已于2026-09-01获得用户明确通过，实验设计同步冻结为`round4-exp-v1.0`；`round4-code-v1.0`随后完成交接，当前进入`SERVER_EXECUTION`。

@@ -33,16 +33,17 @@
 ## 当前活动阶段
 
 - 当前 cycle：`cycle-20260901-01` / Round4
-- 唯一活动阶段：`THEORY_DISCUSSION`
-- 当前入口：`human_read/theory/current_theory.md` `r4-theory-v0.2`
-- 理论状态：讨论中，尚未获得用户明确通过；`human_read/exp/current_experiment.md`只是`round4-exp-draft-v0.2`锁定草案。
+- 唯一活动阶段：`SERVER_EXECUTION`
+- 当前入口：`code/CODE_OVERVIEW.md`
+- 批准基线：`human_read/theory/current_theory.md` `r4-theory-v1.0`与`human_read/exp/current_experiment.md` `round4-exp-v1.0`均于2026-09-01获用户明确通过；用户明确授权直接进入code阶段。
 - Round4范围：同一`Qwen/Qwen3-1.7B`、UltraFeedback/UltraChat默认各0.1、epoch1，对比DPO-label-only、SSPO与StaticPE，并补充统一的AlpacaEval 2.0评价链。
 - 已明确决定：StaticPE `lambda=0.1`；每方法2 GPU、GA8；SSPO/StaticPE每设备4、effective batch64；DPO每设备1、effective batch16；三者不重复或截断数据来强凑相同步数。
 - 目标资源与流程：用户于2026-09-01确认亲自验证FusionOne存在8张A100，并决定先创建/占用2张。4090-3只准备镜像和下载数据，再经SSH把数据传到A100仓库外目录；三方法的smoke和formal均共用这2张A100顺序执行。单卡显存、拓扑、容器GPU映射、挂载和传输SHA仍在preflight采集。
-- Round3边界：formal `round3-20260826-04`的旧五方法已完成并行政结项；拟议DPO-reward extension未运行，取消其继续执行，不删除或覆盖既有runs/checkpoints/证据。
-- 当前代码：`SSPO/SSPO/`中保留此前StaticPE legacy候选，但尚未成为Round4正式实现；`code/CODE_OVERVIEW.md`只作盘点。
-- 锁定阶段：`EXP_DISCUSSION`、`CODE_IMPLEMENTATION`、`SERVER_EXECUTION`、`RESULT_HANDOFF`与`NEXTCYCLE_DISCUSSION`全部锁定。不得commit/push、部署、测试、smoke、构建/上传镜像、训练或评价。
-- 下一阶段条件：用户明确通过`r4-theory-v0.2`后，才进入`EXP_DISCUSSION`并逐项冻结SSPO base、StaticPE PE population语义、AlpacaEval版本/judge、seed与MT-Bench范围。
+- Round3边界：formal `round3-20260826-04`的旧五方法已完成并行政结项；拟议DPO-reward extension未运行，取消其继续执行。4090-3旧`runs/`和`envs/`已于2026-09-01按用户明确指令行政清空，不能再引用为现存证据。
+- 当前代码：`round4-code-v1.0`；用户于2026-09-01明确要求完成4090-3任务，构成对当前代码提交和4090-3服务器执行的明确批准。服务器只运行由该次交接产生的exact clean commit。
+- 当前执行边界：允许commit/push、4090-3 exact checkout、离线wheelhouse构建、冻结数据/模型下载及manifest/SHA生成；4090-3不训练。A100环境安装与smoke须在目标容器/SSH就绪后继续，formal训练仍按实验合同单独授权。
+- 锁定阶段：`RESULT_HANDOFF`与`NEXTCYCLE_DISCUSSION`锁定。
+- 下一阶段条件：服务器白名单执行完成或形成完整的终止/失败摘要与去敏证据索引，进入`RESULT_HANDOFF`。
 
 ## 标识与交叉引用
 

@@ -1,17 +1,17 @@
-# 当前实验草案：Round4 DPO、SSPO 与 StaticPE
+# 当前实验设计：Round4 DPO、SSPO 与 StaticPE
 
 ## 0. 版本与门禁
 
 - Cycle：`cycle-20260901-01` / Round4
-- 实验草案：`round4-exp-draft-v0.2`
-- 理论来源：`../theory/current_theory.md` `r4-theory-v0.2`
-- 当前唯一活动阶段：`THEORY_DISCUSSION`
-- 理论状态：讨论中，尚未获得用户明确通过
-- 实验状态：**锁定草案**；尚未进入 `EXP_DISCUSSION`，更未批准
-- 代码、commit/push、服务器测试、镜像构建、训练与评价：全部锁定
+- 实验版本：`round4-exp-v1.0`
+- 理论来源：`../theory/current_theory.md` `r4-theory-v1.0`（2026-09-01用户明确通过）
+- 当前唯一活动阶段：`SERVER_EXECUTION`
+- 实验状态：**APPROVED**
+- 用户确认：2026-09-01，用户明确授权直接进入code阶段并允许在当前Round4边界内冻结剩余工程选择
+- 代码交接：`round4-code-v1.0`，2026-09-01用户明确要求完成4090-3任务，已批准提交当前代码并执行4090-3离线依赖、数据和模型准备
 - Round3：旧五方法 formal 已完成并作行政结项；拟议的 DPO-reward extension 未运行，不并入 Round4
 
-本文件用于提前暴露 Round4 的实验选择，不表示这些选择已经定稿。理论通过后才逐项讨论并冻结本设计。
+本文件是Round4代码实现所依据的冻结实验合同；实现若改变以下研究语义，必须返回实验讨论并重新批准。
 
 ## 1. 研究问题
 
@@ -25,11 +25,11 @@
 
 ## 2. 方法臂
 
-| 方法 | 训练数据 | 训练目标 | 当前待定项 |
+| 方法 | 训练数据 | 训练目标 | 冻结口径 |
 | --- | --- | --- | --- |
 | DPO | UltraFeedback labeled pairs | DPO-base | 无标签数据不进入训练 |
-| SSPO | UltraFeedback labeled + UltraChat unlabeled | 与冻结实现一致的 labeled/unlabeled 联合目标 | 正式采用 DPO-base 还是 SimPO-base 尚待理论确认 |
-| StaticPE | 同一 labeled + unlabeled 双流 | `(L_DPO + 0.1 L_PE) / 1.1` | PE 是 physical microbatch 统计还是 optimizer-step 完整 population 统计 |
+| SSPO | UltraFeedback labeled + UltraChat unlabeled | DPO-base labeled branch + SSPO unlabeled mechanism | 不采用SimPO-base |
+| StaticPE | 同一 labeled + unlabeled 双流 | `(L_DPO + 0.1 L_PE) / 1.1` | 跨两卡同步的physical-microbatch PE |
 
 StaticPE 的无标签样本由两条固定候选构成：
 
@@ -49,7 +49,7 @@ L_{PE}=\frac12\left(\lVert c_1-[1,0]\rVert_1+\lVert c_2-[0,1]\rVert_1\right),
 L_{StaticPE}=\frac{L_{DPO}+0.1L_{PE}}{1.1}.
 $$
 
-`c_1/c_2`使用上述条件编码归一化形式；`epsilon`、reward beta、是否跨 gradient-accumulation 合并 population 必须在理论/实验批准前冻结。
+`c_1/c_2`使用上述条件编码归一化形式，`epsilon=1e-8`、reward `beta=0.1`；每次forward跨两卡同步当前physical micro-batch的unlabeled统计，不跨8次gradient accumulation合并population。
 
 ## 3. 模型、数据与共同设置
 
@@ -59,13 +59,15 @@ $$
 - epoch：1。
 - StaticPE：`lambda=0.1`。
 - GPU：每个训练臂固定使用2卡；不允许因目标平台有8卡而让某一方法获得额外数据并行优势。
-- eval physical batch：三方法候选均为每设备4；服务器显存检查不通过时，只允许调低并记录，不改变训练目标。
+- eval physical batch：三方法均为每设备4；服务器显存检查不通过时，只允许调低并记录，不改变训练目标。
+- Python/CUDA环境：CPython 3.12.x、PyTorch 2.5.1 CUDA 12.4 wheel，运行于`cuda12.4-cudnn-devel-ubuntu22.04-py312-ssh`既有镜像；最终resolved patch版本与wheel SHA写入环境manifest。
+- 随机种子：三方法与候选生成统一seed42；本轮不据单seed结果宣称统计显著性。
 
 数据必须在服务器冻结并输出去敏 manifest。任何 malformed、去重、split 或实际样本数变化都要先反映到 resolved config；不能根据预估 step 数反向删样本。
 
 ## 4. 正式 batch 与 step 口径
 
-用户于2026-09-01明确选择 DPO 全局有效 `batch=16`。候选正式配置为：
+用户于2026-09-01明确选择 DPO 全局有效 `batch=16`。正式配置为：
 
 | 方法 | per-device train | GPU | gradient accumulation | 全局有效 batch | per-device eval | epoch |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: |
@@ -85,12 +87,7 @@ $$
 
 SSPO/StaticPE使用 two-stream sampler，使一个完整 epoch 内总体 labeled:unlabeled 数量与冻结数据量一致；同时尽量让每个 physical batch 包含两类数据。若某个 physical batch 因整数和分布式切分不含某一类，必须明确定义并测试该分支。
 
-StaticPE 当前 legacy 原型是在每个两卡 physical microbatch 的无标签子集上分别形成 `c_1/c_2`，再累计8次梯度。这与在全局有效64行上只计算一次 PE 不等价。正式设计必须在以下两者中选择：
-
-1. `microbatch-PE`：接受当前实现语义，简单且显存较省；
-2. `optimizer-population-PE`：跨8次累积收集完整无标签 population 后精确计算一次，语义更贴近“所有无标签数据”，但实现和显存更复杂。
-
-在该项冻结前，不得将现有原型称作正式 StaticPE 数学实现。
+StaticPE固定在每个两卡global physical microbatch的无标签子集上同步形成一组`c_1/c_2`，再累计8次梯度。它与在全局有效64行上只计算一次PE不等价；代码、指标和论文记录统一称为`physical-microbatch-PE`。
 
 ## 6. 训练与评价记录
 
@@ -108,27 +105,27 @@ StaticPE 当前 legacy 原型是在每个两卡 physical microbatch 的无标签
 2. merge/reload 检查：LoRA merge 后离线重载，确认生成和权重校验值可复现；
 3. AlpacaEval 2.0：完整正式集为805条；三方法加冻结 base 使用同一 generation config、同一 evaluator、同一 judge 和同一缓存规则，报告 win rate 与 length-controlled win rate（LC）。
 
-正式 AlpacaEval 版本和 judge 仍待冻结。当前原型固定 `alpaca_eval==0.6.2`，不能在不同方法间漂移版本。API key、逐样本输出与原始 judge 响应只留服务器/密钥系统，不进Git或镜像。
+AlpacaEval固定`alpaca_eval==0.6.2`、`weighted_alpaca_eval_gpt4_turbo`、`get_length_controlled_winrate`；三方法与frozen base共享同一805条数据、生成配置、judge实际解析值和缓存规则。API key、逐样本输出与原始judge响应只留服务器/密钥系统，不进Git或镜像。MT-Bench退出Round4。
 
 ## 7. 4090-3 镜像与数据准备
 
-4090-3不再运行Round4训练smoke，只承担获批exact commit的镜像准备和联网数据暂存：
+4090-3不再运行Round4训练smoke，只承担获批exact commit的离线依赖、联网数据与模型暂存：
 
 1. 拉取用户批准的exact clean commit；
-2. 实时核验Docker/BuildKit权限、独立scratch空间和内部镜像仓库连通性；
-3. 依据冻结dependency lock构建无凭据镜像，使用非`latest` tag并记录digest；
-4. 配置可被FusionOne正常创建的安全启动入口：只初始化环境/保持容器可进入，不自动启动训练；
+2. 复用FusionOne已有`cuda12.4-cudnn-devel-ubuntu22.04-py312-ssh`镜像，不再把4090-3的Docker能力作为前置条件；
+3. 依据冻结dependency lock构建CPython 3.12/Linux x86_64离线wheelhouse并记录逐文件SHA-256；
+4. 在A100既有镜像内部创建新的Round4 venv，禁止直接复制旧Python 3.10 venv；
 5. 下载冻结revision的数据集，生成source manifest、文件字节数和SHA-256；
-6. 通过SSH/rsync类通道把数据直接传到A100仓库外的目标数据目录；
+6. 通过SSH/rsync类通道把wheelhouse、数据和冻结模型分别传到A100仓库外目标目录；
 7. 在目标端重算并逐文件比对SHA-256，只有完全一致才标记transfer complete。
 
-数据不能进入Git或镜像层，传输中断必须可续传且不能把半文件误认作完整数据。4090-3现有历史快照显示当前SSH落点缺少容器构建工具且数据盘空间紧张；若实时复核仍如此，该落点无法完成第2–3步，必须由用户先补充构建权限/scratch或改用获授权制作面。不能删除旧实验产物来强行腾空间。
+wheelhouse、数据和模型不能进入Git或镜像层；传输必须可续传且不能把半文件误认作完整文件。4090-3空间在执行前继续核验，生成物落在仓库外并分别使用manifest闭环。
 
 ## 8. FusionOne 正式执行候选
 
 用户于2026-09-01确认亲自验证目标平台存在8张A100，并决定先创建/占用其中2张。本实验据此登记为用户验证的目标资源事实，但单卡显存、拓扑、容器映射、CPU/内存和挂载仍由 preflight 采集。
 
-镜像流程候选：4090-3构建无凭据镜像 → 使用非`latest` tag并记录digest → 内部仓库录入 → 先创建2×A100容器 → 核验硬件/挂载/数据SHA → 在A100上完成全部smoke → 获得单独formal授权后启动训练。
+执行流程：FusionOne复用既有py312/CUDA12.4镜像 → 先创建2×A100容器 → 从4090-3传入离线wheelhouse、数据和模型 → 核验硬件/挂载/逐文件SHA → 在镜像内新建Round4 venv → 完成全部smoke → 获得单独formal授权后启动训练。
 
 三方法共享这同一组2张A100并顺序执行，不再候选6卡并发。每个方法先运行独立smoke：恰好2个optimizer steps、至少一次eval、adapter保存、LoRA merge、新进程离线reload、少量固定Alpaca指令生成和一次judge API调用；SSPO/StaticPE fixture必须同时覆盖labeled与unlabeled分支。smoke使用独立目录，只验证链路，不产生论文结果，也不覆盖formal batch合同。训练任务需要的平台占位算法和容器设置只属于执行面，不在Git保存内部接入信息。
 
@@ -153,13 +150,6 @@ StaticPE 当前 legacy 原型是在每个两卡 physical microbatch 的无标签
 
 不得把账号、密码、token、内部地址、原始数据、模型或逐样本回答写进Git、镜像层或聊天回答。
 
-## 11. 理论批准前未决项
+## 11. 批准与代码入口
 
-1. SSPO正式使用 DPO-base 还是 SimPO-base；当前建议选择DPO-base，以缩小与DPO/StaticPE的非目标差异。
-2. StaticPE选择 `microbatch-PE` 还是精确 `optimizer-population-PE`。
-3. AlpacaEval是否纳入冻结 base，并冻结具体版本、judge与生成参数。
-4. Round4只跑seed42，还是为三方法增加多个seed。
-5. MT-Bench是否纳入；当前建议本轮先只做AlpacaEval 2.0。
-6. A100侧Qwen3模型的来源：复用已核验只读挂载，或由4090-3按独立model manifest传输；不得放进镜像层。
-
-以上项目属于理论/实验选择。用户明确通过 `r4-theory-v0.2` 前，本草案不能解锁代码修改或任何服务器操作。
+本设计已冻结：SSPO使用DPO-base、StaticPE使用`physical-microbatch-PE`、frozen base加入AlpacaEval、seed42、MT-Bench退出、模型与数据从4090-3按独立manifest传至A100。用户于2026-09-01明确授权`round4-code-v1.0`提交并完成4090-3任务；当前处于`SERVER_EXECUTION`，代码入口为`../../code/CODE_OVERVIEW.md`。4090-3不训练，formal训练仍按本文件约定单独授权。

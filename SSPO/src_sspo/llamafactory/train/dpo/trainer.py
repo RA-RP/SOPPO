@@ -46,7 +46,7 @@ from typing_extensions import override
 from ...extras.constants import IGNORE_INDEX
 from ...extras.packages import is_transformers_version_greater_than
 from ...extras import logging
-from ...data.sampler import StaticPETwoStreamSampler
+from ...data.sampler import PreferenceTwoStreamSampler
 from ..callbacks import SaveProcessorCallback
 from ..trainer_utils import create_custom_optimizer, create_custom_scheduler, get_batch_logps, nested_detach
 
@@ -105,6 +105,8 @@ class CustomDPOTrainer(DPOTrainer):
         self.sspo_gamma_0 = finetuning_args.sspo_gamma_0
         self.sspo_gamma_decay = finetuning_args.sspo_gamma_decay
         self.sspo_prior = finetuning_args.sspo_prior
+        self.sspo_min_labeled_per_batch = finetuning_args.sspo_min_labeled_per_batch
+        self.sspo_min_unlabeled_per_batch = finetuning_args.sspo_min_unlabeled_per_batch
 
         # StaticPE hyperparameters
         self.staticpe_lambda = finetuning_args.staticpe_lambda
@@ -160,13 +162,19 @@ class CustomDPOTrainer(DPOTrainer):
 
     @override
     def _get_train_sampler(self) -> Optional["torch.utils.data.Sampler"]:
-        if self.loss_type == "staticpe":
-            return StaticPETwoStreamSampler(
+        if self.loss_type in {"sspo", "staticpe"}:
+            is_staticpe = self.loss_type == "staticpe"
+            return PreferenceTwoStreamSampler(
                 data_types=self.train_dataset["data_types"],
                 batch_size=self.args.train_batch_size,
                 seed=self.args.seed,
-                min_labeled_per_batch=self.staticpe_min_labeled_per_batch,
-                min_unlabeled_per_batch=self.staticpe_min_unlabeled_per_batch,
+                min_labeled_per_batch=(
+                    self.staticpe_min_labeled_per_batch if is_staticpe else self.sspo_min_labeled_per_batch
+                ),
+                min_unlabeled_per_batch=(
+                    self.staticpe_min_unlabeled_per_batch if is_staticpe else self.sspo_min_unlabeled_per_batch
+                ),
+                unlabeled_type="unlabeled_pair" if is_staticpe else "unlabeled",
             )
 
         if self.finetuning_args.disable_shuffling:
@@ -176,13 +184,21 @@ class CustomDPOTrainer(DPOTrainer):
 
     @override
     def _get_eval_sampler(self, eval_dataset) -> Optional["torch.utils.data.Sampler"]:
-        if self.loss_type == "staticpe":
-            return StaticPETwoStreamSampler(
+        data_types = set(eval_dataset["data_types"])
+        expected_unlabeled = "unlabeled_pair" if self.loss_type == "staticpe" else "unlabeled"
+        if self.loss_type in {"sspo", "staticpe"} and data_types == {"labeled", expected_unlabeled}:
+            is_staticpe = self.loss_type == "staticpe"
+            return PreferenceTwoStreamSampler(
                 data_types=eval_dataset["data_types"],
                 batch_size=self.args.eval_batch_size,
                 seed=self.args.seed,
-                min_labeled_per_batch=self.staticpe_min_labeled_per_batch,
-                min_unlabeled_per_batch=self.staticpe_min_unlabeled_per_batch,
+                min_labeled_per_batch=(
+                    self.staticpe_min_labeled_per_batch if is_staticpe else self.sspo_min_labeled_per_batch
+                ),
+                min_unlabeled_per_batch=(
+                    self.staticpe_min_unlabeled_per_batch if is_staticpe else self.sspo_min_unlabeled_per_batch
+                ),
+                unlabeled_type=expected_unlabeled,
             )
 
         return super()._get_eval_sampler(eval_dataset)
@@ -303,116 +319,102 @@ class CustomDPOTrainer(DPOTrainer):
         }
         return loss, statistics
     
-    #! EDIT : add unlabeled data for SSPO training
-    def sspo_loss(
-            self, 
-            policy_chosen_logps: "torch.Tensor", 
-            policy_rejected_logps: "torch.Tensor", 
-            policy_unlabeled_logps: "torch.Tensor",
-            reference_chosen_logps: Optional["torch.Tensor"] = None,
-            reference_rejected_logps: Optional["torch.Tensor"] = None,
-            reference_unlabeled_logps: Optional["torch.Tensor"] = None
-        ) -> "torch.Tensor":
+    def _global_detached_moments(self, values: "torch.Tensor") -> Tuple["torch.Tensor", "torch.Tensor"]:
+        """Return identical detached batch moments on every distributed rank."""
+        detached = values.detach().to(torch.float32)
+        statistics = torch.stack(
+            [
+                torch.tensor(float(detached.numel()), device=detached.device),
+                detached.sum(),
+                detached.square().sum(),
+            ]
+        )
+        if torch.distributed.is_available() and torch.distributed.is_initialized():
+            torch.distributed.all_reduce(statistics)
+        count = statistics[0].clamp_min(1.0)
+        mean = statistics[1] / count
+        variance = (statistics[2] / count - mean.square()).clamp_min(1e-8)
+        return mean, variance
 
-        device = self.accelerator.device
+    def sspo_loss(
+        self,
+        policy_chosen_logps: "torch.Tensor",
+        policy_rejected_logps: "torch.Tensor",
+        policy_unlabeled_logps: "torch.Tensor",
+        reference_chosen_logps: Optional["torch.Tensor"] = None,
+        reference_rejected_logps: Optional["torch.Tensor"] = None,
+        reference_unlabeled_logps: Optional["torch.Tensor"] = None,
+        update_running_stats: bool = True,
+    ) -> Tuple["torch.Tensor", "torch.Tensor", "torch.Tensor", "torch.Tensor"]:
+        """Combine an unnormalized DPO labeled loss with normalized SSPO risk."""
         t = self.state.global_step
         current_gamma = max(self.sspo_gamma_min, self.sspo_gamma_0 * math.exp(-self.sspo_gamma_decay * t))
-        
-        def normalize_rewards(logps: torch.Tensor, eps: float = 1e-8) -> torch.Tensor:
-            """Apply Z-score normalization with moving average and clipping to log probabilities"""
-            if logps.numel() == 0:
-                return logps
-            
-            batch_mean = logps.mean().detach()
-            batch_var = logps.var(unbiased=False).detach() + eps
-            
-            if self.running_mean is None or self.running_var is None:
-                self.running_mean = batch_mean.clone()
-                self.running_var = batch_var.clone()
-            else:
-                a = self.reward_norm_momentum
-                self.running_mean = a * self.running_mean + (1 - a) * batch_mean
-                self.running_var = a * self.running_var + (1 - a) * batch_var
-            
-            std = torch.sqrt(self.running_var)
-            normalized_logps = (logps - self.running_mean) / std
-            normalized_logps = torch.clamp(normalized_logps, -self.reward_clip_range, self.reward_clip_range)
-            
-            # logger.info(f"Reward stats - batch_mean: {batch_mean:.4f}, running_mean: {self.running_mean:.4f}, std: {std:.4f}")
-            
-            return normalized_logps
-        
-        normalized_policy_chosen_logps = normalize_rewards(policy_chosen_logps)
-        normalized_policy_rejected_logps = normalize_rewards(policy_rejected_logps)
-        normalized_policy_unlabeled_logps = normalize_rewards(policy_unlabeled_logps)
-        
-        if reference_chosen_logps is not None and reference_rejected_logps is not None:
-            normalized_reference_chosen_logps = normalize_rewards(reference_chosen_logps)
-            normalized_reference_rejected_logps = normalize_rewards(reference_rejected_logps)
-            
-            if reference_unlabeled_logps is not None:
-                normalized_reference_unlabeled_logps = normalize_rewards(reference_unlabeled_logps)
-            else:
-                normalized_reference_unlabeled_logps = None
+        zero = (
+            policy_chosen_logps.sum() + policy_rejected_logps.sum() + policy_unlabeled_logps.sum()
+        ) * 0.0
+
+        has_reference = reference_chosen_logps is not None and reference_rejected_logps is not None
+        if has_reference:
+            chosen_rewards = self.beta * (policy_chosen_logps - reference_chosen_logps)
+            rejected_rewards = self.beta * (policy_rejected_logps - reference_rejected_logps)
+            unlabeled_rewards = (
+                self.beta * (policy_unlabeled_logps - reference_unlabeled_logps)
+                if reference_unlabeled_logps is not None
+                else policy_unlabeled_logps.new_empty(0)
+            )
+            labeled_logits = chosen_rewards - rejected_rewards
+            labeled_losses = -F.logsigmoid(self._gather_variable_tensor(labeled_logits))
         else:
-            normalized_reference_chosen_logps = None
-            normalized_reference_rejected_logps = None
-            normalized_reference_unlabeled_logps = None
-        
-        if normalized_reference_chosen_logps is not None and normalized_reference_rejected_logps is not None:
-            policy_chosen_logps_adjusted = normalized_policy_chosen_logps - normalized_reference_chosen_logps
-            policy_rejected_logps_adjusted = normalized_policy_rejected_logps - normalized_reference_rejected_logps
-            
-            logits = self.beta * (policy_chosen_logps_adjusted - policy_rejected_logps_adjusted)
-            pn_loss = -F.logsigmoid(logits)
-            
-            if normalized_reference_unlabeled_logps is not None:
-                policy_unlabeled_logps_adjusted = normalized_policy_unlabeled_logps - normalized_reference_unlabeled_logps
-                
-                if normalized_policy_chosen_logps.numel() > 0:
-                    threshold = torch.min(policy_chosen_logps_adjusted)
+            chosen_rewards = self.beta * policy_chosen_logps
+            rejected_rewards = self.beta * policy_rejected_logps
+            unlabeled_rewards = self.beta * policy_unlabeled_logps
+            local_labeled_losses = (
+                self.simpo_loss(policy_chosen_logps, policy_rejected_logps)
+                if policy_chosen_logps.numel() > 0
+                else policy_chosen_logps.new_empty(0)
+            )
+            labeled_losses = self._gather_variable_tensor(local_labeled_losses)
+
+        reward_parts = [chosen_rewards, rejected_rewards, unlabeled_rewards]
+        nonempty_rewards = [reward for reward in reward_parts if reward.numel() > 0]
+        if nonempty_rewards:
+            batch_mean, batch_variance = self._global_detached_moments(torch.cat(nonempty_rewards))
+            if update_running_stats:
+                if self.running_mean is None or self.running_var is None:
+                    self.running_mean = batch_mean.clone()
+                    self.running_var = batch_variance.clone()
                 else:
-                    threshold = policy_unlabeled_logps_adjusted.mean()
-                
-                diff = self.beta * (policy_unlabeled_logps_adjusted - threshold) ##if batch without labeled sample let loss=0.5
-                log_sigmoid_diff = F.logsigmoid(diff)
-                
-                u_loss_greater = self.sspo_prior * (-log_sigmoid_diff)
-                u_loss_less_equal = (1 - self.sspo_prior) * (-F.logsigmoid(-diff))
-                
-                u_losses_tensor = torch.where(diff > 0, u_loss_greater, u_loss_less_equal)
-                final_u_loss = u_losses_tensor.mean()
-            else:
-                final_u_loss = torch.tensor(0.0, device=device, requires_grad=True)
-                u_losses_tensor = torch.tensor([], device=device)
+                    momentum = self.reward_norm_momentum
+                    self.running_mean = momentum * self.running_mean + (1.0 - momentum) * batch_mean
+                    self.running_var = momentum * self.running_var + (1.0 - momentum) * batch_variance
+            mean = self.running_mean if self.running_mean is not None else batch_mean
+            variance = self.running_var if self.running_var is not None else batch_variance
+            std = torch.sqrt(variance.clamp_min(1e-8))
+            normalized = [
+                torch.clamp((reward - mean) / std, -self.reward_clip_range, self.reward_clip_range)
+                for reward in reward_parts
+            ]
         else:
-            pn_loss = self.simpo_loss(policy_chosen_logps, policy_rejected_logps) if policy_chosen_logps.numel() > 0 or policy_rejected_logps.numel() > 0 else torch.tensor(0.0, device=device, requires_grad=True)
-            threshold = torch.min(normalized_policy_chosen_logps) if normalized_policy_chosen_logps.numel() > 0 else normalized_policy_unlabeled_logps.mean()
-            
-            diff = self.beta * (normalized_policy_unlabeled_logps - threshold)
-            log_sigmoid_diff = F.logsigmoid(diff)
-            
-            u_loss_greater = self.sspo_prior * (-log_sigmoid_diff)
-            u_loss_less_equal = (1 - self.sspo_prior) * (-F.logsigmoid(-diff))
-            
-            u_losses_tensor = torch.where(diff > 0, u_loss_greater, u_loss_less_equal)
-            final_u_loss = u_losses_tensor.mean()
-        
-        pn_loss_mean = pn_loss.mean() if pn_loss.numel() > 0 else torch.tensor(0.0, device=device, requires_grad=True)
-        sspo_loss = current_gamma * pn_loss_mean + (1-current_gamma) * final_u_loss
-        
-        if reference_chosen_logps is not None and reference_rejected_logps is not None:
-            orpo_loss = -F.logsigmoid(self.beta * (policy_chosen_logps_adjusted - policy_rejected_logps_adjusted))
+            normalized = reward_parts
+
+        global_chosen = self._gather_variable_tensor(normalized[0])
+        global_unlabeled = self._gather_variable_tensor(normalized[2])
+        if global_unlabeled.numel() > 0:
+            # Some ratio-preserving physical batches contain no labeled row.
+            # Zero is the detached running-mean point in normalized reward space.
+            threshold = global_chosen.min().detach() if global_chosen.numel() > 0 else zero.detach()
+            diff = self.beta * (global_unlabeled - threshold)
+            positive_risk = self.sspo_prior * (-F.logsigmoid(diff))
+            negative_risk = (1.0 - self.sspo_prior) * (-F.logsigmoid(-diff))
+            unlabeled_losses = torch.where(diff > 0, positive_risk, negative_risk)
+            unlabeled_loss = unlabeled_losses.mean()
         else:
-            log_odds = (policy_chosen_logps - policy_rejected_logps) - (
-                torch.log1p(-torch.exp(policy_chosen_logps)) - torch.log1p(-torch.exp(policy_rejected_logps))
-            ) if policy_chosen_logps.numel() > 0 or policy_rejected_logps.numel() > 0 else torch.tensor(0.0, device=device, requires_grad=False)
-            sft_loss = -policy_chosen_logps if policy_chosen_logps.numel() > 0 else torch.tensor(0.0, device=device, requires_grad=False)
-            odds_ratio_loss = -F.logsigmoid(log_odds) if log_odds.numel() > 0 else torch.tensor(0.0, device=device, requires_grad=False)
-            orpo_loss = sft_loss + self.beta * odds_ratio_loss
-        
-        # logger.info(f"Loss in GPU {torch.cuda.current_device()} = pn_loss: {pn_loss_mean:.4f}, final_u_loss: {final_u_loss:.4f}, sspo_loss: {sspo_loss:.4f}, current_gamma: {current_gamma:.4f}")
-        return sspo_loss, pn_loss, orpo_loss, u_losses_tensor
+            unlabeled_losses = policy_unlabeled_logps.new_empty(0)
+            unlabeled_loss = zero
+
+        labeled_loss = labeled_losses.mean() if labeled_losses.numel() > 0 else zero
+        loss = current_gamma * labeled_loss + (1.0 - current_gamma) * unlabeled_loss
+        return loss, labeled_losses, labeled_losses.detach(), unlabeled_losses
 
     def compute_preference_loss(
         self,
@@ -422,26 +424,45 @@ class CustomDPOTrainer(DPOTrainer):
         reference_chosen_logps: Optional["torch.Tensor"],
         reference_rejected_logps: Optional["torch.Tensor"],
         reference_unlabeled_logps: Optional["torch.Tensor"] = None,
-    ) -> Tuple["torch.Tensor", "torch.Tensor", "torch.Tensor"]:
+        update_running_stats: bool = True,
+    ) -> Tuple["torch.Tensor", ...]:
         """
         Computes loss for preference learning.
         """
         device = self.accelerator.device
         
         if self.loss_type == "sspo":
-            losses, simpo_losses, orpo_losses, unlabeled_losses = self.sspo_loss(
+            losses, labeled_losses, diagnostic_losses, unlabeled_losses = self.sspo_loss(
                 policy_chosen_logps, 
                 policy_rejected_logps, 
                 policy_unlabeled_logps,
                 reference_chosen_logps,
                 reference_rejected_logps,
-                reference_unlabeled_logps
+                reference_unlabeled_logps,
+                update_running_stats=update_running_stats,
             )
-            chosen_rewards = self.beta * policy_chosen_logps.to(device)
-            rejected_rewards = self.beta * policy_rejected_logps.to(device)
-            unlabeled_rewards = self.beta * policy_unlabeled_logps.to(device)
+            if reference_chosen_logps is not None and reference_rejected_logps is not None:
+                chosen_rewards = self.beta * (policy_chosen_logps - reference_chosen_logps).to(device)
+                rejected_rewards = self.beta * (policy_rejected_logps - reference_rejected_logps).to(device)
+                unlabeled_rewards = (
+                    self.beta * (policy_unlabeled_logps - reference_unlabeled_logps).to(device)
+                    if reference_unlabeled_logps is not None
+                    else policy_unlabeled_logps.new_empty(0)
+                )
+            else:
+                chosen_rewards = self.beta * policy_chosen_logps.to(device)
+                rejected_rewards = self.beta * policy_rejected_logps.to(device)
+                unlabeled_rewards = self.beta * policy_unlabeled_logps.to(device)
             
-            return losses, simpo_losses, orpo_losses, unlabeled_losses, chosen_rewards, rejected_rewards, unlabeled_rewards
+            return (
+                losses,
+                labeled_losses,
+                diagnostic_losses,
+                unlabeled_losses,
+                chosen_rewards,
+                rejected_rewards,
+                unlabeled_rewards,
+            )
         elif not self.finetuning_args.use_ref_model:
             if self.loss_type == "orpo":
                 losses = self.odds_ratio_loss(policy_chosen_logps, policy_rejected_logps)
@@ -478,7 +499,9 @@ class CustomDPOTrainer(DPOTrainer):
         all_logits: "torch.Tensor" = model(**model_batch, return_dict=True, use_cache=False).logits.to(torch.float32)
         all_logps, valid_length = get_batch_logps(logits=all_logits, labels=batch["labels"])
         
-        if self.loss_type in ["ipo", "orpo", "simpo", "sspo"]:
+        if self.loss_type in ["ipo", "orpo", "simpo"] or (
+            self.loss_type == "sspo" and not self.finetuning_args.use_ref_model
+        ):
             all_logps = all_logps / valid_length
         
         device = all_logps.device
@@ -683,16 +706,29 @@ class CustomDPOTrainer(DPOTrainer):
             
             reference_chosen_logps, reference_rejected_logps, reference_unlabeled_logps, _ = self.compute_reference_log_probs(model, batch)
 
-            losses, simpo_losses, orpo_losses, unlabeled_losses, chosen_rewards, rejected_rewards, unlabeled_rewards = self.compute_preference_loss(
+            (
+                losses,
+                labeled_losses,
+                diagnostic_losses,
+                unlabeled_losses,
+                chosen_rewards,
+                rejected_rewards,
+                unlabeled_rewards,
+            ) = self.compute_preference_loss(
                 policy_chosen_logps,
                 policy_rejected_logps,
                 policy_unlabeled_logps,
                 reference_chosen_logps,
                 reference_rejected_logps,
-                reference_unlabeled_logps
+                reference_unlabeled_logps,
+                update_running_stats=train_eval == "train",
             )
 
-            sft_loss = -policy_unlabeled_logps_avg
+            sft_loss = (
+                -policy_unlabeled_logps_avg.mean()
+                if policy_unlabeled_logps_avg.numel() > 0
+                else policy_unlabeled_logps.sum() * 0.0
+            )
             if self.ftx_gamma > 1e-6:
                 losses = losses + self.ftx_gamma * sft_loss
 
@@ -707,12 +743,21 @@ class CustomDPOTrainer(DPOTrainer):
             metrics[f"{prefix}logits/chosen"] = policy_chosen_logits.mean().item() if policy_chosen_logits.numel() > 0 else 0.0
             metrics[f"{prefix}logits/rejected"] = policy_rejected_logits.mean().item() if policy_rejected_logits.numel() > 0 else 0.0   
             metrics[f"{prefix}logits/unlabeled"] = policy_unlabeled_logits.mean().item() if policy_unlabeled_logits.numel() > 0 else 0.0
-            metrics[f"{prefix}orpo_loss"] = orpo_losses.mean().item() if chosen_rewards.numel() > 0 and rejected_rewards.numel() > 0 else 0.0
-            metrics[f"{prefix}simpo_loss"] = simpo_losses.mean().item() if chosen_rewards.numel() > 0 and rejected_rewards.numel() > 0 else 0.0
-            metrics[f"{prefix}unlabeled_loss"] = unlabeled_losses.mean().item() if unlabeled_rewards.numel() > 0 else 0.0
+            metrics[f"{prefix}orpo_loss"] = 0.0
+            metrics[f"{prefix}simpo_loss"] = (
+                diagnostic_losses.mean().item()
+                if self.finetuning_args.sspo_base == "simpo" and diagnostic_losses.numel() > 0
+                else 0.0
+            )
+            metrics[f"{prefix}dpo_loss"] = (
+                labeled_losses.mean().item()
+                if self.finetuning_args.sspo_base == "dpo" and labeled_losses.numel() > 0
+                else 0.0
+            )
+            metrics[f"{prefix}unlabeled_loss"] = unlabeled_losses.mean().item() if unlabeled_losses.numel() > 0 else 0.0
             # Stable, base-agnostic names. Keep the legacy aliases above so
             # existing SSPO dashboards remain readable.
-            metrics[f"{prefix}sspo/loss_labeled"] = simpo_losses.mean().item() if simpo_losses.numel() > 0 else 0.0
+            metrics[f"{prefix}sspo/loss_labeled"] = labeled_losses.mean().item() if labeled_losses.numel() > 0 else 0.0
             metrics[f"{prefix}sspo/loss_unlabeled"] = unlabeled_losses.mean().item() if unlabeled_losses.numel() > 0 else 0.0
             metrics[f"{prefix}sspo/loss_total"] = losses.mean().item()
 

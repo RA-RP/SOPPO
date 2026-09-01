@@ -207,3 +207,13 @@
 - 完整性：数据从4090-3传入A100仓库外目录，以源manifest和目标端SHA-256复核闭环；镜像使用安全启动入口，不自动训练，也不包含数据、模型或凭据。
 - 已知风险：4090-3历史快照缺少Docker/BuildKit且scratch紧张。该状态必须实时核验；若未改变，指定build步骤不能执行，不能删除旧实验强行腾空间。
 - 门禁：本次是讨论中理论修订，不构成理论整体批准，也不授权commit/push、镜像、下载/传输、A100资源创建、smoke或formal。
+
+### `cycle-20260901-01` / Round4理论与实验批准 / `r4-theory-v1.0` — 2026-09-01
+
+- 上一理论版本：`r4-theory-v0.2`，讨论中。
+- 新理论版本：`r4-theory-v1.0`，用户已明确通过；唯一活动阶段推进为`CODE_IMPLEMENTATION`。
+- 用户授权：用户明确表示“直接到code阶段，想改什么改什么”，按当前Round4理论与实验对象记录为理论、实验的明确通过及剩余工程选择冻结授权；该授权不等于代码交接或服务器执行授权。
+- 方法冻结：三方法共同labeled branch使用DPO-base；SSPO不使用SimPO-base；StaticPE使用跨两卡同步的`physical-microbatch-PE`，不跨8次gradient accumulation形成一个PE population。
+- 评价冻结：三方法与frozen base共用`alpaca_eval==0.6.2`、`weighted_alpaca_eval_gpt4_turbo`和LC函数；本轮seed42，MT-Bench退出。
+- 执行拓扑：复用FusionOne现有`cuda12.4-cudnn-devel-ubuntu22.04-py312-ssh`镜像；4090-3准备CPython3.12/cu124离线wheelhouse、数据和模型manifest，经校验传至A100仓库外目录；A100镜像内新建venv，不复制旧py310环境。
+- 代码影响：更新Round4三方法、离线环境、数据/模型传输与A100安装入口；任何改变目标函数、population、方法臂或评价合同的实现偏离必须退回实验讨论。

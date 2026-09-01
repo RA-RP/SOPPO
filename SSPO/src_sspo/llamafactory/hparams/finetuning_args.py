@@ -179,8 +179,16 @@ class RLHFArguments:
         metadata={"help": "The decay rate for adaptive gamma scheduler."}
     )
     sspo_base: Optional[Literal["dpo", "simpo"]] = field(
-        default="simpo",
-        metadata={"help": "The base model for SSPO training."}
+        default="dpo",
+        metadata={"help": "The labeled preference loss used by SSPO."}
+    )
+    sspo_min_labeled_per_batch: int = field(
+        default=0,
+        metadata={"help": "Minimum labeled rows in each SSPO sampler batch."},
+    )
+    sspo_min_unlabeled_per_batch: int = field(
+        default=2,
+        metadata={"help": "Minimum unlabeled rows in each SSPO sampler batch."},
     )
 
     # StaticPE uses DPO on labeled pairs and a conditional-encoding loss on
@@ -549,6 +557,12 @@ class FinetuningArguments(
 
         if self.pref_loss == "staticpe" and self.staticpe_min_unlabeled_per_batch < 1:
             raise ValueError("`staticpe_min_unlabeled_per_batch` must be at least 1.")
+
+        if self.pref_loss == "sspo" and self.sspo_min_labeled_per_batch < 0:
+            raise ValueError("`sspo_min_labeled_per_batch` must be non-negative.")
+
+        if self.pref_loss == "sspo" and self.sspo_min_unlabeled_per_batch < 1:
+            raise ValueError("`sspo_min_unlabeled_per_batch` must be at least 1.")
 
         if self.use_llama_pro and self.finetuning_type == "full":
             raise ValueError("`use_llama_pro` is only valid for Freeze or LoRA training.")

@@ -1,0 +1,52 @@
+model_name_or_path: Qwen/Qwen3-1.7B
+model_revision: b9352fbb8ce704292730cf54b3b1dceb2a808738
+cache_dir: ./cache/qwen3-1.7b-it
+trust_remote_code: true
+
+stage: dpo
+do_train: true
+finetuning_type: lora
+lora_rank: 8
+lora_target: all
+
+dataset: ultra_combined_fb0.1_ch0.1
+eval_dataset: ultrafeedback_round4_eval
+dataset_dir: ./data
+template: qwen3
+cutoff_len: 1024
+max_samples: 10000000
+overwrite_cache: true
+preprocessing_num_workers: 12
+val_size: 0.0
+
+pref_loss: sspo
+pref_beta: 0.1
+sspo_base: dpo
+sspo_gamma_decay: 0.001
+sspo_gamma_0: 1.0
+sspo_gamma_min: 0.2273
+sspo_prior: 0.5
+sspo_min_labeled_per_batch: 0
+sspo_min_unlabeled_per_batch: 2
+
+output_dir: ./saves_Qwen3-1.7B/fb0.1_ch0.1/round4_lora_Qwen3-1.7B_sspo_lr1e-05_beta0.1_cutoff1024_ep1_tb4_eb4_ga8_base_dpo_rank8
+overwrite_output_dir: true
+num_train_epochs: 1
+per_device_train_batch_size: 4
+per_device_eval_batch_size: 4
+gradient_accumulation_steps: 8
+learning_rate: 1.0e-05
+bf16: true
+fp16: false
+lr_scheduler_type: cosine
+warmup_ratio: 0.1
+max_grad_norm: 1.0
+seed: 42
+data_seed: 42
+
+logging_steps: 20
+save_steps: 300
+eval_strategy: steps
+eval_steps: 100
+plot_loss: true
+ddp_timeout: 180000000

@@ -42,11 +42,18 @@ args = argparse.ArgumentParser()
 args.add_argument("--train_num_ratio", type=float, default=1, help="The ratio of the training dataset to the original dataset. max is 1.")
 args.add_argument("--fb", type=float, default=0.1, help="The ratio of remaining the training dataset to the original feedback dataset. max is 1.")
 args.add_argument("--ch", type=float, default=0.1, help="The ratio of remaining the training dataset to the original unpaired (SFT) dataset. max is 1.")
+args.add_argument("--ultrafeedback_source", default="HuggingFaceH4/ultrafeedback_binarized")
+args.add_argument("--ultrachat_source", default="HuggingFaceH4/ultrachat_200k")
+args.add_argument("--ultrafeedback_revision", default=None)
+args.add_argument("--ultrachat_revision", default=None)
+args.add_argument("--output_dir", default="./data")
 args = args.parse_args()
 
 train_num_ratio = args.train_num_ratio
 ultrafeedback_keep_ratio = args.fb
 ultrachat_keep_ratio = args.ch
+output_dir = os.path.abspath(args.output_dir)
+os.makedirs(output_dir, exist_ok=True)
 
 #@Alignment Handbook utils
 DEFAULT_CHAT_TEMPLATE = "{% for message in messages %}\n{% if message['role'] == 'user' %}\n{{ '<|user|>\n' + message['content'] + eos_token }}\n{% elif message['role'] == 'system' %}\n{{ '<|system|>\n' + message['content'] + eos_token }}\n{% elif message['role'] == 'assistant' %}\n{{ '<|assistant|>\n'  + message['content'] + eos_token }}\n{% endif %}\n{% if loop.last and add_generation_prompt %}\n{{ '<|assistant|>' }}\n{% endif %}\n{% endfor %}"
@@ -289,20 +296,42 @@ def convert_to_json_format(dataset):
 
 ######## load dataset and preprocess #########
 
-raw_ultrafeedback = get_datasets(
-    {"HuggingFaceH4/ultrafeedback_binarized" : train_num_ratio},
-    splits = ["train_prefs", "test_prefs"],
+def load_frozen_split(source, split, revision):
+    kwargs = {"split": split}
+    if revision and not os.path.isdir(source):
+        kwargs["revision"] = revision
+    return load_dataset(source, **kwargs)
+
+
+raw_ultrafeedback_train = load_frozen_split(
+    args.ultrafeedback_source,
+    "train_prefs",
+    args.ultrafeedback_revision,
+).shuffle(seed=42)
+raw_ultrafeedback_eval = load_frozen_split(
+    args.ultrafeedback_source,
+    "test_prefs",
+    args.ultrafeedback_revision,
+)
+if not 0 <= train_num_ratio <= 1:
+    raise ValueError("--train_num_ratio must be between 0 and 1.")
+raw_ultrafeedback_train = raw_ultrafeedback_train.select(
+    range(int(train_num_ratio * len(raw_ultrafeedback_train)))
 )
 
-# Load ultrachat_200k dataset
-ultrachat_data = load_dataset("HuggingFaceH4/ultrachat_200k", split=["train_sft", "test_sft", "train_gen", "test_gen"])
+# Round4 uses only the UltraChat train_sft split for the unlabeled stream.
+ultrachat_train = load_frozen_split(
+    args.ultrachat_source,
+    "train_sft",
+    args.ultrachat_revision,
+).shuffle(seed=42)
 
-kept_ultrafeedback = keep_partial_data(raw_ultrafeedback['train'], keep_ratio=ultrafeedback_keep_ratio)
+kept_ultrafeedback = keep_partial_data(raw_ultrafeedback_train, keep_ratio=ultrafeedback_keep_ratio)
 
-kept_ultrachat = keep_partial_data(ultrachat_data[0], keep_ratio=ultrachat_keep_ratio) # train_sft only.
+kept_ultrachat = keep_partial_data(ultrachat_train, keep_ratio=ultrachat_keep_ratio)
 
 # Create new dataset by combining ultrafeedback and ultrachat
-def create_combined_dataset(ultrafeedback, ultrachat):
+def create_combined_dataset(ultrafeedback, ultrachat, shuffle=True):
     """
     Combine ultrafeedback and ultrachat datasets.
     
@@ -336,23 +365,32 @@ def create_combined_dataset(ultrafeedback, ultrachat):
         combined_data.append(combined_example)
 
     # Shuffle the combined dataset
-    random.shuffle(combined_data)
+    if shuffle:
+        random.shuffle(combined_data)
 
     return combined_data
 
-combined_dataset = create_combined_dataset(kept_ultrafeedback, kept_ultrachat) 
+combined_dataset = create_combined_dataset(kept_ultrafeedback, kept_ultrachat)
+dpo_dataset = create_combined_dataset(kept_ultrafeedback, [], shuffle=False)
+eval_dataset = create_combined_dataset(raw_ultrafeedback_eval, [], shuffle=False)
 
-# Convert combined dataset to JSON format
-conversation_format = convert_to_json_format(combined_dataset)
-dataset_name = f"ultra_combined_fb{ultrafeedback_keep_ratio}_ch{ultrachat_keep_ratio}"
-conversation_json_filename = f"./data/{dataset_name}.json"
-with open(conversation_json_filename, 'w', encoding='utf-8') as f:
-    json.dump(conversation_format, f, ensure_ascii=False, indent=2)
+dataset_payloads = {
+    f"ultra_combined_fb{ultrafeedback_keep_ratio}_ch{ultrachat_keep_ratio}": convert_to_json_format(combined_dataset),
+    f"ultrafeedback_fb{ultrafeedback_keep_ratio}_dpo": convert_to_json_format(dpo_dataset),
+    "ultrafeedback_round4_eval": convert_to_json_format(eval_dataset),
+}
+for dataset_name, payload in dataset_payloads.items():
+    output_path = os.path.join(output_dir, f"{dataset_name}.json")
+    if os.path.exists(output_path):
+        raise FileExistsError(f"Refusing to overwrite existing dataset: {output_path}")
+    temporary_path = output_path + ".tmp"
+    with open(temporary_path, "w", encoding="utf-8") as file:
+        json.dump(payload, file, ensure_ascii=False)
+    os.replace(temporary_path, output_path)
+    logger.info(f"Saved Round4 dataset: '{output_path}'")
 
-logger.info(f"Saved combined dataset: '{conversation_json_filename}'")
-
-# Update dataset_info.json
-dataset_info_path = "./data/dataset_info.json"
+# Update dataset_info.json in the same dataset directory.
+dataset_info_path = os.path.join(output_dir, "dataset_info.json")
 
 try:
     with open(dataset_info_path, 'r', encoding='utf-8') as f:
@@ -360,22 +398,24 @@ try:
 except FileNotFoundError:
     dataset_info = {}
 
-dataset_info[dataset_name] = {
-    "file_name": conversation_json_filename,
-    "ranking": True,
-    "columns": {
-        "prompt": "instruction",
-        "chosen": "chosen",
-        "rejected": "rejected",
-        "unlabeled": "unlabeled"
+for dataset_name in dataset_payloads:
+    dataset_info[dataset_name] = {
+        "file_name": f"{dataset_name}.json",
+        "ranking": True,
+        "columns": {
+            "prompt": "instruction",
+            "chosen": "chosen",
+            "rejected": "rejected",
+            "unlabeled": "unlabeled"
+        }
     }
-}
 
-with open(dataset_info_path, 'w', encoding='utf-8') as f:
+temporary_dataset_info = dataset_info_path + ".tmp"
+with open(temporary_dataset_info, 'w', encoding='utf-8') as f:
     json.dump(dataset_info, f, ensure_ascii=False, indent=2)
+os.replace(temporary_dataset_info, dataset_info_path)
 
 logger.info(f"Dataset info updated in '{dataset_info_path}'")
-
 
 
 

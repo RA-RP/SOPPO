@@ -7,6 +7,7 @@ name = "llamafactory"
 version = "0.9.2.dev0"
 description = "Local LLaMAFactory fork used by the SSPO and StaticPE research prototype"
 readme = "README.md"
+# Keep the package's actual lower bound. The Round4 environment separately pins CPython 3.12.x.
 requires-python = ">=3.10"
 license = {text = "Apache-2.0"}
 dependencies = []
@@ -23,6 +24,7 @@ include-package-data = true
 where = ["src_sspo"]
 
 [tool.ruff]
+# Source remains syntactically compatible with the declared Python 3.10 lower bound.
 target-version = "py310"
 line-length = 119
 

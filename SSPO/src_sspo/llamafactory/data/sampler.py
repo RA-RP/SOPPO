@@ -6,8 +6,8 @@ from typing import Iterator, Sequence
 from torch.utils.data import Sampler
 
 
-class StaticPETwoStreamSampler(Sampler[int]):
-    """Arrange labeled and StaticPE rows into deterministic mixed batches.
+class PreferenceTwoStreamSampler(Sampler[int]):
+    """Arrange labeled and unlabeled preference rows into deterministic mixed batches.
 
     Every selected row is used at most once per epoch. The selected totals follow
     the labeled:unlabeled ratio of the dataset up to integer rounding, while each
@@ -23,28 +23,30 @@ class StaticPETwoStreamSampler(Sampler[int]):
         seed: int,
         min_labeled_per_batch: int = 0,
         min_unlabeled_per_batch: int = 2,
+        unlabeled_type: str = "unlabeled_pair",
     ) -> None:
         if batch_size <= 0:
-            raise ValueError("`batch_size` must be positive for StaticPE sampling.")
+            raise ValueError("`batch_size` must be positive for two-stream sampling.")
         if min_labeled_per_batch < 0 or min_unlabeled_per_batch < 1:
             raise ValueError(
-                "StaticPE requires a non-negative labeled minimum and at least one unlabeled row per batch."
+                "Two-stream sampling requires a non-negative labeled minimum and at least one unlabeled row per batch."
             )
         if min_labeled_per_batch + min_unlabeled_per_batch > batch_size:
-            raise ValueError("The StaticPE per-stream minima exceed `batch_size`.")
+            raise ValueError("The two-stream minima exceed `batch_size`.")
+
+        if unlabeled_type not in {"unlabeled", "unlabeled_pair"}:
+            raise ValueError(f"Unsupported unlabeled row type: {unlabeled_type}")
 
         self.labeled_indices = [index for index, data_type in enumerate(data_types) if data_type == "labeled"]
-        self.unlabeled_indices = [
-            index for index, data_type in enumerate(data_types) if data_type == "unlabeled_pair"
-        ]
-        unsupported = sorted(set(data_types) - {"labeled", "unlabeled_pair"})
+        self.unlabeled_indices = [index for index, data_type in enumerate(data_types) if data_type == unlabeled_type]
+        unsupported = sorted(set(data_types) - {"labeled", unlabeled_type})
         if unsupported:
             raise ValueError(
-                "StaticPE accepts only `labeled` and `unlabeled_pair` rows, "
-                f"but found: {unsupported}. Regenerate the StaticPE candidate dataset."
+                f"Two-stream sampling accepts only `labeled` and `{unlabeled_type}` rows, "
+                f"but found: {unsupported}. Regenerate the mixed preference dataset."
             )
         if not self.labeled_indices or not self.unlabeled_indices:
-            raise ValueError("StaticPE requires both labeled rows and unlabeled candidate pairs.")
+            raise ValueError("Two-stream sampling requires both labeled and unlabeled rows.")
 
         self.batch_size = batch_size
         self.seed = seed
@@ -68,7 +70,7 @@ class StaticPETwoStreamSampler(Sampler[int]):
         )
         if lower_labeled > upper_labeled:
             raise ValueError(
-                "Cannot construct StaticPE batches without replacement using the requested "
+                "Cannot construct two-stream batches without replacement using the requested "
                 "batch size and minimum unlabeled count."
             )
 
@@ -109,3 +111,7 @@ class StaticPETwoStreamSampler(Sampler[int]):
             unlabeled_offset += unlabeled_count
 
         return iter(ordered_indices)
+
+
+# Backward-compatible name used by the initial StaticPE implementation.
+StaticPETwoStreamSampler = PreferenceTwoStreamSampler
