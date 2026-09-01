@@ -82,10 +82,26 @@ compgen -G "$WHEELHOUSE/torch-2.5.1+cu124-cp312-cp312-linux_x86_64.whl" >/dev/nu
     --constraint "$CONSTRAINTS" \
     --requirement "$RUNTIME_REQUIREMENTS"
 
+# Build the local package from an archive of the exact commit. Building it in
+# PROJECT_ROOT makes setuptools leave build/ and *.egg-info in the checkout,
+# which breaks the clean-checkout gate used by every subsequent server step.
+LOCAL_BUILD_ROOT="$(mktemp -d "$PIP_CACHE_ROOT/local-package.XXXXXX")"
+cleanup_local_build() {
+    case "$LOCAL_BUILD_ROOT" in
+        "$PIP_CACHE_ROOT"/local-package.*) rm -rf -- "$LOCAL_BUILD_ROOT" ;;
+        *) fail "refusing to remove unexpected local build path: $LOCAL_BUILD_ROOT" ;;
+    esac
+}
+trap cleanup_local_build EXIT
+git -C "$REPO_ROOT" archive --format=tar "$COMMIT:SSPO" | tar -xf - -C "$LOCAL_BUILD_ROOT"
+
 "$BUILDER_PYTHON" -m pip wheel \
     --wheel-dir "$WHEELHOUSE" \
     --no-deps \
-    "$PROJECT_ROOT"
+    "$LOCAL_BUILD_ROOT"
+
+[[ -z "$(git -C "$REPO_ROOT" status --porcelain)" ]] \
+    || fail "offline packaging modified the Git checkout"
 
 compgen -G "$WHEELHOUSE/fire-0.7.0-*.whl" >/dev/null || fail "fire wheel is missing"
 compgen -G "$WHEELHOUSE/jieba-0.42.1-*.whl" >/dev/null || fail "jieba wheel is missing"

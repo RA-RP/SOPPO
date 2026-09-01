@@ -40,7 +40,7 @@
 - 已明确决定：StaticPE `lambda=0.1`；每方法2 GPU、GA8；SSPO/StaticPE每设备4、effective batch64；DPO每设备1、effective batch16；三者不重复或截断数据来强凑相同步数。
 - 目标资源与流程：用户于2026-09-01确认亲自验证FusionOne存在8张A100，并决定先创建/占用2张。4090-3只准备镜像和下载数据，再经SSH把数据传到A100仓库外目录；三方法的smoke和formal均共用这2张A100顺序执行。单卡显存、拓扑、容器GPU映射、挂载和传输SHA仍在preflight采集。
 - Round3边界：formal `round3-20260826-04`的旧五方法已完成并行政结项；拟议DPO-reward extension未运行，取消其继续执行。4090-3旧`runs/`和`envs/`已于2026-09-01按用户明确指令行政清空，不能再引用为现存证据。
-- 当前代码：`round4-code-v1.0.1`；首次4090执行发现runtime requirements未过滤`-e .`的纯脚本缺陷，用户随后明确要求继续；研究语义未改变，服务器只运行修复后exact clean commit。
+- 当前代码：`round4-code-v1.0.2`；4090执行先后发现runtime requirements未过滤`-e .`、本地wheel构建污染checkout两个纯脚本缺陷，用户已明确要求继续；两次修复均不改变研究语义，服务器只运行最新exact clean commit。
 - 当前执行边界：允许commit/push、4090-3 exact checkout、离线wheelhouse构建、冻结数据/模型下载及manifest/SHA生成；4090-3不训练。A100环境安装与smoke须在目标容器/SSH就绪后继续，formal训练仍按实验合同单独授权。
 - 锁定阶段：`RESULT_HANDOFF`与`NEXTCYCLE_DISCUSSION`锁定。
 - 下一阶段条件：服务器白名单执行完成或形成完整的终止/失败摘要与去敏证据索引，进入`RESULT_HANDOFF`。

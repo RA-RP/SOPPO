@@ -9,6 +9,7 @@
 - `SSPO/pyproject.toml`的`requires-python = ">=3.10"`是包的最低版本声明，包含Python 3.12，不要求运行时退回3.10。
 - `SSPO/requirements.txt`的固定版本已做Python 3.12静态PyPI元数据检查；116个直接pin均未声明排斥Python 3.12，160条直接pin之间的适用依赖约束未发现冲突。该结论不是resolver/import/GPU测试，后者必须在服务器smoke完成。
 - `fire==0.7.0`和`jieba==0.42.1`只有source distribution，因此在4090-3的Python 3.12 builder中提前构成wheel；A100只执行离线wheel安装。
+- 本地`llamafactory` wheel从exact commit的临时Git archive构建，不在checkout内留下`build/`或`*.egg-info`；构建结束再次硬检查仓库clean。
 
 静态审计日期为2026-09-01：逐个读取PyPI官方JSON元数据中的`requires_python`、distribution filenames和`requires_dist`，按CPython3.12/Linux x86_64环境marker检查直接pin。它没有下载或导入项目依赖，也不能替代服务器端完整resolver。
 
