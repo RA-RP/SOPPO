@@ -60,7 +60,10 @@ RUNTIME_REQUIREMENTS="$PACKAGE_ROOT/requirements.runtime.txt"
 CONSTRAINTS="$PACKAGE_ROOT/constraints.round4.txt"
 
 # The editable local package is built as its own wheel below. All runtime pins remain unchanged.
-awk '!/^[[:space:]]*-e[[:space:]]+\.[[:space:]]*($|#)/' "$REQUIREMENTS_SOURCE" > "$RUNTIME_REQUIREMENTS"
+grep -Ev '^[[:space:]]*-e[[:space:]]+\.[[:space:]]*($|#)' "$REQUIREMENTS_SOURCE" > "$RUNTIME_REQUIREMENTS"
+if grep -Eq '^[[:space:]]*-e[[:space:]]+\.[[:space:]]*($|#)' "$RUNTIME_REQUIREMENTS"; then
+    fail "editable local package entry was not removed from runtime requirements"
+fi
 printf '%s\n' 'torch==2.5.1+cu124' > "$CONSTRAINTS"
 
 # Download the CUDA build and its NVIDIA runtime dependencies only from PyTorch's official cu124 index.

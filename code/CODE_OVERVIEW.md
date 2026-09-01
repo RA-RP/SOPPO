@@ -6,7 +6,7 @@
 - 当前唯一活动阶段：`SERVER_EXECUTION`
 - 当前理论：`../human_read/theory/current_theory.md` `r4-theory-v1.0`，2026-09-01用户明确通过
 - 当前实验：`../human_read/exp/current_experiment.md` `round4-exp-v1.0`，2026-09-01用户明确通过
-- Round4代码版本：`round4-code-v1.0`；实现映射与允许的本地静态复核已完成
+- Round4代码版本：`round4-code-v1.0.1`；首次4090执行发现并修复runtime requirements未过滤`-e .`的纯脚本缺陷，研究语义未改变
 - 代码交接：2026-09-01用户明确要求完成4090-3任务，已批准提交当前代码并执行4090-3离线依赖、数据和模型准备
 
 本文件承担Round4实现映射与最终代码交接。Round3旧formal已行政结项，不改写为Round4入口；4090-3旧runs/envs已按用户指令行政清空。
@@ -118,6 +118,6 @@ Round4实现已获批开展，但这些文件尚未通过服务器resolver、imp
 
 任何账号、密码、token、内部地址或API key都不得写进源码、配置、文档、日志或镜像层。运维命令只使用占位符。
 
-当前代码交接状态：**APPROVED，`round4-code-v1.0`，2026-09-01；允许提交并进入`SERVER_EXECUTION`。**
+当前代码交接状态：**APPROVED，`round4-code-v1.0.1`，2026-09-01；用户要求继续当前4090任务，允许提交纯实现修复并继续`SERVER_EXECUTION`。**
 
 当前服务器边界：4090-3只执行exact checkout、wheelhouse、冻结数据/模型和manifest/SHA任务，不执行训练。A100安装与smoke等待目标容器和SSH就绪；formal训练仍须按获批实验合同另行授权。
