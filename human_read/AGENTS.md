@@ -29,8 +29,8 @@
 - 当前理论：`theory/current_theory.md` `r4-theory-v1.0`，2026-09-01用户明确通过。
 - 当前实验：`exp/current_experiment.md` `round4-exp-v1.0`，2026-09-01用户明确通过。
 - 当前范围：Qwen3-1.7B、UltraFeedback/UltraChat各0.1、epoch1，对比DPO、SSPO、StaticPE；DPO effective batch16，SSPO/StaticPE effective batch64；目标评价为AlpacaEval 2.0。
-- 代码交接：`round4-code-v1.0.2`于2026-09-01获准继续；它累计修复4090 runtime requirements未过滤`-e .`及本地wheel构建污染checkout两个纯脚本缺陷，服务器执行绑定最新exact clean commit。
-- 当前执行边界：先在4090-3构建离线wheelhouse并冻结数据/模型及manifest；4090-3不训练。A100环境安装与smoke等待目标容器/SSH就绪，formal训练仍需实验合同规定的单独授权。
+- 代码交接：当前累计纯构建修复版为`round4-code-v1.0.3`；它修复runtime requirements未过滤`-e .`、本地wheel构建污染checkout及AlpacaEval 0.6.2与新版setuptools不兼容三个缺陷，服务器执行绑定exact code commit `2854c10b6da56f650c91f45d9a685b98cdc02375`。
+- 当前执行边界：4090-3已完成离线wheelhouse、冻结数据/模型及manifest并独立复核；4090-3不训练。4090→A100专用认证、传输、A100资产SHA和2×40GB GPU环境安装门禁均已通过，formal训练仍需实验合同规定的单独授权。
 - 目标硬件与流程：FusionOne 8×A100为用户已实机验证事实；先创建/占用2张，4090-3准备镜像/数据并经SSH传入，全部smoke与formal在同一2卡上顺序执行。具体显存/拓扑/映射仍待preflight。
 - `RESULT_HANDOFF`及其后阶段：锁定。
 

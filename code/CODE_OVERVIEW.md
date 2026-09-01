@@ -6,7 +6,7 @@
 - 当前唯一活动阶段：`SERVER_EXECUTION`
 - 当前理论：`../human_read/theory/current_theory.md` `r4-theory-v1.0`，2026-09-01用户明确通过
 - 当前实验：`../human_read/exp/current_experiment.md` `round4-exp-v1.0`，2026-09-01用户明确通过
-- Round4代码版本：`round4-code-v1.0.2`；4090执行发现并修复runtime requirements未过滤`-e .`及本地wheel构建污染checkout两个纯脚本缺陷，研究语义未改变
+- Round4代码版本：`round4-code-v1.0.3`；服务器执行累计修复runtime requirements未过滤`-e .`、本地wheel构建污染checkout及AlpacaEval 0.6.2与新版setuptools不兼容三个纯构建脚本缺陷，研究语义未改变
 - 代码交接：2026-09-01用户明确要求完成4090-3任务，已批准提交当前代码并执行4090-3离线依赖、数据和模型准备
 
 本文件承担Round4实现映射与最终代码交接。Round3旧formal已行政结项，不改写为Round4入口；4090-3旧runs/envs已按用户指令行政清空。
@@ -40,11 +40,11 @@
 | 三方法formal YAML | `SSPO/examples/train/qwen3-1.7b-it/{dpo,sspo,staticpe}/` | DPO effective16，SSPO/StaticPE effective64；共同labeled eval view |
 | Alpaca输出/judge入口 | `SSPO/examples/staticpe/` | 固定`alpaca_eval==0.6.2`；尚待整理为三方法统一入口 |
 | 本地包与依赖 | `SSPO/pyproject.toml`、`SSPO/requirements.txt` | Python 3.12静态元数据检查通过；无服务器resolver/import证据 |
-| 4090离线wheelhouse | `code/scripts/round4/00_build_offline_wheelhouse.sh` | 已实现；固定CPython3.12与torch2.5.1+cu124，本地包从exact-commit临时archive构建并保持checkout clean；服务器已生成137-wheel v1.0.1包，待v1.0.2复用重封装 |
-| A100离线venv | `code/scripts/round4/01_install_a100_env.sh` | 已实现；校验SHA、imports、pip、CUDA12.4与2张GPU，待服务器执行 |
-| 4090模型/数据冻结 | `code/scripts/round4/02_stage_hf_assets_4090.sh`、`02_stage_hf_assets.py` | 已实现；冻结Hub commit、支持同源partial续传并逐文件生成manifest/SHA，待服务器执行 |
+| 4090离线wheelhouse | `code/scripts/round4/00_build_offline_wheelhouse.sh` | 已在exact code commit `2854c10…`生成并复核137-wheel、3.2GiB package；固定`setuptools==78.1.0`兼容AlpacaEval 0.6.2；构建后checkout clean |
+| A100离线venv | `code/scripts/round4/01_install_a100_env.sh` | `/root/envs/round4-py312`已通过pip check、核心imports、Python3.12.3、torch2.5.1+cu124、CUDA12.4与2 GPU门禁 |
+| 4090模型/数据冻结 | `code/scripts/round4/02_stage_hf_assets_4090.sh`、`02_stage_hf_assets.py` | 已完成3份不可变revision、30个payload文件、5.917GiB逐文件复核；总索引SHA通过 |
 
-Round4实现已获批开展，但这些文件尚未通过服务器resolver、import、数值、DDP或gradient accumulation验收。
+Round4实现已获批开展；离线resolver/wheelhouse、冻结资产、A100安装/import和两卡可见性已通过服务器验收，数值、DDP和gradient accumulation仍待smoke验收。
 
 ## 3. 已冻结的配置口径
 
@@ -118,6 +118,6 @@ Round4实现已获批开展，但这些文件尚未通过服务器resolver、imp
 
 任何账号、密码、token、内部地址或API key都不得写进源码、配置、文档、日志或镜像层。运维命令只使用占位符。
 
-当前代码交接状态：**APPROVED，`round4-code-v1.0.2`，2026-09-01；用户要求继续当前4090任务，允许提交不改变研究语义的纯实现修复并继续`SERVER_EXECUTION`。**
+当前代码交接状态：**APPROVED，当前累计纯构建修复版`round4-code-v1.0.3`，2026-09-01；用户要求继续当前服务器任务，允许提交不改变研究语义的纯实现修复并继续`SERVER_EXECUTION`。**
 
-当前服务器边界：4090-3只执行exact checkout、wheelhouse、冻结数据/模型和manifest/SHA任务，不执行训练。A100安装与smoke等待目标容器和SSH就绪；formal训练仍须按获批实验合同另行授权。
+当前服务器边界：4090-3的exact checkout、wheelhouse、冻结数据/模型和manifest/SHA任务已完成，不执行训练。4090→A100专用认证、传输、A100资产复核和离线环境安装已经完成；下一步允许执行合同测试与smoke，formal训练仍须按获批实验合同另行授权。执行证据见`../exp/exp-20260901-01-round4-server-prep/README.md`。

@@ -8,7 +8,8 @@
 - 当前唯一活动阶段：`SERVER_EXECUTION`
 - 实验状态：**APPROVED**
 - 用户确认：2026-09-01，用户明确授权直接进入code阶段并允许在当前Round4边界内冻结剩余工程选择
-- 代码交接：`round4-code-v1.0.2`，2026-09-01用户要求继续；4090执行暴露的`-e .`过滤与本地wheel构建污染checkout均已作无研究语义变化的脚本修复
+- 代码交接：当前累计纯构建修复版`round4-code-v1.0.3`，exact code commit `2854c10b6da56f650c91f45d9a685b98cdc02375`；`-e .`过滤、wheel构建污染checkout、AlpacaEval/setuptools兼容问题均已作无研究语义变化的脚本修复
+- 当前执行记录：`../../exp/exp-20260901-01-round4-server-prep/README.md`；4090离线包与三份资产、服务器间传输、A100逐文件SHA及离线环境安装已完成，smoke尚未开始
 - Round3：旧五方法 formal 已完成并作行政结项；拟议的 DPO-reward extension 未运行，不并入 Round4
 
 本文件是Round4代码实现所依据的冻结实验合同；实现若改变以下研究语义，必须返回实验讨论并重新批准。
