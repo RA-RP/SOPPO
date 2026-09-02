@@ -30,6 +30,17 @@ judge profile保存在4090的`~/.config/soppo/judge_profiles.json`（权限0600�
 模型和解码合同；key与base URL从4090进程环境读取。结果只写WR、LC、profile fingerprint
 和judge model，逐样本annotation留在4090。
 
+## formal 的可恢复单臂入口
+
+`05_prepare_formal.py`从已验证的`round4-preprocessing-v2`数据创建一次性的formal数据视图
+和四个绝对路径配置。该视图仅链接DPO、混合训练和eval文件；FrozenPE候选B只写入该次formal
+数据视图，不会改写冻结prepared目录。
+
+在A100依次运行`05_run_formal_a100.sh prepare RUN_ID`，然后运行`base`、`dpo`、`sspo`、
+`staticpe`、`frozenpe`中的一个动作。每个训练臂完成训练后立即merge、reload并生成完整805条
+AlpacaEval输出，同时写出该臂独立的`JUDGE_REQUEST_<method>.json`。4090可在下一臂训练期间
+拉取该不可变输出并运行API judge；judge不得反向改变其余训练配置。
+
 ## v2 执行门禁
 
 `00_*`、`01_*`、`02_*`的旧离线环境/资产脚本仍可复用，但必须用新的exact commit重新
