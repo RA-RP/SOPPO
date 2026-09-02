@@ -306,6 +306,69 @@ def convert_to_json_format(dataset):
     return formatted_data
 
 
+def filter_invalid_preference_rows(dataset_name, payload):
+    """Keep only rows accepted by the Round4 ranking-data contract.
+
+    Frozen upstream snapshots contain a small number of empty or one-sided
+    responses.  Sampling remains deterministic and ratio-based; invalid rows
+    are removed only after sampling and their counts are recorded in the
+    preprocessing manifest instead of being passed to DPO-family losses.
+    """
+    valid_rows = []
+    dropped_reasons = {
+        "malformed_fields": 0,
+        "empty_instruction": 0,
+        "empty_response": 0,
+        "incomplete_labeled_pair": 0,
+        "non_exclusive_response": 0,
+    }
+
+    for row in payload:
+        if not isinstance(row, dict):
+            dropped_reasons["malformed_fields"] += 1
+            continue
+
+        fields = [row.get(key) for key in ("instruction", "chosen", "rejected", "unlabeled")]
+        if not all(isinstance(value, str) for value in fields):
+            dropped_reasons["malformed_fields"] += 1
+            continue
+        instruction, chosen, rejected, unlabeled = (value.strip() for value in fields)
+        if not instruction:
+            dropped_reasons["empty_instruction"] += 1
+            continue
+
+        has_chosen = bool(chosen)
+        has_rejected = bool(rejected)
+        has_unlabeled = bool(unlabeled)
+        labeled = has_chosen and has_rejected and not has_unlabeled
+        unlabeled_only = has_unlabeled and not has_chosen and not has_rejected
+        if labeled or unlabeled_only:
+            valid_rows.append(row)
+        elif not has_chosen and not has_rejected and not has_unlabeled:
+            dropped_reasons["empty_response"] += 1
+        elif has_chosen != has_rejected and not has_unlabeled:
+            dropped_reasons["incomplete_labeled_pair"] += 1
+        else:
+            dropped_reasons["non_exclusive_response"] += 1
+
+    dropped_reasons = {key: value for key, value in dropped_reasons.items() if value}
+    dropped_rows = len(payload) - len(valid_rows)
+    if not valid_rows:
+        raise ValueError(f"No valid Round4 rows remain after filtering {dataset_name}.")
+    if dropped_rows:
+        logger.warning(
+            "Filtered %d invalid rows from %s: %s",
+            dropped_rows,
+            dataset_name,
+            dropped_reasons,
+        )
+    return valid_rows, {
+        "input_rows": len(payload),
+        "dropped_invalid_rows": dropped_rows,
+        "dropped_reasons": dropped_reasons,
+    }
+
+
 
 ######## load dataset and preprocess #########
 
@@ -387,11 +450,16 @@ combined_dataset = create_combined_dataset(kept_ultrafeedback, kept_ultrachat)
 dpo_dataset = create_combined_dataset(kept_ultrafeedback, [], shuffle=False)
 eval_dataset = create_combined_dataset(raw_ultrafeedback_eval, [], shuffle=False)
 
-dataset_payloads = {
+raw_dataset_payloads = {
     f"ultra_combined_fb{ultrafeedback_keep_ratio}_ch{ultrachat_keep_ratio}": convert_to_json_format(combined_dataset),
     f"ultrafeedback_fb{ultrafeedback_keep_ratio}_dpo": convert_to_json_format(dpo_dataset),
     "ultrafeedback_round4_eval": convert_to_json_format(eval_dataset),
 }
+dataset_payloads = {}
+filter_audit = {}
+for dataset_name, payload in raw_dataset_payloads.items():
+    dataset_payloads[dataset_name], filter_audit[dataset_name] = filter_invalid_preference_rows(dataset_name, payload)
+
 for dataset_name, payload in dataset_payloads.items():
     output_path = os.path.join(output_dir, f"{dataset_name}.json")
     if os.path.exists(output_path):
@@ -431,9 +499,10 @@ os.replace(temporary_dataset_info, dataset_info_path)
 logger.info(f"Dataset info updated in '{dataset_info_path}'")
 
 manifest = {
-    "schema": "round4-preprocessing-v1",
+    "schema": "round4-preprocessing-v2",
     "created_at_utc": datetime.now(timezone.utc).isoformat(),
     "seed": 42,
+    "filter_policy": "exclusive_nonempty_preference_or_unlabeled_v1",
     "ratios": {
         "train_num_ratio": train_num_ratio,
         "ultrafeedback": ultrafeedback_keep_ratio,
@@ -459,6 +528,7 @@ for dataset_name, payload in dataset_payloads.items():
     manifest["outputs"][dataset_name] = {
         "file_name": file_name,
         "sha256": sha256_file(file_path),
+        **filter_audit[dataset_name],
         "rows": len(payload),
         "labeled_rows": labeled_rows,
         "unlabeled_rows": unlabeled_rows,
@@ -469,6 +539,5 @@ with open(temporary_manifest, "w", encoding="utf-8") as file:
     json.dump(manifest, file, ensure_ascii=False, indent=2, sort_keys=True)
 os.replace(temporary_manifest, manifest_path)
 logger.info(f"Round4 preprocessing manifest saved in '{manifest_path}'")
-
 
 

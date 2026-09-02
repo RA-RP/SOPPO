@@ -56,8 +56,10 @@ def main() -> None:
     ultrachat = Path(args.ultrachat_source).expanduser().resolve(strict=True)
     manifest_path = prepared / "ROUND4_PREPROCESS_MANIFEST.json"
     manifest = read_json(manifest_path)
-    if manifest.get("schema") != "round4-preprocessing-v1":
+    if manifest.get("schema") != "round4-preprocessing-v2":
         raise RuntimeError("Unsupported Round4 preprocessing manifest")
+    if manifest.get("filter_policy") != "exclusive_nonempty_preference_or_unlabeled_v1":
+        raise RuntimeError("Unsupported Round4 preprocessing filter policy")
     expected_sources = {
         "ultrafeedback": (ultrafeedback, source_revision(ultrafeedback)),
         "ultrachat": (ultrachat, source_revision(ultrachat)),
@@ -87,7 +89,25 @@ def main() -> None:
         for key, value in observed.items():
             if record.get(key) != value:
                 raise RuntimeError(f"Prepared data count mismatch: {name}.{key}")
-        summary[name] = observed
+        input_rows = record.get("input_rows")
+        dropped_rows = record.get("dropped_invalid_rows")
+        dropped_reasons = record.get("dropped_reasons")
+        if not isinstance(input_rows, int) or not isinstance(dropped_rows, int) or dropped_rows < 0:
+            raise RuntimeError(f"Invalid filtering audit counts: {name}")
+        if input_rows != observed["rows"] + dropped_rows:
+            raise RuntimeError(f"Filtering audit row mismatch: {name}")
+        if not isinstance(dropped_reasons, dict) or any(
+            not isinstance(reason, str) or not isinstance(count, int) or count <= 0
+            for reason, count in dropped_reasons.items()
+        ):
+            raise RuntimeError(f"Invalid filtering audit reasons: {name}")
+        if sum(dropped_reasons.values()) != dropped_rows:
+            raise RuntimeError(f"Filtering audit reason count mismatch: {name}")
+        summary[name] = {
+            **observed,
+            "input_rows": input_rows,
+            "dropped_invalid_rows": dropped_rows,
+        }
     dataset_info_path = prepared / "dataset_info.json"
     if sha256_file(dataset_info_path) != manifest.get("dataset_info_sha256"):
         raise RuntimeError("Prepared dataset_info SHA mismatch")

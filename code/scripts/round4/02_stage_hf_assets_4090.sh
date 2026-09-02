@@ -78,7 +78,12 @@ INDEX_OUTPUT="${ROUND4_ASSET_INDEX:-$SERVER_BASE/exports/round4-assets/$COMMIT/R
     --alpaca-eval-revision "${ROUND4_ALPACA_EVAL_REVISION:-2edc6fad8be6b14ea7230aabfd08188da6b8b814}" \
     --max-workers "${ROUND4_HF_MAX_WORKERS:-8}"
 
-sha256sum "$INDEX_OUTPUT" > "$INDEX_OUTPUT.sha256"
-sha256sum --check "$INDEX_OUTPUT.sha256"
+INDEX_DIRECTORY="$(dirname "$INDEX_OUTPUT")"
+INDEX_NAME="$(basename "$INDEX_OUTPUT")"
+(
+    cd "$INDEX_DIRECTORY"
+    sha256sum "$INDEX_NAME" > "$INDEX_NAME.sha256"
+    sha256sum --check "$INDEX_NAME.sha256"
+)
 printf 'Round4 assets staged for commit: %s\n' "$COMMIT"
 du -sh "$DATA_ROOT" "$MODEL_TARGET" "$STAGER_ENV"
