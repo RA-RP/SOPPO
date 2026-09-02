@@ -99,12 +99,20 @@ if not (root / "configs.yaml").is_file():
 shutil.copytree(root, output, dirs_exist_ok=True)
 config = output / "configs.yaml"
 text = config.read_text(encoding="utf-8")
+prompt_match = re.search(r'(?m)^  prompt_template: ["\']?([^"\'\n]+)', text)
+if prompt_match is None:
+    raise SystemExit("annotator template lacks a relative prompt_template path")
+prompt_template = prompt_match.group(1).strip()
+source_prompt = root.parent / prompt_template
+if not source_prompt.is_file():
+    raise SystemExit("annotator prompt template is unavailable: " + str(source_prompt))
+target_prompt = output.parent / prompt_template
+target_prompt.parent.mkdir(parents=True, exist_ok=True)
+shutil.copy2(source_prompt, target_prompt)
 settings = {
     "model_name": profile["model_name"],
     "max_tokens": profile.get("max_tokens", 1),
     "temperature": profile.get("temperature", 1),
-    "logprobs": profile.get("logprobs", True),
-    "top_logprobs": profile.get("top_logprobs", 5),
 }
 if not isinstance(settings["model_name"], str) or not settings["model_name"]:
     raise SystemExit("profile model_name must be a non-empty string")
@@ -112,16 +120,37 @@ if not isinstance(settings["max_tokens"], int) or settings["max_tokens"] < 1:
     raise SystemExit("profile max_tokens must be a positive integer")
 if not isinstance(settings["temperature"], (int, float)):
     raise SystemExit("profile temperature must be numeric")
-if not isinstance(settings["logprobs"], bool):
-    raise SystemExit("profile logprobs must be boolean")
-if not isinstance(settings["top_logprobs"], int) or settings["top_logprobs"] < 0:
-    raise SystemExit("profile top_logprobs must be a non-negative integer")
+requires_chatml = profile.get("requires_chatml", False)
+if not isinstance(requires_chatml, bool):
+    raise SystemExit("profile requires_chatml must be boolean")
 
 for key, value in settings.items():
     replacement = "    {}: {}".format(key, json.dumps(value))
     text, count = re.subn(r"(?m)^    " + re.escape(key) + r":.*$", replacement, text)
     if count != 1:
         raise SystemExit("installed evaluator template lacks exactly one completions_kwargs." + key)
+
+for key, value in {
+    "logprobs": profile.get("logprobs", False),
+    "top_logprobs": profile.get("top_logprobs", 0),
+}.items():
+    if key == "logprobs" and not isinstance(value, bool):
+        raise SystemExit("profile logprobs must be boolean")
+    if key == "top_logprobs" and (not isinstance(value, int) or value < 0):
+        raise SystemExit("profile top_logprobs must be a non-negative integer")
+    if re.search(r"(?m)^    " + re.escape(key) + r":.*$", text):
+        replacement = "    {}: {}".format(key, json.dumps(value))
+        text, count = re.subn(r"(?m)^    " + re.escape(key) + r":.*$", replacement, text)
+        if count != 1:
+            raise SystemExit("installed evaluator template has ambiguous completions_kwargs." + key)
+if requires_chatml:
+    text, count = re.subn(
+        r"(?m)^(  completions_kwargs:\n)",
+        r"\1    requires_chatml: true\n",
+        text,
+    )
+    if count != 1:
+        raise SystemExit("installed evaluator template lacks completions_kwargs")
 config.write_text(text, encoding="utf-8")
 PY
 
