@@ -3,11 +3,11 @@
 ## 0. 当前状态与授权边界
 
 - Cycle：`cycle-20260901-01` / Round4
-- 当前唯一活动阶段：`CODE_IMPLEMENTATION`
+- 当前唯一活动阶段：`SERVER_EXECUTION`
 - 当前理论：`../human_read/theory/current_theory.md` `r4-theory-v1.0`，2026-09-01用户明确通过
 - 当前实验：`../human_read/exp/current_experiment.md` `round4-exp-v1.0`，2026-09-01用户明确通过
 - Round4代码候选：`round4-code-v1.1.0` / exact code commit `af6dac49044978d76aeca4d5fcb0d11856a1c104`；在已执行的`v1.0.3`基础上补齐全链smoke、离线AlpacaEval和DPO runtime指标缺陷修复
-- 当前代码交接：**PENDING**；2026-09-02用户要求继续实现，但按阶段门禁，完整diff与静态复核交接获明确确认前不上传或运行新版本
+- 当前代码交接：**APPROVED**；2026-09-02用户明确批准提交并执行exact code commit `af6dac49044978d76aeca4d5fcb0d11856a1c104`的smoke，并进一步批准smoke通过后按既定顺序执行formal
 
 本文件承担Round4实现映射与最终代码交接。Round3旧formal已行政结项，不改写为Round4入口；4090-3旧runs/envs已按用户指令行政清空。
 
@@ -88,7 +88,7 @@ Round4实现已获批开展；旧commit的离线resolver/wheelhouse、三份资�
 4. 数值核验SSPO labeled DPO-base、threshold/norm/prior、eval不污染running state与分项日志；
 5. 按`physical-microbatch-PE`语义数值核验StaticPE loss和two-stream sampler；
 6. 统一三方法train/eval/export/merge/reload入口；
-7. **已实现、待服务器验收**：统一AlpacaEval 2.0本地生成、smoke子集、judge和LC离线辅助资产；完整805条formal仍锁定；
+7. **已实现、待服务器验收**：统一AlpacaEval 2.0本地生成、smoke子集、judge和LC离线辅助资产；完整805条formal已授权但必须等待smoke通过；
 8. **已实现、待服务器验收**：三方法2-step smoke orchestrator与labeled/unlabeled确定性fixture；
 9. **本次smoke内已覆盖部分**：分项loss、DDP、gradient accumulation、adapter、merge/reload和输出schema；独立数值梯度、checkpoint/resume合同测试仍待后续补齐；
 10. 复核已新增的CPython3.12/CUDA12.4离线wheelhouse与A100既有镜像内venv安装脚本，并补齐执行manifest。
@@ -118,7 +118,7 @@ Round4实现已获批开展；旧commit的离线resolver/wheelhouse、三份资�
 8. 三方法顺序完成2 optimizer-step smoke、eval、adapter保存；
 9. merge并在新进程离线重载，运行固定小样本生成；
 10. Alpaca小子集格式测试与一次judge API smoke；
-11. 重新申请formal执行授权后，三方法继续共用这2张A100顺序训练并运行完整AlpacaEval。
+11. smoke全部通过后，按已记录授权让三方法继续共用这2张A100顺序训练并运行完整AlpacaEval。
 
 4090-3 SSH落点没有Docker daemon，因此Round4不在该落点构建镜像；复用FusionOne既有镜像。旧runs/envs已按用户明确指令行政清空，当前仍须在wheelhouse与数据/模型下载前实时核验约69GiB可用空间是否足够。4090-3不承担Round4训练smoke。
 
@@ -130,6 +130,6 @@ Round4实现已获批开展；旧commit的离线resolver/wheelhouse、三份资�
 
 静态复核：2026-09-02已对全部Round4 Bash入口执行`bash -n`、对本次涉及的10个Python文件执行标准库AST parse、执行`git diff --check`、阶段一致性和敏感信息模式检查；均通过。按本地控制面规则未导入项目、未运行数据/模型/test/smoke。
 
-当前代码交接状态：**PENDING，`round4-code-v1.1.0` / `af6dac49044978d76aeca4d5fcb0d11856a1c104`已形成exact本地代码commit；尚未获得该exact版本的服务器提交确认。**
+当前代码交接状态：**APPROVED，`round4-code-v1.1.0` / `af6dac49044978d76aeca4d5fcb0d11856a1c104`，2026-09-02用户明确批准提交并执行该exact版本的smoke。**
 
-当前服务器边界：4090-3和A100仍停留在旧exact code commit `2854c10b…`及其已验证资产/环境；`v1.1.0`候选未上传。交接获批后才允许在4090构建新exact wheelhouse、补冻Alpaca资产、传至A100、安装新commit环境并启动smoke；formal训练仍须按实验合同另行授权。既有执行证据见`../exp/exp-20260901-01-round4-server-prep/README.md`。
+当前服务器边界：允许在4090构建`af6dac4` wheelhouse、补冻Alpaca资产、传至A100、安装新commit环境并启动三方法smoke；smoke全部通过后，formal已获授权按DPO→SSPO→StaticPE顺序执行，不能越过失败门禁。既有执行证据与本次新增状态见`../exp/exp-20260901-01-round4-server-prep/README.md`。

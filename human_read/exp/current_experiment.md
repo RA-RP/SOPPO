@@ -5,10 +5,10 @@
 - Cycle：`cycle-20260901-01` / Round4
 - 实验版本：`round4-exp-v1.0`
 - 理论来源：`../theory/current_theory.md` `r4-theory-v1.0`（2026-09-01用户明确通过）
-- 当前唯一活动阶段：`CODE_IMPLEMENTATION`
+- 当前唯一活动阶段：`SERVER_EXECUTION`
 - 实验状态：**APPROVED**
 - 用户确认：2026-09-01，用户明确授权直接进入code阶段并允许在当前Round4边界内冻结剩余工程选择
-- 代码交接：旧服务器基线为`round4-code-v1.0.3` / exact commit `2854c10b6da56f650c91f45d9a685b98cdc02375`；本地`round4-code-v1.1.0`候选 exact code commit为`af6dac49044978d76aeca4d5fcb0d11856a1c104`，用户对该版本的服务器提交确认待完成
+- 代码交接：`round4-code-v1.1.0` / exact code commit `af6dac49044978d76aeca4d5fcb0d11856a1c104`；2026-09-02用户明确批准提交并执行该exact版本的smoke，并进一步批准smoke通过后按既定顺序执行formal
 - 当前执行记录：`../../exp/exp-20260901-01-round4-server-prep/README.md`；旧commit的4090离线包与三份资产、服务器间传输、A100逐文件SHA及离线环境安装已完成；因发现全链smoke入口缺失，当前返回代码阶段，smoke尚未开始
 - Round3：旧五方法 formal 已完成并作行政结项；拟议的 DPO-reward extension 未运行，不并入 Round4
 
@@ -126,7 +126,7 @@ wheelhouse、数据和模型不能进入Git或镜像层；传输必须可续传�
 
 用户于2026-09-01确认亲自验证目标平台存在8张A100，并决定先创建/占用其中2张。本实验据此登记为用户验证的目标资源事实，但单卡显存、拓扑、容器映射、CPU/内存和挂载仍由 preflight 采集。
 
-执行流程：FusionOne复用既有py312/CUDA12.4镜像 → 先创建2×A100容器 → 从4090-3传入离线wheelhouse、数据和模型 → 核验硬件/挂载/逐文件SHA → 在镜像内新建Round4 venv → 完成全部smoke → 获得单独formal授权后启动训练。
+执行流程：FusionOne复用既有py312/CUDA12.4镜像 → 先创建2×A100容器 → 从4090-3传入离线wheelhouse、数据和模型 → 核验硬件/挂载/逐文件SHA → 在镜像内新建Round4 venv → 完成全部smoke → 在当前已记录的formal授权下按顺序启动训练。
 
 三方法共享这同一组2张A100并顺序执行，不再候选6卡并发。每个方法先运行独立smoke：恰好2个optimizer steps、至少一次eval、adapter保存、LoRA merge、新进程离线reload、少量固定Alpaca指令生成和一次judge API调用；SSPO/StaticPE fixture必须同时覆盖labeled与unlabeled分支。smoke使用独立目录，只验证链路，不产生论文结果，也不覆盖formal batch合同。训练任务需要的平台占位算法和容器设置只属于执行面，不在Git保存内部接入信息。
 
@@ -153,4 +153,4 @@ wheelhouse、数据和模型不能进入Git或镜像层；传输必须可续传�
 
 ## 11. 批准与代码入口
 
-本设计已冻结：SSPO使用DPO-base、StaticPE使用`physical-microbatch-PE`、frozen base加入AlpacaEval、seed42、MT-Bench退出、模型与数据从4090-3按独立manifest传至A100。旧代码版本曾获服务器执行授权；因smoke实现缺口，当前返回`CODE_IMPLEMENTATION`，代码入口为`../../code/CODE_OVERVIEW.md`。`round4-code-v1.1.0`重新交接获明确确认前不得上传或运行；4090-3不训练，formal训练仍按本文件约定单独授权。
+本设计已冻结：SSPO使用DPO-base、StaticPE使用`physical-microbatch-PE`、frozen base加入AlpacaEval、seed42、MT-Bench退出、模型与数据从4090-3按独立manifest传至A100。`round4-code-v1.1.0`已于2026-09-02获明确smoke执行授权，用户随后明确批准formal；当前处于`SERVER_EXECUTION`，代码入口为`../../code/CODE_OVERVIEW.md`。4090-3不训练，A100必须先通过smoke，再按DPO→SSPO→StaticPE顺序执行formal。
