@@ -1,0 +1,1 @@
+2026-09-02: 用户明确批准 exact commit 92259df7fa61fc5476e2980a09938622afbc1dfd 提交服务器，重建离线环境并执行完整 Round4 smoke；用户此前授权 smoke 全部通过后自动开始 formal。
