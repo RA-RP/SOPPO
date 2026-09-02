@@ -36,6 +36,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--max_new_tokens", type=int, default=1024)
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--dtype", choices=["bfloat16", "float16", "float32"], default="bfloat16")
+    parser.add_argument(
+        "--fail_on_drop",
+        action="store_true",
+        help="Fail instead of silently changing the candidate population when a generation is empty or duplicated.",
+    )
     parser.add_argument("--overwrite", action="store_true")
     return parser.parse_args()
 
@@ -64,6 +69,13 @@ def build_prompt(tokenizer, instruction: str) -> str:
         add_generation_prompt=True,
         enable_thinking=False,
     )
+
+
+def model_load_kwargs(model_name_or_path: str, model_revision: str, cache_dir: str | None) -> dict:
+    kwargs = {"cache_dir": cache_dir, "trust_remote_code": True}
+    if not os.path.isdir(model_name_or_path):
+        kwargs["revision"] = model_revision
+    return kwargs
 
 
 def validate_row(row: Dict[str, object], index: int) -> str:
@@ -109,9 +121,7 @@ def main() -> None:
     dtype = getattr(torch, args.dtype)
     tokenizer = AutoTokenizer.from_pretrained(
         args.model_name_or_path,
-        revision=args.model_revision,
-        cache_dir=args.cache_dir,
-        trust_remote_code=True,
+        **model_load_kwargs(args.model_name_or_path, args.model_revision, args.cache_dir),
     )
     tokenizer.padding_side = "left"
     if tokenizer.pad_token_id is None:
@@ -119,11 +129,9 @@ def main() -> None:
 
     model = AutoModelForCausalLM.from_pretrained(
         args.model_name_or_path,
-        revision=args.model_revision,
-        cache_dir=args.cache_dir,
-        trust_remote_code=True,
         torch_dtype=dtype,
         device_map="auto",
+        **model_load_kwargs(args.model_name_or_path, args.model_revision, args.cache_dir),
     )
     model.eval()
     torch.manual_seed(args.seed)
@@ -189,6 +197,12 @@ def main() -> None:
             output_row["candidate_a_source"] = "ultrachat_original"
             output_row["candidate_b_source"] = "qwen3_initial"
         output_rows.append(output_row)
+
+    if args.fail_on_drop and (dropped_empty or dropped_duplicate):
+        raise RuntimeError(
+            "Candidate generation would change the frozen smoke population: "
+            f"empty={dropped_empty}, duplicate={dropped_duplicate}."
+        )
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
     temporary_output = output_path.with_suffix(output_path.suffix + ".tmp")

@@ -73,8 +73,9 @@ INDEX_OUTPUT="${ROUND4_ASSET_INDEX:-$SERVER_BASE/exports/round4-assets/$COMMIT/R
     --cache-dir "$HF_CACHE" \
     --index-output "$INDEX_OUTPUT" \
     --model-revision 'b9352fbb8ce704292730cf54b3b1dceb2a808738' \
-    --ultrafeedback-revision "${ROUND4_ULTRAFEEDBACK_REVISION:-main}" \
-    --ultrachat-revision "${ROUND4_ULTRACHAT_REVISION:-main}" \
+    --ultrafeedback-revision "${ROUND4_ULTRAFEEDBACK_REVISION:-3949bf5f8c17c394422ccfab0c31ea9c20bdeb85}" \
+    --ultrachat-revision "${ROUND4_ULTRACHAT_REVISION:-8049631c405ae6576f93f445c6b8166f76f5505a}" \
+    --alpaca-eval-revision "${ROUND4_ALPACA_EVAL_REVISION:-2edc6fad8be6b14ea7230aabfd08188da6b8b814}" \
     --max-workers "${ROUND4_HF_MAX_WORKERS:-8}"
 
 sha256sum "$INDEX_OUTPUT" > "$INDEX_OUTPUT.sha256"

@@ -13,12 +13,14 @@ ENV_ROOT="${ROUND4_ENV_ROOT:?set ROUND4_ENV_ROOT to a new external A100 environm
 A100_BASE="${ROUND4_A100_BASE:?set ROUND4_A100_BASE to the external A100 base directory}"
 PYTHON_BIN="${ROUND4_PYTHON_BIN:-$(command -v python3.12 || true)}"
 EXPECTED_GPUS="${ROUND4_EXPECTED_GPUS:-2}"
+EXPECTED_COMMIT="${ROUND4_EXPECTED_COMMIT:?set ROUND4_EXPECTED_COMMIT to the full approved Git SHA}"
 
 [[ "$PACKAGE_ROOT" == /* && -d "$PACKAGE_ROOT/wheelhouse" ]] || fail "offline package is missing"
 [[ "$ENV_ROOT" == /* ]] || fail "ROUND4_ENV_ROOT must be absolute"
 [[ "$A100_BASE" == /* && -d "$A100_BASE" ]] || fail "ROUND4_A100_BASE must be an existing absolute directory"
 [[ -n "$PYTHON_BIN" && -x "$PYTHON_BIN" ]] || fail "python3.12 is unavailable in the image"
 [[ "$EXPECTED_GPUS" =~ ^[1-9][0-9]*$ ]] || fail "ROUND4_EXPECTED_GPUS must be positive"
+[[ "$EXPECTED_COMMIT" =~ ^[0-9a-f]{40}$ ]] || fail "ROUND4_EXPECTED_COMMIT must be a full lowercase Git SHA"
 [[ ! -e "$ENV_ROOT" ]] || fail "refusing to overwrite existing environment: $ENV_ROOT"
 
 CANON_A100_BASE="$(realpath -e "$A100_BASE")"
@@ -44,6 +46,8 @@ PYTHON_MINOR="$($PYTHON_BIN -c 'import sys; print(f"{sys.version_info.major}.{sy
         <(awk '$2 ~ /^wheelhouse\// {print $2}' SHA256SUMS | sort) \
         <(find wheelhouse -maxdepth 1 -type f -name '*.whl' -print | sort)
 )
+grep -Fx "commit=$EXPECTED_COMMIT" "$PACKAGE_ROOT/BUILD_INFO.txt" >/dev/null \
+    || fail "offline package BUILD_INFO is not bound to ROUND4_EXPECTED_COMMIT"
 
 mkdir -p "$(dirname "$ENV_ROOT")"
 "$PYTHON_BIN" -m venv "$ENV_ROOT"
@@ -117,4 +121,6 @@ for distribution in [
 PY
 
 "$ENV_PYTHON" -m pip freeze > "$ENV_ROOT/environment.freeze.txt"
+printf '%s\n' "$EXPECTED_COMMIT" > "$ENV_ROOT/ROUND4_CODE_COMMIT"
+sha256sum "$PACKAGE_ROOT/SHA256SUMS" > "$ENV_ROOT/offline-package-manifest.sha256"
 printf 'Round4 A100 environment ready: %s\n' "$ENV_ROOT"

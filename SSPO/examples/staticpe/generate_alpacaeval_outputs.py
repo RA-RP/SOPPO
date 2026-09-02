@@ -1,4 +1,9 @@
-"""Generate AlpacaEval 2.0 model outputs for a StaticPE checkpoint."""
+"""Generate AlpacaEval 2.0 outputs for any Round4 model arm.
+
+The formal path may read the frozen 805-row JSON file.  The smoke path reads
+the same local file and deterministically takes its first ``--max_samples``
+rows, so the A100 host never needs network access while generating outputs.
+"""
 
 import argparse
 import hashlib
@@ -23,6 +28,13 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--model_name_or_path", default=DEFAULT_MODEL)
     parser.add_argument("--model_revision", default=DEFAULT_REVISION)
     parser.add_argument("--adapter_name_or_path", default=None)
+    parser.add_argument(
+        "--dataset_file",
+        default=None,
+        help="Frozen local alpaca_eval.json. If omitted, load the Hub dataset (networked runs only).",
+    )
+    parser.add_argument("--dataset_revision", default=None)
+    parser.add_argument("--max_samples", type=int, default=None)
     parser.add_argument("--output_file", required=True)
     parser.add_argument("--generator_name", default="qwen3-1.7b-staticpe-lambda0.1")
     parser.add_argument("--cache_dir", default=None)
@@ -54,6 +66,61 @@ def build_prompt(tokenizer, instruction: str) -> str:
     )
 
 
+def model_load_kwargs(model_name_or_path: str, model_revision: str, cache_dir: str | None) -> dict:
+    kwargs = {"cache_dir": cache_dir, "trust_remote_code": True}
+    if not os.path.isdir(model_name_or_path):
+        kwargs["revision"] = model_revision
+    return kwargs
+
+
+def load_instructions(args: argparse.Namespace) -> tuple[list[str], dict]:
+    if args.max_samples is not None and args.max_samples <= 0:
+        raise ValueError("--max_samples must be positive when supplied.")
+
+    if args.dataset_file:
+        dataset_path = Path(args.dataset_file).expanduser().resolve(strict=True)
+        with dataset_path.open("r", encoding="utf-8") as file:
+            rows = json.load(file)
+        if not isinstance(rows, list):
+            raise ValueError("The frozen AlpacaEval JSON must contain a list of rows.")
+        if any(not isinstance(row, dict) for row in rows):
+            raise ValueError("Every frozen AlpacaEval row must be an object.")
+        instructions = [row.get("instruction") for row in rows]
+        source = {
+            "kind": "local_json",
+            "path": str(dataset_path),
+            "sha256": sha256_file(dataset_path),
+        }
+    else:
+        load_kwargs = {
+            "path": "tatsu-lab/alpaca_eval",
+            "name": "alpaca_eval",
+            "split": "eval",
+            "cache_dir": args.cache_dir,
+        }
+        if args.dataset_revision:
+            load_kwargs["revision"] = args.dataset_revision
+        eval_dataset = load_dataset(**load_kwargs)
+        instructions = list(eval_dataset["instruction"])
+        source = {
+            "kind": "huggingface_dataset",
+            "repo_id": "tatsu-lab/alpaca_eval",
+            "revision": args.dataset_revision,
+            "config": "alpaca_eval",
+            "split": "eval",
+        }
+
+    if not instructions or any(not isinstance(item, str) or not item.strip() for item in instructions):
+        raise ValueError("AlpacaEval instructions must be non-empty strings.")
+    total = len(instructions)
+    if args.max_samples is not None:
+        instructions = instructions[: args.max_samples]
+    source["total_rows"] = total
+    source["selected_rows"] = len(instructions)
+    source["selection"] = "first_n_in_frozen_order"
+    return instructions, source
+
+
 def main() -> None:
     args = parse_args()
     output_path = Path(args.output_file).resolve()
@@ -64,19 +131,11 @@ def main() -> None:
     if args.batch_size <= 0 or args.max_prompt_length <= 0 or args.max_new_tokens <= 0:
         raise ValueError("Batch size and token limits must be positive.")
 
-    eval_dataset = load_dataset(
-        "tatsu-lab/alpaca_eval",
-        "alpaca_eval",
-        split="eval",
-        cache_dir=args.cache_dir,
-    )
-    instructions = list(eval_dataset["instruction"])
+    instructions, dataset_source = load_instructions(args)
 
     tokenizer = AutoTokenizer.from_pretrained(
         args.model_name_or_path,
-        revision=args.model_revision,
-        cache_dir=args.cache_dir,
-        trust_remote_code=True,
+        **model_load_kwargs(args.model_name_or_path, args.model_revision, args.cache_dir),
     )
     tokenizer.padding_side = "left"
     if tokenizer.pad_token_id is None:
@@ -84,11 +143,9 @@ def main() -> None:
 
     model = AutoModelForCausalLM.from_pretrained(
         args.model_name_or_path,
-        revision=args.model_revision,
-        cache_dir=args.cache_dir,
-        trust_remote_code=True,
         torch_dtype=getattr(torch, args.dtype),
         device_map="auto",
+        **model_load_kwargs(args.model_name_or_path, args.model_revision, args.cache_dir),
     )
     if args.adapter_name_or_path:
         model = PeftModel.from_pretrained(model, args.adapter_name_or_path)
@@ -137,9 +194,7 @@ def main() -> None:
 
     manifest = {
         "created_at_utc": datetime.now(timezone.utc).isoformat(),
-        "dataset": "tatsu-lab/alpaca_eval",
-        "dataset_config": "alpaca_eval",
-        "split": "eval",
+        "dataset_source": dataset_source,
         "num_outputs": len(outputs),
         "model_name_or_path": args.model_name_or_path,
         "model_revision": args.model_revision,

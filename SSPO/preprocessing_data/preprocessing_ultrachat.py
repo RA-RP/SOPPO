@@ -14,10 +14,12 @@ arXiv preprint arXiv:2403.13372.)
 
 """
 import argparse
+import hashlib
 import json
 import logging
 import os
 import random
+from datetime import datetime, timezone
 from typing import List, Optional
 import numpy as np
 import torch
@@ -54,6 +56,17 @@ ultrafeedback_keep_ratio = args.fb
 ultrachat_keep_ratio = args.ch
 output_dir = os.path.abspath(args.output_dir)
 os.makedirs(output_dir, exist_ok=True)
+manifest_path = os.path.join(output_dir, "ROUND4_PREPROCESS_MANIFEST.json")
+if os.path.exists(manifest_path):
+    raise FileExistsError(f"Refusing to overwrite existing preprocessing manifest: {manifest_path}")
+
+
+def sha256_file(path):
+    digest = hashlib.sha256()
+    with open(path, "rb") as file:
+        for chunk in iter(lambda: file.read(4 * 1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
 
 #@Alignment Handbook utils
 DEFAULT_CHAT_TEMPLATE = "{% for message in messages %}\n{% if message['role'] == 'user' %}\n{{ '<|user|>\n' + message['content'] + eos_token }}\n{% elif message['role'] == 'system' %}\n{{ '<|system|>\n' + message['content'] + eos_token }}\n{% elif message['role'] == 'assistant' %}\n{{ '<|assistant|>\n'  + message['content'] + eos_token }}\n{% endif %}\n{% if loop.last and add_generation_prompt %}\n{{ '<|assistant|>' }}\n{% endif %}\n{% endfor %}"
@@ -417,6 +430,45 @@ os.replace(temporary_dataset_info, dataset_info_path)
 
 logger.info(f"Dataset info updated in '{dataset_info_path}'")
 
+manifest = {
+    "schema": "round4-preprocessing-v1",
+    "created_at_utc": datetime.now(timezone.utc).isoformat(),
+    "seed": 42,
+    "ratios": {
+        "train_num_ratio": train_num_ratio,
+        "ultrafeedback": ultrafeedback_keep_ratio,
+        "ultrachat": ultrachat_keep_ratio,
+    },
+    "sources": {
+        "ultrafeedback": {
+            "source": os.path.abspath(args.ultrafeedback_source),
+            "revision": args.ultrafeedback_revision,
+        },
+        "ultrachat": {
+            "source": os.path.abspath(args.ultrachat_source),
+            "revision": args.ultrachat_revision,
+        },
+    },
+    "outputs": {},
+}
+for dataset_name, payload in dataset_payloads.items():
+    file_name = f"{dataset_name}.json"
+    file_path = os.path.join(output_dir, file_name)
+    labeled_rows = sum(bool(row["chosen"].strip() and row["rejected"].strip()) for row in payload)
+    unlabeled_rows = sum(bool(row["unlabeled"].strip()) for row in payload)
+    manifest["outputs"][dataset_name] = {
+        "file_name": file_name,
+        "sha256": sha256_file(file_path),
+        "rows": len(payload),
+        "labeled_rows": labeled_rows,
+        "unlabeled_rows": unlabeled_rows,
+    }
+manifest["dataset_info_sha256"] = sha256_file(dataset_info_path)
+temporary_manifest = manifest_path + ".tmp"
+with open(temporary_manifest, "w", encoding="utf-8") as file:
+    json.dump(manifest, file, ensure_ascii=False, indent=2, sort_keys=True)
+os.replace(temporary_manifest, manifest_path)
+logger.info(f"Round4 preprocessing manifest saved in '{manifest_path}'")
 
 
 

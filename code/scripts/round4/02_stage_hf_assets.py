@@ -23,7 +23,11 @@ from huggingface_hub import HfApi, snapshot_download
 MODEL_ID = "Qwen/Qwen3-1.7B"
 MODEL_REVISION = "b9352fbb8ce704292730cf54b3b1dceb2a808738"
 ULTRAFEEDBACK_ID = "HuggingFaceH4/ultrafeedback_binarized"
+ULTRAFEEDBACK_REVISION = "3949bf5f8c17c394422ccfab0c31ea9c20bdeb85"
 ULTRACHAT_ID = "HuggingFaceH4/ultrachat_200k"
+ULTRACHAT_REVISION = "8049631c405ae6576f93f445c6b8166f76f5505a"
+ALPACA_EVAL_ID = "tatsu-lab/alpaca_eval"
+ALPACA_EVAL_REVISION = "2edc6fad8be6b14ea7230aabfd08188da6b8b814"
 MANIFEST_NAME = "ROUND4_ASSET_MANIFEST.json"
 STATE_NAME = ".ROUND4_DOWNLOAD_STATE.json"
 
@@ -36,8 +40,9 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--cache-dir", required=True)
     parser.add_argument("--index-output", required=True)
     parser.add_argument("--model-revision", default=MODEL_REVISION)
-    parser.add_argument("--ultrafeedback-revision", default="main")
-    parser.add_argument("--ultrachat-revision", default="main")
+    parser.add_argument("--ultrafeedback-revision", default=ULTRAFEEDBACK_REVISION)
+    parser.add_argument("--ultrachat-revision", default=ULTRACHAT_REVISION)
+    parser.add_argument("--alpaca-eval-revision", default=ALPACA_EVAL_REVISION)
     parser.add_argument("--max-workers", type=int, default=8)
     return parser.parse_args()
 
@@ -204,6 +209,12 @@ def main() -> None:
             "dataset",
             ULTRACHAT_ID,
             prior_locks.get(("dataset", ULTRACHAT_ID), args.ultrachat_revision),
+            None,
+        ),
+        (
+            "dataset",
+            ALPACA_EVAL_ID,
+            prior_locks.get(("dataset", ALPACA_EVAL_ID), args.alpaca_eval_revision),
             None,
         ),
     ]
