@@ -479,3 +479,13 @@ wheelhouse、数据和模型不能进入Git或镜像层；传输必须可续传�
 ## 11. 批准与代码入口
 
 本设计已冻结：SSPO使用DPO-base、StaticPE使用`physical-microbatch-PE`、frozen base加入AlpacaEval、seed42、MT-Bench退出、模型与数据从4090-3按独立manifest传至A100。用户于2026-09-01明确授权直接进入code阶段；当前代码入口为`../../code/CODE_OVERVIEW.md`。服务器执行仍等待代码实现、静态复核和用户代码交接确认。
+
+---
+
+## `round4-exp-v2.0` — 2026-09-02（用户明确通过）
+
+- 方法臂更新为DPO、SSPO、StaticPE和FrozenPE；旧StaticPE候选对路径改名FrozenPE。
+- 新StaticPE使用shared UltraChat single-response stream、SimPO `beta=10/gamma=2`、EMA-normalized PE；不需要candidate rollout或reference forward。
+- FrozenPE保留DPO-base、reference和固定A/B候选，candidate B只在其正式臂开始前生成。
+- batch、epoch、模型、数据比例和A100两卡安排沿用v1；DPO effective16，其余三臂effective64。
+- full-chain smoke与formal拆成A100 GPU phase和4090 API judge phase，后者可与下一训练臂重叠。详见`current_experiment.md`。

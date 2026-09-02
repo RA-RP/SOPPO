@@ -133,15 +133,31 @@ def run_dpo(
         trainer.save_state()
         if trainer.is_world_process_zero() and finetuning_args.plot_loss:
             plot_keys = ["loss", "eval_loss", "rewards/accuracies", "eval_rewards/accuracies"]
-            if finetuning_args.pref_loss == "staticpe":
+            if finetuning_args.pref_loss == "frozenpe":
                 plot_keys.extend(
                     [
-                        "staticpe/loss_dpo",
+                        "frozenpe/loss_dpo",
+                        "frozenpe/loss_pe",
+                        "frozenpe/loss_dpo_weighted",
+                        "frozenpe/loss_pe_weighted",
+                        "frozenpe/loss_total",
+                        "eval_frozenpe/loss_dpo",
+                        "eval_frozenpe/loss_pe",
+                        "eval_frozenpe/loss_total",
+                    ]
+                )
+            elif finetuning_args.pref_loss == "staticpe":
+                plot_keys.extend(
+                    [
+                        "staticpe/loss_simpo",
                         "staticpe/loss_pe",
-                        "staticpe/loss_dpo_weighted",
+                        "staticpe/loss_simpo_weighted",
                         "staticpe/loss_pe_weighted",
                         "staticpe/loss_total",
-                        "eval_staticpe/loss_dpo",
+                        "staticpe/p_mean",
+                        "staticpe/p_entropy",
+                        "staticpe/reward_clip_rate",
+                        "eval_staticpe/loss_simpo",
                         "eval_staticpe/loss_pe",
                         "eval_staticpe/loss_total",
                     ]

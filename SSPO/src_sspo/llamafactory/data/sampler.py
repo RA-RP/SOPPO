@@ -57,7 +57,7 @@ class PreferenceTwoStreamSampler(Sampler[int]):
         total_examples = len(self.labeled_indices) + len(self.unlabeled_indices)
         self.num_batches = total_examples // batch_size
         if self.num_batches == 0:
-            raise ValueError("StaticPE needs at least one full batch.")
+            raise ValueError("Two-stream preference training needs at least one full batch.")
 
         self.num_samples = self.num_batches * batch_size
         lower_labeled = max(
@@ -113,5 +113,5 @@ class PreferenceTwoStreamSampler(Sampler[int]):
         return iter(ordered_indices)
 
 
-# Backward-compatible name used by the initial StaticPE implementation.
-StaticPETwoStreamSampler = PreferenceTwoStreamSampler
+# Historical aliases are intentionally omitted: the two PE methods now have
+# different data contracts and both use the generic sampler directly.

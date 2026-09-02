@@ -140,7 +140,9 @@ class RLHFArguments:
         default=0.0,
         metadata={"help": "The supervised fine-tuning loss coefficient in DPO training."},
     )
-    pref_loss: Literal["sigmoid", "hinge", "ipo", "kto_pair", "orpo", "simpo", "sspo", "staticpe"] = field(
+    pref_loss: Literal[
+        "sigmoid", "hinge", "ipo", "kto_pair", "orpo", "simpo", "sspo", "staticpe", "frozenpe"
+    ] = field(
         default="sigmoid",
         metadata={"help": "The type of DPO loss to use."},
     )
@@ -191,15 +193,51 @@ class RLHFArguments:
         metadata={"help": "Minimum unlabeled rows in each SSPO sampler batch."},
     )
 
-    # StaticPE uses DPO on labeled pairs and a conditional-encoding loss on
+    pe_contract: Optional[Literal["dpo_frozen_pair_v1", "simpo_single_response_ema_v1"]] = field(
+        default=None,
+        metadata={"help": "Required semantic contract for FrozenPE or StaticPE training."},
+    )
+
+    # FrozenPE uses DPO on labeled pairs and a conditional-encoding loss on
     # fixed unlabeled candidate pairs.
+    frozenpe_lambda: float = field(
+        default=0.1,
+        metadata={"help": "The FrozenPE conditional-encoding loss weight."},
+    )
+    frozenpe_epsilon: float = field(
+        default=1e-8,
+        metadata={"help": "Numerical epsilon used in FrozenPE conditional encodings."},
+    )
+    frozenpe_min_labeled_per_batch: int = field(
+        default=0,
+        metadata={"help": "Minimum number of labeled pairs in each FrozenPE batch."},
+    )
+    frozenpe_min_unlabeled_per_batch: int = field(
+        default=2,
+        metadata={"help": "Minimum number of unlabeled candidate pairs in each FrozenPE batch."},
+    )
+
+    # StaticPE uses SimPO on labeled pairs and a single-response, EMA-normalized
+    # conditional-encoding loss on unlabeled responses.
     staticpe_lambda: float = field(
         default=0.1,
-        metadata={"help": "The StaticPE conditional-encoding loss weight."},
+        metadata={"help": "The StaticPE single-response conditional-encoding loss weight."},
     )
     staticpe_epsilon: float = field(
         default=1e-8,
-        metadata={"help": "Numerical epsilon used in StaticPE conditional encodings."},
+        metadata={"help": "Numerical epsilon used in StaticPE score normalization and encodings."},
+    )
+    staticpe_temperature: float = field(
+        default=1.0,
+        metadata={"help": "Temperature applied to normalized StaticPE scores before sigmoid."},
+    )
+    staticpe_reward_norm_momentum: float = field(
+        default=0.95,
+        metadata={"help": "Detached EMA momentum for StaticPE score normalization."},
+    )
+    staticpe_reward_clip_range: float = field(
+        default=5.0,
+        metadata={"help": "Symmetric clip range for normalized StaticPE scores."},
     )
     staticpe_min_labeled_per_batch: int = field(
         default=0,
@@ -207,7 +245,7 @@ class RLHFArguments:
     )
     staticpe_min_unlabeled_per_batch: int = field(
         default=2,
-        metadata={"help": "Minimum number of unlabeled candidate pairs in each StaticPE batch."},
+        metadata={"help": "Minimum number of unlabeled single responses in each StaticPE batch."},
     )
     
     ppo_buffer_size: int = field(
@@ -529,7 +567,7 @@ class FinetuningArguments(
         if self.stage == "dpo" and self.pref_loss == "sspo":
             self.use_ref_model = self.sspo_base == "dpo"
         elif self.stage == "dpo":
-            self.use_ref_model = self.pref_loss in ["sigmoid", "staticpe"]
+            self.use_ref_model = self.pref_loss in ["sigmoid", "frozenpe"]
         else:
             self.use_ref_model = False
 
@@ -546,11 +584,38 @@ class FinetuningArguments(
         if self.stage == "dpo" and self.pref_loss != "sigmoid" and self.dpo_label_smoothing > 1e-6:
             raise ValueError("`dpo_label_smoothing` is only valid for sigmoid loss function.")
 
+        if self.pref_loss == "frozenpe" and self.pe_contract != "dpo_frozen_pair_v1":
+            raise ValueError("FrozenPE requires `pe_contract: dpo_frozen_pair_v1`.")
+
+        if self.pref_loss == "staticpe" and self.pe_contract != "simpo_single_response_ema_v1":
+            raise ValueError("StaticPE requires `pe_contract: simpo_single_response_ema_v1`.")
+
+        if self.pref_loss == "frozenpe" and self.frozenpe_lambda < 0:
+            raise ValueError("`frozenpe_lambda` must be non-negative.")
+
+        if self.pref_loss == "frozenpe" and self.frozenpe_epsilon <= 0:
+            raise ValueError("`frozenpe_epsilon` must be positive.")
+
+        if self.pref_loss == "frozenpe" and self.frozenpe_min_labeled_per_batch < 0:
+            raise ValueError("`frozenpe_min_labeled_per_batch` must be non-negative.")
+
+        if self.pref_loss == "frozenpe" and self.frozenpe_min_unlabeled_per_batch < 1:
+            raise ValueError("`frozenpe_min_unlabeled_per_batch` must be at least 1.")
+
         if self.pref_loss == "staticpe" and self.staticpe_lambda < 0:
             raise ValueError("`staticpe_lambda` must be non-negative.")
 
         if self.pref_loss == "staticpe" and self.staticpe_epsilon <= 0:
             raise ValueError("`staticpe_epsilon` must be positive.")
+
+        if self.pref_loss == "staticpe" and self.staticpe_temperature <= 0:
+            raise ValueError("`staticpe_temperature` must be positive.")
+
+        if self.pref_loss == "staticpe" and not 0.0 <= self.staticpe_reward_norm_momentum < 1.0:
+            raise ValueError("`staticpe_reward_norm_momentum` must be in [0, 1).")
+
+        if self.pref_loss == "staticpe" and self.staticpe_reward_clip_range <= 0:
+            raise ValueError("`staticpe_reward_clip_range` must be positive.")
 
         if self.pref_loss == "staticpe" and self.staticpe_min_labeled_per_batch < 0:
             raise ValueError("`staticpe_min_labeled_per_batch` must be non-negative.")

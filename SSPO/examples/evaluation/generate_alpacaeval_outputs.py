@@ -36,7 +36,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--dataset_revision", default=None)
     parser.add_argument("--max_samples", type=int, default=None)
     parser.add_argument("--output_file", required=True)
-    parser.add_argument("--generator_name", default="qwen3-1.7b-staticpe-lambda0.1")
+    parser.add_argument("--generator_name", default="qwen3-1.7b-round4")
     parser.add_argument("--cache_dir", default=None)
     parser.add_argument("--batch_size", type=int, default=4)
     parser.add_argument("--max_prompt_length", type=int, default=1024)

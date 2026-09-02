@@ -21,14 +21,11 @@ EXPORT_ROOT="${ROUND4_SMOKE_EXPORT_ROOT:-$A100_BASE/exports/round4/smoke/$RUN_ID
 SMOKE_DATA_DIR="${ROUND4_SMOKE_DATA_DIR:-$A100_BASE/data/round4-v1/smoke/$RUN_ID}"
 LOG_ROOT="${ROUND4_SMOKE_LOG_ROOT:-$A100_BASE/platform_logs/round4/$EXPECTED_COMMIT/smoke/$RUN_ID}"
 HF_HOME="${ROUND4_HF_HOME:-$A100_BASE/cache/huggingface-round4}"
-RUN_JUDGE="${ROUND4_RUN_JUDGE:-1}"
 ALPACA_OUTPUTS="${ROUND4_SMOKE_ALPACA_OUTPUTS:-2}"
 
 [[ "$EXPECTED_COMMIT" =~ ^[0-9a-f]{40}$ ]] || fail "ROUND4_EXPECTED_COMMIT must be a full lowercase Git SHA"
 [[ "$RUN_ID" =~ ^[A-Za-z0-9_-]+$ ]] || fail "ROUND4_SMOKE_RUN_ID contains unsupported characters"
-[[ "$RUN_JUDGE" == "1" ]] || fail "full-chain smoke requires ROUND4_RUN_JUDGE=1"
 [[ "$ALPACA_OUTPUTS" =~ ^[1-9][0-9]*$ ]] || fail "ROUND4_SMOKE_ALPACA_OUTPUTS must be positive"
-[[ -n "${OPENAI_API_KEY:-}" ]] || fail "OPENAI_API_KEY is absent; refusing to start a partial full-chain smoke"
 
 for path in "$A100_BASE" "$REPO_ROOT" "$ENV_ROOT" "$MODEL_PATH" "$RAW_ROOT"; do
     [[ "$path" == /* && -e "$path" ]] || fail "required absolute path is missing: $path"
@@ -56,8 +53,7 @@ done
 
 PYTHON="$ENV_ROOT/bin/python"
 LF_CLI="$ENV_ROOT/bin/llamafactory-cli"
-ALPACA_CLI="$ENV_ROOT/bin/alpaca_eval"
-for executable in "$PYTHON" "$LF_CLI" "$ALPACA_CLI"; do
+for executable in "$PYTHON" "$LF_CLI"; do
     [[ -x "$executable" ]] || fail "required environment executable is missing: $executable"
 done
 
@@ -156,11 +152,11 @@ fi
     --run-id "$RUN_ID" \
     2>&1 | tee "$LOG_ROOT/smoke-plan.log"
 
-CUDA_VISIBLE_DEVICES=0 "$PYTHON" "$CANON_REPO/SSPO/preprocessing_data/generate_staticpe_candidates.py" \
-    --input_file "$SMOKE_DATA_DIR/staticpe_input.json" \
-    --output_file "$SMOKE_DATA_DIR/staticpe_train.json" \
+CUDA_VISIBLE_DEVICES=0 "$PYTHON" "$CANON_REPO/SSPO/preprocessing_data/generate_frozenpe_candidates.py" \
+    --input_file "$SMOKE_DATA_DIR/frozenpe_input.json" \
+    --output_file "$SMOKE_DATA_DIR/frozenpe_train.json" \
     --dataset_info "$SMOKE_DATA_DIR/dataset_info.json" \
-    --dataset_name round4_smoke_staticpe_train \
+    --dataset_name round4_smoke_frozenpe_train \
     --model_name_or_path "$MODEL_PATH" \
     --model_revision b9352fbb8ce704292730cf54b3b1dceb2a808738 \
     --cache_dir "$HF_HOME" \
@@ -170,9 +166,9 @@ CUDA_VISIBLE_DEVICES=0 "$PYTHON" "$CANON_REPO/SSPO/preprocessing_data/generate_s
     --seed 42 \
     --dtype bfloat16 \
     --fail_on_drop \
-    2>&1 | tee "$LOG_ROOT/staticpe-candidates.log"
+    2>&1 | tee "$LOG_ROOT/frozenpe-candidates.log"
 
-"$PYTHON" - "$SMOKE_DATA_DIR/staticpe_train.json.manifest.json" <<'PY'
+"$PYTHON" - "$SMOKE_DATA_DIR/frozenpe_train.json.manifest.json" <<'PY'
 import json
 import sys
 
@@ -181,10 +177,10 @@ counts = manifest.get("counts", {})
 expected = {"input_total": 128, "input_labeled": 64, "input_unlabeled": 64, "output_total": 128, "output_unlabeled": 64}
 for key, value in expected.items():
     if counts.get(key) != value:
-        raise SystemExit(f"StaticPE candidate population mismatch: {key}={counts.get(key)!r}, expected {value}")
+        raise SystemExit(f"FrozenPE candidate population mismatch: {key}={counts.get(key)!r}, expected {value}")
 if counts.get("dropped_empty_generation") or counts.get("dropped_exact_duplicate"):
-    raise SystemExit("StaticPE smoke candidate generation dropped rows")
-print("StaticPE smoke candidate population passed")
+    raise SystemExit("FrozenPE smoke candidate generation dropped rows")
+print("FrozenPE smoke candidate population passed")
 PY
 
 export FORCE_TORCHRUN=1
@@ -193,7 +189,7 @@ export NODE_RANK=0
 export NPROC_PER_NODE=2
 export MASTER_ADDR=127.0.0.1
 
-for method_port in dpo:29541 sspo:29542 staticpe:29543; do
+for method_port in dpo:29541 sspo:29542 staticpe:29543 frozenpe:29544; do
     METHOD="${method_port%%:*}"
     export MASTER_PORT="${method_port##*:}"
     TRAIN_CONFIG="$RUN_ROOT/configs/${METHOD}_train.json"
@@ -204,7 +200,7 @@ for method_port in dpo:29541 sspo:29542 staticpe:29543; do
     "$LF_CLI" train "$TRAIN_CONFIG" 2>&1 | tee "$LOG_ROOT/${METHOD}-train.log"
     CUDA_VISIBLE_DEVICES=0 "$LF_CLI" export "$EXPORT_CONFIG" 2>&1 | tee "$LOG_ROOT/${METHOD}-export.log"
 
-    CUDA_VISIBLE_DEVICES=0 "$PYTHON" "$CANON_REPO/SSPO/examples/staticpe/generate_alpacaeval_outputs.py" \
+    CUDA_VISIBLE_DEVICES=0 "$PYTHON" "$CANON_REPO/SSPO/examples/evaluation/generate_alpacaeval_outputs.py" \
         --model_name_or_path "$METHOD_EXPORT/merged" \
         --model_revision b9352fbb8ce704292730cf54b3b1dceb2a808738 \
         --dataset_file "$ALPACA_ASSET/alpaca_eval.json" \
@@ -218,14 +214,6 @@ for method_port in dpo:29541 sspo:29542 staticpe:29543; do
         --max_new_tokens 64 \
         --dtype bfloat16 \
         2>&1 | tee "$LOG_ROOT/${METHOD}-generation.log"
-
-    "$ALPACA_CLI" \
-        --model_outputs "$METHOD_EXPORT/alpacaeval_smoke_outputs.json" \
-        --reference_outputs "$ALPACA_ASSET/alpaca_eval_gpt4_baseline.json" \
-        --annotators_config weighted_alpaca_eval_gpt4_turbo \
-        --output_path "$METHOD_EXPORT/alpacaeval_judge" \
-        --max_instances 1 \
-        2>&1 | tee "$LOG_ROOT/${METHOD}-judge.log"
 done
 
 "$PYTHON" "$CANON_REPO/code/scripts/round4/03_validate_smoke.py" \
@@ -236,4 +224,12 @@ done
     --expected-alpaca-outputs "$ALPACA_OUTPUTS" \
     2>&1 | tee "$LOG_ROOT/smoke-validation.log"
 
-printf 'Round4 full-chain smoke PASS: %s\n' "$RUN_ID"
+"$PYTHON" "$CANON_REPO/code/scripts/round4/04_make_judge_request.py" \
+    --export-root "$EXPORT_ROOT" \
+    --reference-outputs "$ALPACA_ASSET/alpaca_eval_gpt4_baseline.json" \
+    --run-id "$RUN_ID" \
+    --code-commit "$EXPECTED_COMMIT" \
+    --methods dpo sspo staticpe frozenpe \
+    2>&1 | tee "$LOG_ROOT/judge-request.log"
+
+printf 'Round4 A100 GPU-phase smoke PASS; transfer JUDGE_REQUEST to 4090: %s\n' "$RUN_ID"

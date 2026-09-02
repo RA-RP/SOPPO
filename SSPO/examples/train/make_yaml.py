@@ -24,7 +24,7 @@ import argparse
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--peft", type=str, default="lora", help="full or lora or q-lora")
-parser.add_argument("--method", type=str, default="sspo", help="sft, dpo, orpo, simpo, kto, sspo, or staticpe")
+parser.add_argument("--method", type=str, default="sspo", help="sft, dpo, orpo, simpo, kto, sspo, staticpe, or frozenpe")
 parser.add_argument("--model_path", type=str, default="Qwen/Qwen3-1.7B", help="meta-llama/Meta-Llama-3-8B-Instruct or lole25/phi-2-sft-ultrachat-full or mistralai/Mistral-7B-Instruct-v0.2 or Qwen/Qwen3-1.7B or Qwen/Qwen3-4B")
 args = parser.parse_args()
 
@@ -119,13 +119,14 @@ if model_path == "Qwen/Qwen3-1.7B":
     base_config["model_revision"] = "b9352fbb8ce704292730cf54b3b1dceb2a808738"
 
 
-if model_path == "Qwen/Qwen3-1.7B" and method in {"dpo", "sspo", "staticpe"}:
+if model_path == "Qwen/Qwen3-1.7B" and method in {"dpo", "sspo", "staticpe", "frozenpe"}:
     round4_datasets = {
         "dpo": "ultrafeedback_fb0.1_dpo",
         "sspo": "ultra_combined_fb0.1_ch0.1",
-        "staticpe": "ultra_combined_fb0.1_ch0.1_staticpe",
+        "staticpe": "ultra_combined_fb0.1_ch0.1",
+        "frozenpe": "ultra_combined_fb0.1_ch0.1_frozenpe",
     }
-    round4_train_batch_sizes = {"dpo": 1, "sspo": 4, "staticpe": 4}
+    round4_train_batch_sizes = {"dpo": 1, "sspo": 4, "staticpe": 4, "frozenpe": 4}
     config = base_config.copy()
     config.update({
         "dataset": round4_datasets[method],
@@ -139,7 +140,7 @@ if model_path == "Qwen/Qwen3-1.7B" and method in {"dpo", "sspo", "staticpe"}:
         "gradient_accumulation_steps": 8,
         "cutoff_len": 1024,
         "pref_loss": "sigmoid" if method == "dpo" else method,
-        "pref_beta": 0.1,
+        "pref_beta": 10.0 if method == "staticpe" else 0.1,
         "bf16": True,
         "fp16": False,
         "seed": 42,
@@ -159,10 +160,23 @@ if model_path == "Qwen/Qwen3-1.7B" and method in {"dpo", "sspo", "staticpe"}:
         config.update({
             "staticpe_lambda": 0.1,
             "staticpe_epsilon": 1e-8,
+            "staticpe_temperature": 1.0,
+            "staticpe_reward_norm_momentum": 0.95,
+            "staticpe_reward_clip_range": 5.0,
+            "simpo_gamma": 2.0,
             # A 22.7% labeled source ratio cannot place one labeled row in
             # every four-row local batch without oversampling.
             "staticpe_min_labeled_per_batch": 0,
             "staticpe_min_unlabeled_per_batch": 2,
+            "pe_contract": "simpo_single_response_ema_v1",
+        })
+    elif method == "frozenpe":
+        config.update({
+            "frozenpe_lambda": 0.1,
+            "frozenpe_epsilon": 1e-8,
+            "frozenpe_min_labeled_per_batch": 0,
+            "frozenpe_min_unlabeled_per_batch": 2,
+            "pe_contract": "dpo_frozen_pair_v1",
         })
     if peft in ["lora", "q-lora"]:
         config.update({
@@ -180,7 +194,7 @@ if model_path == "Qwen/Qwen3-1.7B" and method in {"dpo", "sspo", "staticpe"}:
     model_name = model_path.split("/")[-1]
     run_name = f"round4_{peft}_{model_name}_{method}_lr1e-05_beta0.1_cutoff1024_ep1"
     run_name += f"_tb{round4_train_batch_sizes[method]}_eb4_ga8"
-    if method == "staticpe":
+    if method in {"staticpe", "frozenpe"}:
         run_name += "_lambda0.1"
     if method == "sspo":
         run_name += "_base_dpo"

@@ -1,0 +1,15 @@
+{
+  "schema": "round4-judge-profiles-v1",
+  "profiles": {
+    "primary": {
+      "api_key_env": "ROUND4_JUDGE_API_KEY",
+      "base_url_env": "ROUND4_JUDGE_BASE_URL",
+      "model_name": "replace-with-judge-model",
+      "annotator_template": "weighted_alpaca_eval_gpt4_turbo",
+      "max_tokens": 1,
+      "temperature": 1,
+      "logprobs": true,
+      "top_logprobs": 5
+    }
+  }
+}

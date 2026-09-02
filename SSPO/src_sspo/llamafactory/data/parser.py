@@ -48,7 +48,7 @@ class DatasetAttr:
     chosen: Optional[str] = None
     rejected: Optional[str] = None
     unlabeled: Optional[str] = None  # For SSPO training
-    unlabeled_b: Optional[str] = None  # Fixed second candidate for StaticPE training
+    unlabeled_b: Optional[str] = None  # Fixed second candidate for FrozenPE training
     kto_tag: Optional[str] = None
     # alpaca columns
     prompt: Optional[str] = "instruction"

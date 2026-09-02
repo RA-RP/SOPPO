@@ -217,3 +217,10 @@
 - 评价冻结：三方法与frozen base共用`alpaca_eval==0.6.2`、`weighted_alpaca_eval_gpt4_turbo`和LC函数；本轮seed42，MT-Bench退出。
 - 执行拓扑：复用FusionOne现有`cuda12.4-cudnn-devel-ubuntu22.04-py312-ssh`镜像；4090-3准备CPython3.12/cu124离线wheelhouse、数据和模型manifest，经校验传至A100仓库外目录；A100镜像内新建venv，不复制旧py310环境。
 - 代码影响：更新Round4三方法、离线环境、数据/模型传输与A100安装入口；任何改变目标函数、population、方法臂或评价合同的实现偏离必须退回实验讨论。
+
+### `cycle-20260901-01` / Round4 v2 PE语义重命名与扩展 — 2026-09-02
+
+- 用户明确批准：旧双候选、DPO-base `StaticPE`更名为`FrozenPE`；新`StaticPE`使用SimPO-base和单条无标签回答，不再生成candidate B。
+- 新StaticPE固定`beta=10`、`simpo_gamma=2`、lambda0.1、temperature1、detached EMA momentum0.95、clip5和epsilon1e-8；PE仍使用soft responsibility的`c_1/c_2` L1项，但不使用threshold、prior或hard pseudo label。
+- 解释边界：StaticPE同时改变labeled base和无标签机制，因此不把其与DPO/SSPO/FrozenPE的差异归因为单一PE因素。
+- 评价拓扑改为A100仅训练/生成，4090持久profile调用API并聚合WR/LC；formal顺序冻结为base、DPO、SSPO、StaticPE、FrozenPE。

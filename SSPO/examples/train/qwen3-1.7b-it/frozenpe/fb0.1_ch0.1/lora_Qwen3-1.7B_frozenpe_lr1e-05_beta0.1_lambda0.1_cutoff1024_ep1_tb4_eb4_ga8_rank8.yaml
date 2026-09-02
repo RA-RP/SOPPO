@@ -9,7 +9,7 @@ finetuning_type: lora
 lora_rank: 8
 lora_target: all
 
-dataset: ultra_combined_fb0.1_ch0.1_staticpe
+dataset: ultra_combined_fb0.1_ch0.1_frozenpe
 dataset_dir: ./data
 template: qwen3
 cutoff_len: 1024
@@ -18,14 +18,15 @@ overwrite_cache: true
 preprocessing_num_workers: 12
 val_size: 0.1
 
-pref_loss: staticpe
+pref_loss: frozenpe
 pref_beta: 0.1
-staticpe_lambda: 0.1
-staticpe_epsilon: 1.0e-08
-staticpe_min_labeled_per_batch: 0
-staticpe_min_unlabeled_per_batch: 2
+pe_contract: dpo_frozen_pair_v1
+frozenpe_lambda: 0.1
+frozenpe_epsilon: 1.0e-08
+frozenpe_min_labeled_per_batch: 0
+frozenpe_min_unlabeled_per_batch: 2
 
-output_dir: ./saves_Qwen3-1.7B/fb0.1_ch0.1/lora_Qwen3-1.7B_staticpe_lr1e-05_beta0.1_lambda0.1_cutoff1024_ep1_tb4_eb4_ga8_rank8
+output_dir: ./saves_Qwen3-1.7B/fb0.1_ch0.1/lora_Qwen3-1.7B_frozenpe_lr1e-05_beta0.1_lambda0.1_cutoff1024_ep1_tb4_eb4_ga8_rank8
 overwrite_output_dir: true
 num_train_epochs: 1
 per_device_train_batch_size: 4

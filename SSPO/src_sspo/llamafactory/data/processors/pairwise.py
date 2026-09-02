@@ -85,7 +85,7 @@ def _encode_pairwise_example(
         result["rejected_input_ids"] = []
         result["rejected_labels"] = []
     
-    # StaticPE candidates share exactly the same truncated prompt context.
+    # FrozenPE candidates share exactly the same truncated prompt context.
     if has_unlabeled_b:
         unlabeled_messages = template.mm_plugin.process_messages(prompt + [response[2]], images, videos, processor)
         unlabeled_b_messages = template.mm_plugin.process_messages(prompt + [response[3]], images, videos, processor)

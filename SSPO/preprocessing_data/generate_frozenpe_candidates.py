@@ -1,4 +1,4 @@
-"""Generate the fixed Qwen3 candidate used by StaticPE unlabeled rows.
+"""Generate the fixed Qwen3 candidate used by FrozenPE unlabeled rows.
 
 This script is intentionally separate from training: candidate B is generated
 once from a pinned initialization, written to JSON, and never refreshed during
@@ -23,11 +23,11 @@ DEFAULT_REVISION = "b9352fbb8ce704292730cf54b3b1dceb2a808738"
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Generate fixed StaticPE candidate pairs.")
+    parser = argparse.ArgumentParser(description="Generate fixed FrozenPE candidate pairs.")
     parser.add_argument("--input_file", default="./data/ultra_combined_fb0.1_ch0.1.json")
-    parser.add_argument("--output_file", default="./data/ultra_combined_fb0.1_ch0.1_staticpe.json")
+    parser.add_argument("--output_file", default="./data/ultra_combined_fb0.1_ch0.1_frozenpe.json")
     parser.add_argument("--dataset_info", default="./data/dataset_info.json")
-    parser.add_argument("--dataset_name", default="ultra_combined_fb0.1_ch0.1_staticpe")
+    parser.add_argument("--dataset_name", default="ultra_combined_fb0.1_ch0.1_frozenpe")
     parser.add_argument("--model_name_or_path", default=DEFAULT_MODEL)
     parser.add_argument("--model_revision", default=DEFAULT_REVISION)
     parser.add_argument("--cache_dir", default=None)
@@ -111,12 +111,12 @@ def main() -> None:
     with input_path.open("r", encoding="utf-8") as file:
         rows = json.load(file)
     if not isinstance(rows, list):
-        raise ValueError("StaticPE input must be a JSON list.")
+        raise ValueError("FrozenPE input must be a JSON list.")
 
     row_types = [validate_row(row, index) for index, row in enumerate(rows)]
     unlabeled_indices = [index for index, row_type in enumerate(row_types) if row_type == "unlabeled"]
     if not unlabeled_indices or len(unlabeled_indices) == len(rows):
-        raise ValueError("StaticPE input must contain both labeled and unlabeled rows.")
+        raise ValueError("FrozenPE input must contain both labeled and unlabeled rows.")
 
     dtype = getattr(torch, args.dtype)
     tokenizer = AutoTokenizer.from_pretrained(
@@ -263,7 +263,7 @@ def main() -> None:
         json.dump(manifest, file, ensure_ascii=False, indent=2)
 
     print(json.dumps(manifest["counts"], ensure_ascii=False, indent=2))
-    print(f"StaticPE dataset: {output_path}")
+    print(f"FrozenPE dataset: {output_path}")
     print(f"Manifest: {manifest_path}")
 
 

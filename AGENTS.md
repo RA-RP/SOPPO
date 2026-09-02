@@ -35,15 +35,15 @@
 - 当前 cycle：`cycle-20260901-01` / Round4
 - 唯一活动阶段：`CODE_IMPLEMENTATION`
 - 当前入口：`code/CODE_OVERVIEW.md`
-- 批准基线：`human_read/theory/current_theory.md` `r4-theory-v1.0`与`human_read/exp/current_experiment.md` `round4-exp-v1.0`均于2026-09-01获用户明确通过；用户明确授权直接进入code阶段。
-- Round4范围：同一`Qwen/Qwen3-1.7B`、UltraFeedback/UltraChat默认各0.1、epoch1，对比DPO-label-only、SSPO与StaticPE，并补充统一的AlpacaEval 2.0评价链。
-- 已明确决定：StaticPE `lambda=0.1`；每方法2 GPU、GA8；SSPO/StaticPE每设备4、effective batch64；DPO每设备1、effective batch16；三者不重复或截断数据来强凑相同步数。
+- 批准基线：`human_read/theory/current_theory.md` `r4-theory-v2.0`与`human_read/exp/current_experiment.md` `round4-exp-v2.0`均于2026-09-02获用户明确通过；用户明确授权进入code阶段。
+- Round4范围：同一`Qwen/Qwen3-1.7B`、UltraFeedback/UltraChat默认各0.1、epoch1，对比DPO-label-only、SSPO、新StaticPE（SimPO单回答PE）和FrozenPE（原StaticPE双候选PE），并补充A100→4090分离的AlpacaEval兼容评价链。
+- 已明确决定：StaticPE/FrozenPE `lambda=0.1`；每方法2 GPU、GA8；SSPO/StaticPE/FrozenPE每设备4、effective batch64；DPO每设备1、effective batch16。
 - 目标资源与流程：用户于2026-09-01确认亲自验证FusionOne存在8张A100，并决定先创建/占用2张；当前`A100-2` SSH目标呈现AutoDL风格入口，不能据此认定为同一FusionOne资源。该目标已核验为2×A100-PCIE-40GB、Python3.12.3/CUDA12.4可用，数据盘和文件存储未挂载；本轮经用户明确选择直接使用系统盘`/root`下的平级仓库外目录。
 - Round3边界：formal `round3-20260826-04`的旧五方法已完成并行政结项；拟议DPO-reward extension未运行，取消其继续执行。4090-3旧`runs/`和`envs/`已于2026-09-01按用户明确指令行政清空，不能再引用为现存证据。
 - 已执行代码：`round4-code-v1.1.0` / exact code commit `af6dac49044978d76aeca4d5fcb0d11856a1c104`；其wheelhouse、四资产传输和A100 exact-commit环境已通过，但全量预处理后的严格校验发现冻结数据中少量空/单边回答，已在任何smoke训练前停止并保留证据。
-- 当前代码候选：`round4-code-v1.1.1` / exact code commit `6b010b89d1c62aaa8a42af65d06b53d301b1aee8`；只修复无效偏好行过滤/manifest审计与资产索引摘要可迁移性，未改变实验方法、比例或训练配置。该新版本尚未获用户代码交接确认，上传、重建环境、smoke和formal全部重新锁定。
+- 当前代码候选：`round4-code-v2.0.0`（本次交接的仓库`HEAD`），继承`6b010b8`的过滤修复；待用户代码交接确认，上传、重建环境、smoke和formal全部锁定。
 - 锁定阶段：`RESULT_HANDOFF`与`NEXTCYCLE_DISCUSSION`锁定。
-- 下一阶段条件：完成`round4-code-v1.1.1`静态交接并由用户明确确认该exact commit可提交服务器，方可重新进入`SERVER_EXECUTION`；之后仍须先通过完整smoke才可执行formal。
+- 下一阶段条件：完成`round4-code-v2.0.0`静态交接并由用户明确确认该exact commit可提交服务器，方可重新进入`SERVER_EXECUTION`；之后仍须先通过完整smoke才可执行formal。
 
 ## 标识与交叉引用
 

@@ -122,7 +122,7 @@ def convert_alpaca(
             response = [{"role": Role.ASSISTANT.value, "content": ""}] + response
     elif dataset_attr.ranking and ((chosen and rejected) or unlabeled):
         # Ranking rows always reserve the first three response slots for
-        # chosen, rejected and unlabeled-A. StaticPE adds unlabeled-B as a
+        # chosen, rejected and unlabeled-A. FrozenPE adds unlabeled-B as a
         # fourth slot, while ordinary DPO and SSPO remain backward compatible.
         response = [
             {"role": Role.ASSISTANT.value, "content": chosen},

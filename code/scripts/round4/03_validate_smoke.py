@@ -14,15 +14,21 @@ from pathlib import Path
 from typing import Any
 
 
-METHODS = ("dpo", "sspo", "staticpe")
+METHODS = ("dpo", "sspo", "staticpe", "frozenpe")
 REQUIRED_METRICS = {
     "dpo": ("dpo/loss", "rewards/chosen", "rewards/rejected"),
     "sspo": ("sspo/loss_labeled", "sspo/loss_unlabeled", "sspo/loss_total", "sspo/gamma"),
     "staticpe": (
-        "staticpe/loss_dpo",
+        "staticpe/loss_simpo",
         "staticpe/loss_pe",
         "staticpe/loss_total",
         "staticpe/p_mean",
+    ),
+    "frozenpe": (
+        "frozenpe/loss_dpo",
+        "frozenpe/loss_pe",
+        "frozenpe/loss_total",
+        "frozenpe/p_mean",
     ),
 }
 
@@ -156,45 +162,6 @@ def validate_generation(method: str, method_export: Path, expected: int) -> dict
     return {"outputs": expected, "output_sha256": sha256_file(output_path)}
 
 
-def validate_judge(method: str, method_export: Path, run_id: str) -> dict[str, Any]:
-    judge_dir = method_export / "alpacaeval_judge"
-    leaderboard_candidates = list(judge_dir.rglob("leaderboard.csv"))
-    if len(leaderboard_candidates) != 1:
-        raise RuntimeError(f"{method}: expected one judge leaderboard, found {len(leaderboard_candidates)}")
-    leaderboard = leaderboard_candidates[0]
-    require_file(leaderboard)
-    with leaderboard.open("r", encoding="utf-8", newline="") as file:
-        rows = list(csv.DictReader(file))
-    if not rows:
-        raise RuntimeError(f"{method}: AlpacaEval leaderboard has no rows")
-    expected_generator = f"round4-{method}-{run_id}"
-    matching_rows = [row for row in rows if expected_generator in row.values()]
-    if len(matching_rows) != 1:
-        raise RuntimeError(f"{method}: judge leaderboard does not contain exactly one smoke generator row")
-    row = matching_rows[0]
-    for required in ("win_rate", "length_controlled_winrate"):
-        try:
-            finite_number(float(row[required]), f"{method}.judge.{required}")
-        except (KeyError, TypeError, ValueError) as error:
-            raise RuntimeError(f"{method}: judge leaderboard has no finite {required}") from error
-    aggregate: dict[str, float | str] = {}
-    for key, value in row.items():
-        if key is None or value is None:
-            continue
-        try:
-            numeric = float(value)
-        except ValueError:
-            if key.lower() in {"model", "generator"}:
-                aggregate[key] = value
-            continue
-        if math.isfinite(numeric):
-            aggregate[key] = numeric
-    annotation_candidates = list(judge_dir.rglob("*annotations*.json"))
-    if not annotation_candidates:
-        raise FileNotFoundError(f"{method}: no judge annotation artifact found")
-    return {"leaderboard": aggregate, "annotation_artifact_count": len(annotation_candidates)}
-
-
 def main() -> None:
     args = parse_args()
     if args.expected_alpaca_outputs <= 0:
@@ -217,7 +184,6 @@ def main() -> None:
             "training": validate_training(method, adapter_dir),
             "merged": validate_merged(method, method_export / "merged"),
             "generation": validate_generation(method, method_export, args.expected_alpaca_outputs),
-            "judge": validate_judge(method, method_export, args.run_id),
         }
 
     summary = {

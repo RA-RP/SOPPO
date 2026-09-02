@@ -21,7 +21,7 @@ from typing import Any
 
 
 MODEL_REVISION = "b9352fbb8ce704292730cf54b3b1dceb2a808738"
-METHODS = ("dpo", "sspo", "staticpe")
+METHODS = ("dpo", "sspo", "staticpe", "frozenpe")
 
 
 def parse_args() -> argparse.Namespace:
@@ -139,7 +139,7 @@ def training_config(
         "preprocessing_num_workers": 4,
         "val_size": 0.0,
         "pref_loss": "sigmoid" if method == "dpo" else method,
-        "pref_beta": 0.1,
+        "pref_beta": 10.0 if method == "staticpe" else 0.1,
         "output_dir": str(output_dir),
         "overwrite_output_dir": False,
         "max_steps": 2,
@@ -184,8 +184,23 @@ def training_config(
             {
                 "staticpe_lambda": 0.1,
                 "staticpe_epsilon": 1.0e-8,
+                "staticpe_temperature": 1.0,
+                "staticpe_reward_norm_momentum": 0.95,
+                "staticpe_reward_clip_range": 5.0,
+                "simpo_gamma": 2.0,
                 "staticpe_min_labeled_per_batch": 2,
                 "staticpe_min_unlabeled_per_batch": 2,
+                "pe_contract": "simpo_single_response_ema_v1",
+            }
+        )
+    elif method == "frozenpe":
+        config.update(
+            {
+                "frozenpe_lambda": 0.1,
+                "frozenpe_epsilon": 1.0e-8,
+                "frozenpe_min_labeled_per_batch": 2,
+                "frozenpe_min_unlabeled_per_batch": 2,
+                "pe_contract": "dpo_frozen_pair_v1",
             }
         )
     return config
@@ -267,13 +282,15 @@ def main() -> None:
     fixture_payloads = {
         "round4_smoke_dpo_train": shared_labeled[: args.dpo_labeled_rows],
         "round4_smoke_sspo_train": mixed_fixture,
-        "round4_smoke_staticpe_input": mixed_fixture,
+        "round4_smoke_staticpe_train": mixed_fixture,
+        "round4_smoke_frozenpe_input": mixed_fixture,
         "round4_smoke_eval": select(eval_rows, eval_types, "labeled", args.eval_rows),
     }
     fixture_files = {
         "round4_smoke_dpo_train": "dpo_train.json",
         "round4_smoke_sspo_train": "sspo_train.json",
-        "round4_smoke_staticpe_input": "staticpe_input.json",
+        "round4_smoke_staticpe_train": "staticpe_train.json",
+        "round4_smoke_frozenpe_input": "frozenpe_input.json",
         "round4_smoke_eval": "eval.json",
     }
     dataset_info: dict[str, Any] = {}
