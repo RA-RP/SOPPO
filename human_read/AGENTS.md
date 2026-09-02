@@ -29,9 +29,9 @@
 - 当前理论：`theory/current_theory.md` `r4-theory-v2.0`，2026-09-02用户明确通过。
 - 当前实验：`exp/current_experiment.md` `round4-exp-v2.0`，2026-09-02用户明确通过。
 - 当前范围：Qwen3-1.7B、UltraFeedback/UltraChat各0.1、epoch1，对比DPO、SSPO、StaticPE和FrozenPE；DPO effective batch16，其余三法effective batch64；目标评价为A100生成、4090 judge的AlpacaEval兼容WR/LC。
-- 已执行代码：`round4-code-v1.1.0` / `af6dac49044978d76aeca4d5fcb0d11856a1c104`；依赖、四资产和A100环境通过，预处理严格校验因冻结源数据含少量空/单边回答而失败，三方法训练均未开始。
-- 当前代码交接：`round4-code-v2.0.0`（本次交接的仓库`HEAD`）；状态为**PENDING USER CONFIRMATION**。
-- 当前执行边界：因服务器实现缺陷返回代码阶段，上传、新环境、smoke与formal重新锁定；formal的既有意向不允许绕过新exact commit的代码交接门禁和smoke门禁。
+- 已执行代码：`round4-code-v2.0.0` / `6afebd34d1a9c392adf97c6b85f3d57c117a9527`于2026-09-02获用户明确批准并在A100执行。预处理、smoke fixture和FrozenPE候选构造通过；DPO在参数初始化前因包入口绝对导入和`accelerate==1.0.1`与`transformers==4.51.3`的`data_seed`版本约束冲突而停止，四臂均未执行优化step。
+- 当前代码交接：`round4-code-v2.0.1`（本次修复后的仓库`HEAD`）；状态为**PENDING USER CONFIRMATION**。
+- 当前执行边界：因服务器纯实现缺陷返回代码阶段；新exact commit未经确认前，上传、新环境、smoke与formal重新锁定。formal的既有意向不允许绕过新exact commit的代码交接门禁和full-chain smoke门禁。
 - 目标硬件与流程：FusionOne 8×A100为用户已实机验证事实；先创建/占用2张，4090-3准备镜像/数据并经SSH传入，全部smoke与formal在同一2卡上顺序执行。具体显存/拓扑/映射仍待preflight。
 - `RESULT_HANDOFF`及其后阶段：锁定。
 

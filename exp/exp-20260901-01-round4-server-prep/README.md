@@ -67,9 +67,9 @@
 
 ## 当前未完成与阻塞
 
-- `af6dac4`的wheelhouse、冻结Alpaca资产和新A100环境已经通过；预处理验收失败导致2-step smoke、eval、merge/reload、Alpaca小样本与judge均未开始。
-- `6b010b8`尚未获得代码交接确认，不得上传或运行。确认后须建立新commit wheelhouse/环境，将失败prepared目录保留为独立证据后重新生成`v2` prepared数据，并从完整smoke重新开始。
-- A100非交互与登录环境当前都未发现`OPENAI_API_KEY`；即使数据修复通过，full-chain smoke也会在训练前fail closed。密钥只能由用户直接在服务器安全配置，不能写入仓库、日志或聊天。
+- `6afebd3`于2026-09-02获用户明确批准并完成两次A100 smoke尝试。第一次在首个训练入口前因包内绝对导入无法解析停止；第二次以临时`PYTHONPATH`验证该路径后，预处理、fixture及FrozenPE候选构造均通过，但DPO在参数初始化前因`accelerate==1.0.1`不满足`transformers==4.51.3`对`data_seed`的`accelerate>=1.1.0`要求而停止。两次均未执行优化step、merge、生成或judge。
+- 这是纯实现/依赖锁定缺陷，已返回`CODE_IMPLEMENTATION`形成`round4-code-v2.0.1`候选：入口改为包内相对导入，依赖固定为`accelerate==1.1.0`。它须重新获得用户对新exact commit的代码交接确认，之后独立重建wheelhouse/环境并从四臂full-chain smoke重新开始。
+- A100和4090的API judge安全配置仍须在full-chain smoke的4090阶段独立核验；密钥只能由用户直接在服务器安全配置，不能写入仓库、日志或聊天。
 - A100数据盘/文件存储仍未挂载；本轮已按用户选择使用系统盘，容器重置/删除前必须把允许回传的摘要与远程证据索引交接完毕。
 
 ## 本地回传边界

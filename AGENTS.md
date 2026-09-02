@@ -40,10 +40,10 @@
 - 已明确决定：StaticPE/FrozenPE `lambda=0.1`；每方法2 GPU、GA8；SSPO/StaticPE/FrozenPE每设备4、effective batch64；DPO每设备1、effective batch16。
 - 目标资源与流程：用户于2026-09-01确认亲自验证FusionOne存在8张A100，并决定先创建/占用2张；当前`A100-2` SSH目标呈现AutoDL风格入口，不能据此认定为同一FusionOne资源。该目标已核验为2×A100-PCIE-40GB、Python3.12.3/CUDA12.4可用，数据盘和文件存储未挂载；本轮经用户明确选择直接使用系统盘`/root`下的平级仓库外目录。
 - Round3边界：formal `round3-20260826-04`的旧五方法已完成并行政结项；拟议DPO-reward extension未运行，取消其继续执行。4090-3旧`runs/`和`envs/`已于2026-09-01按用户明确指令行政清空，不能再引用为现存证据。
-- 已执行代码：`round4-code-v1.1.0` / exact code commit `af6dac49044978d76aeca4d5fcb0d11856a1c104`；其wheelhouse、四资产传输和A100 exact-commit环境已通过，但全量预处理后的严格校验发现冻结数据中少量空/单边回答，已在任何smoke训练前停止并保留证据。
-- 当前代码候选：`round4-code-v2.0.0`（本次交接的仓库`HEAD`），继承`6b010b8`的过滤修复；待用户代码交接确认，上传、重建环境、smoke和formal全部锁定。
+- 已执行代码：`round4-code-v2.0.0` / exact code commit `6afebd34d1a9c392adf97c6b85f3d57c117a9527`于2026-09-02获用户明确批准并执行。预处理、smoke fixture与FrozenPE候选构造通过；DPO在参数初始化前因包入口绝对导入和`accelerate==1.0.1`不满足`transformers==4.51.3`对`data_seed`的`>=1.1.0`要求而停止，未执行任何优化step。
+- 当前代码候选：`round4-code-v2.0.1`（本次修复后的仓库`HEAD`），修复包内相对导入并把`accelerate`固定至`1.1.0`；待用户代码交接确认，上传、重建环境、smoke和formal全部锁定。
 - 锁定阶段：`RESULT_HANDOFF`与`NEXTCYCLE_DISCUSSION`锁定。
-- 下一阶段条件：完成`round4-code-v2.0.0`静态交接并由用户明确确认该exact commit可提交服务器，方可重新进入`SERVER_EXECUTION`；之后仍须先通过完整smoke才可执行formal。
+- 下一阶段条件：完成`round4-code-v2.0.1`静态交接并由用户明确确认该exact commit可提交服务器，方可重新进入`SERVER_EXECUTION`；之后仍须先通过完整smoke才可执行formal。
 
 ## 标识与交叉引用
 

@@ -1,11 +1,11 @@
-# Round4 v2 代码交接总览
+# Round4 v2.0.1 代码交接总览
 
 ## 状态
 
 - Cycle：`cycle-20260901-01` / Round4；当前阶段：`CODE_IMPLEMENTATION`。
 - 依据：`r4-theory-v2.0`、`round4-exp-v2.0`，均于2026-09-02获用户明确通过。
-- 当前候选：`round4-code-v2.0.0`（本次交接的仓库`HEAD`）；服务器上传、环境创建、smoke和formal均锁定，等待用户明确确认该exact commit可以提交服务器。
-- 历史：`af6dac4`只完成环境/资产准备；`6b010b8`修复无效行过滤。旧预处理失败证据和旧 prepared 目录保留，不被覆盖。
+- 当前候选：`round4-code-v2.0.1`（本次修复后的仓库`HEAD`）；服务器上传、环境创建、smoke和formal均锁定，等待用户明确确认新的 exact commit 可以提交服务器。
+- 历史：用户于2026-09-02批准并执行`6afebd3`。其A100预处理、smoke fixture和FrozenPE候选构造均通过，但第一臂 DPO 尚未执行优化 step 即因两项纯实现缺陷停止：包入口使用仓库绝对导入、`accelerate==1.0.1`不满足`transformers==4.51.3`对`data_seed`的`>=1.1.0`要求。`6b010b8`修复无效行过滤。旧失败产物保留，不被覆盖。
 
 ## 实现映射
 
@@ -21,6 +21,7 @@
 | formal配置 | `examples/train/make_yaml.py`及四目录YAML | DPO/SSPO/StaticPE/FrozenPE，epoch1、LoRA r8、BF16 |
 | A100生成 | `examples/evaluation/generate_alpacaeval_outputs.py` | non-thinking Qwen3、冻结instruction顺序、manifest SHA |
 | smoke | `code/scripts/round4/03_prepare_smoke.py`、`03_run_smoke_a100.sh`、`03_validate_smoke.py` | A100训练/merge/reload/生成；不读取API key、不调用judge |
+| 4090 judge配置 | `code/scripts/round4/04_run_api_judge_4090.sh`、`examples/evaluation/judge_{profiles,credentials}.example.json` | profile保存模型、`max_tokens`/`temperature`/logprob参数与变量名；权限600的仓库外credentials JSON保存多组key/base URL；环境变量可覆盖 |
 
 ## StaticPE目标与状态
 
@@ -39,7 +40,9 @@ EMA state随checkpoint写入`staticpe_ema_state.json`并在resume恢复。
   `c1/c2`和候选reward摘要。
 - SSPO保留`sspo/loss_labeled`、`loss_unlabeled`、`loss_total`、gamma等旧指标。
 - A100写出不可变生成输出和GPU phase摘要；4090读取request bundle，以一个冻结的
-  judge profile调用API并写回 aggregate-only 的WR/LC结果。API key和完整endpoint
+  judge profile调用API并写回 aggregate-only 的WR/LC结果。profile存于
+  `$HOME/.config/soppo/judge_profiles.json`，同目录权限600的
+  `judge_credentials.json`为多个profile提供key/base URL；环境变量优先覆盖。API key
   不进入仓库、日志或A100。
 
 ## 静态复核与服务器待验
@@ -49,4 +52,4 @@ EMA state随checkpoint写入`staticpe_ema_state.json`并在resume恢复。
 数值/梯度与DDP一致性、EMA resume、两流sampler、2-step四臂full-chain smoke、A100→4090
 request/result绑定和正式805条流水线。
 
-在用户确认此exact commit前，任何服务器动作均不允许开始。
+本候选尚未在服务器运行。待用户确认新的 exact commit 后，须重新构建离线 wheelhouse 和 commit-bound 环境，并从四臂 2-step full-chain smoke 重新开始；此前的`6afebd3`运行不能外推为本候选已验证。

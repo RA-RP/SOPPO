@@ -10,6 +10,7 @@ MODEL_OUTPUTS="${2:?missing MODEL_OUTPUTS}"
 REFERENCE_OUTPUTS="${3:?missing REFERENCE_OUTPUTS}"
 OUTPUT_DIR="${4:?missing OUTPUT_DIR}"
 PROFILE_STORE="${ROUND4_JUDGE_PROFILE_STORE:-$HOME/.config/soppo/judge_profiles.json}"
+CREDENTIALS_STORE="${ROUND4_JUDGE_CREDENTIALS_STORE:-$HOME/.config/soppo/judge_credentials.json}"
 PYTHON_BIN="${ROUND4_JUDGE_PYTHON:?set ROUND4_JUDGE_PYTHON to the 4090 judge-environment Python}"
 ALPACA_CLI="${ROUND4_ALPACA_EVAL_CLI:-${PYTHON_BIN%/python}/alpaca_eval}"
 
@@ -17,7 +18,39 @@ ALPACA_CLI="${ROUND4_ALPACA_EVAL_CLI:-${PYTHON_BIN%/python}/alpaca_eval}"
 [[ -f "$PROFILE_STORE" ]] || fail "judge profile store does not exist"
 [[ -x "$PYTHON_BIN" && -x "$ALPACA_CLI" ]] || fail "judge Python or alpaca_eval executable is unavailable"
 [[ "$(stat -c '%a' "$PROFILE_STORE")" =~ ^[46][0-7][0-7]$ ]] || fail "profile store must not be group/world readable"
+if [[ -e "$CREDENTIALS_STORE" ]]; then
+    [[ -f "$CREDENTIALS_STORE" ]] || fail "judge credentials store must be a regular file"
+    [[ "$(stat -c '%a' "$CREDENTIALS_STORE")" =~ ^[46][0-7][0-7]$ ]] || fail "credentials store must not be group/world readable"
+fi
 [[ ! -e "$OUTPUT_DIR" ]] || fail "refusing to overwrite judge output: $OUTPUT_DIR"
+
+CREDENTIAL_EXPORTS="$("$PYTHON_BIN" - "$PROFILE_STORE" "$CREDENTIALS_STORE" "$PROFILE_NAME" <<'PY'
+import json, os, shlex, sys
+import re
+from pathlib import Path
+
+profiles = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8")).get("profiles", {})
+profile = profiles.get(sys.argv[3])
+if not isinstance(profile, dict):
+    raise SystemExit("unknown judge profile")
+
+credentials = {}
+credentials_path = Path(sys.argv[2])
+if credentials_path.exists():
+    credentials = json.loads(credentials_path.read_text(encoding="utf-8"))
+if not isinstance(credentials, dict) or not all(isinstance(k, str) and isinstance(v, str) for k, v in credentials.items()):
+    raise SystemExit("credentials store must be a string-to-string JSON object")
+
+for name in (profile.get("api_key_env"), profile.get("base_url_env")):
+    if not isinstance(name, str) or not name:
+        raise SystemExit("profile lacks credential environment variable names")
+    value = os.environ.get(name) or credentials.get(name)
+    if not value:
+        raise SystemExit("credential is absent: " + name)
+    print("export " + name + "=" + shlex.quote(value))
+PY
+)" || fail "judge credential resolution failed"
+eval "$CREDENTIAL_EXPORTS"
 
 PROFILE_JSON="$($PYTHON_BIN - "$PROFILE_STORE" "$PROFILE_NAME" <<'PY'
 import json, os, sys
@@ -54,7 +87,7 @@ mkdir -p "$OUTPUT_DIR"
 CONFIG_DIR="$OUTPUT_DIR/annotator_config"
 mkdir -p "$CONFIG_DIR"
 "$PYTHON_BIN" - "$PROFILE_JSON" "$CONFIG_DIR" <<'PY'
-import json, shutil, sys
+import json, re, shutil, sys
 from pathlib import Path
 import alpaca_eval
 
@@ -66,10 +99,29 @@ if not (root / "configs.yaml").is_file():
 shutil.copytree(root, output, dirs_exist_ok=True)
 config = output / "configs.yaml"
 text = config.read_text(encoding="utf-8")
-old_model = 'model_name: "gpt-4-1106-preview"'
-if old_model not in text:
-    raise SystemExit("installed evaluator template has an unsupported model declaration")
-text = text.replace(old_model, 'model_name: "{}"'.format(profile["model_name"]))
+settings = {
+    "model_name": profile["model_name"],
+    "max_tokens": profile.get("max_tokens", 1),
+    "temperature": profile.get("temperature", 1),
+    "logprobs": profile.get("logprobs", True),
+    "top_logprobs": profile.get("top_logprobs", 5),
+}
+if not isinstance(settings["model_name"], str) or not settings["model_name"]:
+    raise SystemExit("profile model_name must be a non-empty string")
+if not isinstance(settings["max_tokens"], int) or settings["max_tokens"] < 1:
+    raise SystemExit("profile max_tokens must be a positive integer")
+if not isinstance(settings["temperature"], (int, float)):
+    raise SystemExit("profile temperature must be numeric")
+if not isinstance(settings["logprobs"], bool):
+    raise SystemExit("profile logprobs must be boolean")
+if not isinstance(settings["top_logprobs"], int) or settings["top_logprobs"] < 0:
+    raise SystemExit("profile top_logprobs must be a non-negative integer")
+
+for key, value in settings.items():
+    replacement = "    {}: {}".format(key, json.dumps(value))
+    text, count = re.subn(r"(?m)^    " + re.escape(key) + r":.*$", replacement, text)
+    if count != 1:
+        raise SystemExit("installed evaluator template lacks exactly one completions_kwargs." + key)
 config.write_text(text, encoding="utf-8")
 PY
 

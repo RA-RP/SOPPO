@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from SOPPO.SSPO.src_sspo.llamafactory.train.tuner import run_exp  # use absolute import
+from .train.tuner import run_exp
 
 
 def launch():

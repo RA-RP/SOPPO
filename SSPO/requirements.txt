@@ -3,7 +3,8 @@
 # python -m pip install "torch==2.5.1" --index-url https://download.pytorch.org/whl/cu124
 # The unqualified pin below accepts the resolved 2.5.1+cu124 local version.
 torch==2.5.1
-accelerate==1.0.1
+# transformers==4.51.3 validates `data_seed` against accelerate>=1.1.0.
+accelerate==1.1.0
 aiofiles==23.2.1
 aiohappyeyeballs==2.4.4
 aiohttp==3.11.11
