@@ -68,7 +68,8 @@
 ## 当前未完成与阻塞
 
 - `6afebd3`于2026-09-02获用户明确批准并完成两次A100 smoke尝试。第一次在首个训练入口前因包内绝对导入无法解析停止；第二次以临时`PYTHONPATH`验证该路径后，预处理、fixture及FrozenPE候选构造均通过，但DPO在参数初始化前因`accelerate==1.0.1`不满足`transformers==4.51.3`对`data_seed`的`accelerate>=1.1.0`要求而停止。两次均未执行优化step、merge、生成或judge。
-- 这是纯实现/依赖锁定缺陷，已返回`CODE_IMPLEMENTATION`形成`round4-code-v2.0.1`候选：入口改为包内相对导入，依赖固定为`accelerate==1.1.0`。它须重新获得用户对新exact commit的代码交接确认，之后独立重建wheelhouse/环境并从四臂full-chain smoke重新开始。
+- 随后用户明确批准`92259df`。该版本在4090与A100重建离线 wheelhouse/环境，并在DPO的`torchrun`入口启动时停止：`torchrun`将`launcher.py`作为文件执行，故包内相对导入缺少包上下文。仍未执行优化step、merge、生成或judge。
+- 这是纯入口实现缺陷，已返回`CODE_IMPLEMENTATION`形成`round4-code-v2.0.2`候选：入口使用已安装的`llamafactory.train.tuner`绝对包路径。它须重新获得用户对新exact commit的代码交接确认，之后独立重建wheelhouse/环境并从四臂full-chain smoke重新开始。
 - A100和4090的API judge安全配置仍须在full-chain smoke的4090阶段独立核验；密钥只能由用户直接在服务器安全配置，不能写入仓库、日志或聊天。
 - A100数据盘/文件存储仍未挂载；本轮已按用户选择使用系统盘，容器重置/删除前必须把允许回传的摘要与远程证据索引交接完毕。
 

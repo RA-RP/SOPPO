@@ -1,11 +1,11 @@
-# Round4 v2.0.1 代码交接总览
+# Round4 v2.0.2 代码交接总览
 
 ## 状态
 
 - Cycle：`cycle-20260901-01` / Round4；当前阶段：`CODE_IMPLEMENTATION`。
 - 依据：`r4-theory-v2.0`、`round4-exp-v2.0`，均于2026-09-02获用户明确通过。
-- 当前候选：`round4-code-v2.0.1`（本次修复后的仓库`HEAD`）；服务器上传、环境创建、smoke和formal均锁定，等待用户明确确认新的 exact commit 可以提交服务器。
-- 历史：用户于2026-09-02批准并执行`6afebd3`。其A100预处理、smoke fixture和FrozenPE候选构造均通过，但第一臂 DPO 尚未执行优化 step 即因两项纯实现缺陷停止：包入口使用仓库绝对导入、`accelerate==1.0.1`不满足`transformers==4.51.3`对`data_seed`的`>=1.1.0`要求。`6b010b8`修复无效行过滤。旧失败产物保留，不被覆盖。
+- 当前候选：`round4-code-v2.0.2`（本次修复后的仓库`HEAD`）；服务器上传、环境创建、smoke和formal均锁定，等待用户明确确认新的 exact commit 可以提交服务器。
+- 历史：用户于2026-09-02批准并执行`6afebd3`与`92259df`。`6afebd3`在DPO优化前因仓库绝对导入与`accelerate==1.0.1`版本约束冲突停止；`92259df`已解决两者并通过新环境、预处理、fixture和FrozenPE候选构造，却在`torchrun`以文件路径执行`launcher.py`时因相对导入缺少包上下文停止。三次均未执行优化 step。`6b010b8`修复无效行过滤；旧失败产物保留，不被覆盖。
 
 ## 实现映射
 
@@ -52,4 +52,4 @@ EMA state随checkpoint写入`staticpe_ema_state.json`并在resume恢复。
 数值/梯度与DDP一致性、EMA resume、两流sampler、2-step四臂full-chain smoke、A100→4090
 request/result绑定和正式805条流水线。
 
-本候选尚未在服务器运行。待用户确认新的 exact commit 后，须重新构建离线 wheelhouse 和 commit-bound 环境，并从四臂 2-step full-chain smoke 重新开始；此前的`6afebd3`运行不能外推为本候选已验证。
+本候选尚未在服务器运行。待用户确认新的 exact commit 后，须重新构建离线 wheelhouse 和 commit-bound 环境，并从四臂 2-step full-chain smoke 重新开始；此前的`6afebd3`与`92259df`运行不能外推为本候选已验证。
