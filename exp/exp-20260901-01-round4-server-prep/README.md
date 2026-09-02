@@ -4,7 +4,7 @@
 
 - Experiment ID：`exp-20260901-01-round4-server-prep`
 - Cycle ID：`cycle-20260901-01`
-- 状态：运行中
+- 状态：暂停服务器执行，返回代码实现
 - 对应实验设计：`../../human_read/exp/current_experiment.md` `round4-exp-v1.0`
 - 对应理论：`../../human_read/theory/current_theory.md` `r4-theory-v1.0`
 - 理论批准版本与日期：`r4-theory-v1.0`，2026-09-01用户明确通过
@@ -34,6 +34,8 @@
 - 4090→A100：已创建独立、受限、严格主机指纹校验的传输认证；直连`rsync`完成，约94MiB仓库、3.41GB离线包、4.08GB模型和2.27GB数据均已传入。A100逐项复核137个wheel及3份资产30个payload文件，总payload字节`6353474410`全部通过。
 - A100环境：`/root/envs/round4-py312`从离线包全新创建；`pip check`、核心imports、Python3.12.3、torch2.5.1+cu124、CUDA12.4、2 GPU、AlpacaEval0.6.2及setuptools78.1.0门禁通过。
 
+以上事实只绑定旧exact commit `2854c10b…`。2026-09-02审计发现三方法全链2-step smoke与离线Alpaca小样本入口缺失，当前已返回`CODE_IMPLEMENTATION`；本地`round4-code-v1.1.0`候选已形成exact code commit `af6dac49044978d76aeca4d5fcb0d11856a1c104`但尚未上传，不能把旧环境门禁外推为新候选已验证。
+
 ## 远程证据索引
 
 | 产物 | 服务器位置 | 本地保留 | 状态 |
@@ -50,7 +52,8 @@
 
 ## 当前未完成与阻塞
 
-- A100 CPU合同测试、2-step smoke、eval、merge/reload、Alpaca小样本和judge smoke尚未开始。
+- 本地`round4-code-v1.1.0`候选`af6dac49044978d76aeca4d5fcb0d11856a1c104`需要完成用户明确代码交接；在此之前服务器执行锁定。
+- 新commit wheelhouse、新增冻结AlpacaEval资产、新A100 exact-commit环境、A100合同测试、2-step smoke、eval、merge/reload、Alpaca小样本和judge smoke均尚未开始。
 - A100数据盘/文件存储仍未挂载；本轮已按用户选择使用系统盘，容器重置/删除前必须把允许回传的摘要与远程证据索引交接完毕。
 
 ## 本地回传边界
@@ -62,5 +65,5 @@
 
 ## 结果交接
 
-- 当前仍为`SERVER_EXECUTION`，不是结果交接。
+- 当前返回`CODE_IMPLEMENTATION`，不是结果交接。
 - 只有全部smoke完成或形成完整失败摘要后，才进入`RESULT_HANDOFF`。

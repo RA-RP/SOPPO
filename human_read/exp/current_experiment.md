@@ -5,11 +5,11 @@
 - Cycle：`cycle-20260901-01` / Round4
 - 实验版本：`round4-exp-v1.0`
 - 理论来源：`../theory/current_theory.md` `r4-theory-v1.0`（2026-09-01用户明确通过）
-- 当前唯一活动阶段：`SERVER_EXECUTION`
+- 当前唯一活动阶段：`CODE_IMPLEMENTATION`
 - 实验状态：**APPROVED**
 - 用户确认：2026-09-01，用户明确授权直接进入code阶段并允许在当前Round4边界内冻结剩余工程选择
-- 代码交接：当前累计纯构建修复版`round4-code-v1.0.3`，exact code commit `2854c10b6da56f650c91f45d9a685b98cdc02375`；`-e .`过滤、wheel构建污染checkout、AlpacaEval/setuptools兼容问题均已作无研究语义变化的脚本修复
-- 当前执行记录：`../../exp/exp-20260901-01-round4-server-prep/README.md`；4090离线包与三份资产、服务器间传输、A100逐文件SHA及离线环境安装已完成，smoke尚未开始
+- 代码交接：旧服务器基线为`round4-code-v1.0.3` / exact commit `2854c10b6da56f650c91f45d9a685b98cdc02375`；本地`round4-code-v1.1.0`候选 exact code commit为`af6dac49044978d76aeca4d5fcb0d11856a1c104`，用户对该版本的服务器提交确认待完成
+- 当前执行记录：`../../exp/exp-20260901-01-round4-server-prep/README.md`；旧commit的4090离线包与三份资产、服务器间传输、A100逐文件SHA及离线环境安装已完成；因发现全链smoke入口缺失，当前返回代码阶段，smoke尚未开始
 - Round3：旧五方法 formal 已完成并作行政结项；拟议的 DPO-reward extension 未运行，不并入 Round4
 
 本文件是Round4代码实现所依据的冻结实验合同；实现若改变以下研究语义，必须返回实验讨论并重新批准。
@@ -153,4 +153,4 @@ wheelhouse、数据和模型不能进入Git或镜像层；传输必须可续传�
 
 ## 11. 批准与代码入口
 
-本设计已冻结：SSPO使用DPO-base、StaticPE使用`physical-microbatch-PE`、frozen base加入AlpacaEval、seed42、MT-Bench退出、模型与数据从4090-3按独立manifest传至A100。用户于2026-09-01明确授权`round4-code-v1.0`提交并完成4090-3任务；当前处于`SERVER_EXECUTION`，代码入口为`../../code/CODE_OVERVIEW.md`。4090-3不训练，formal训练仍按本文件约定单独授权。
+本设计已冻结：SSPO使用DPO-base、StaticPE使用`physical-microbatch-PE`、frozen base加入AlpacaEval、seed42、MT-Bench退出、模型与数据从4090-3按独立manifest传至A100。旧代码版本曾获服务器执行授权；因smoke实现缺口，当前返回`CODE_IMPLEMENTATION`，代码入口为`../../code/CODE_OVERVIEW.md`。`round4-code-v1.1.0`重新交接获明确确认前不得上传或运行；4090-3不训练，formal训练仍按本文件约定单独授权。

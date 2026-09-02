@@ -33,17 +33,17 @@
 ## 当前活动阶段
 
 - 当前 cycle：`cycle-20260901-01` / Round4
-- 唯一活动阶段：`SERVER_EXECUTION`
+- 唯一活动阶段：`CODE_IMPLEMENTATION`
 - 当前入口：`code/CODE_OVERVIEW.md`
 - 批准基线：`human_read/theory/current_theory.md` `r4-theory-v1.0`与`human_read/exp/current_experiment.md` `round4-exp-v1.0`均于2026-09-01获用户明确通过；用户明确授权直接进入code阶段。
 - Round4范围：同一`Qwen/Qwen3-1.7B`、UltraFeedback/UltraChat默认各0.1、epoch1，对比DPO-label-only、SSPO与StaticPE，并补充统一的AlpacaEval 2.0评价链。
 - 已明确决定：StaticPE `lambda=0.1`；每方法2 GPU、GA8；SSPO/StaticPE每设备4、effective batch64；DPO每设备1、effective batch16；三者不重复或截断数据来强凑相同步数。
 - 目标资源与流程：用户于2026-09-01确认亲自验证FusionOne存在8张A100，并决定先创建/占用2张；当前`A100-2` SSH目标呈现AutoDL风格入口，不能据此认定为同一FusionOne资源。该目标已核验为2×A100-PCIE-40GB、Python3.12.3/CUDA12.4可用，数据盘和文件存储未挂载；本轮经用户明确选择直接使用系统盘`/root`下的平级仓库外目录。
 - Round3边界：formal `round3-20260826-04`的旧五方法已完成并行政结项；拟议DPO-reward extension未运行，取消其继续执行。4090-3旧`runs/`和`envs/`已于2026-09-01按用户明确指令行政清空，不能再引用为现存证据。
-- 当前代码：`round4-code-v1.0.3`；4090/A100执行累计发现并修复runtime requirements未过滤`-e .`、本地wheel构建污染checkout、AlpacaEval 0.6.2与新版setuptools不兼容三个纯构建脚本缺陷；均不改变研究语义，当前执行绑定最新exact clean code commit。
-- 当前执行边界：4090-3已在exact code commit `2854c10b6da56f650c91f45d9a685b98cdc02375`重建并复核137-wheel离线包；三份冻结资产未变。4090→A100专用认证、直连传输和A100逐文件SHA均已通过；`/root/envs/round4-py312`已通过pip、imports、Python3.12、torch2.5.1+cu124、CUDA12.4及2 GPU门禁。4090-3不训练；smoke已授权，formal训练仍按实验合同单独授权。
-- 锁定阶段：`RESULT_HANDOFF`与`NEXTCYCLE_DISCUSSION`锁定。
-- 下一阶段条件：服务器白名单执行完成或形成完整的终止/失败摘要与去敏证据索引，进入`RESULT_HANDOFF`。
+- 当前代码：旧服务器基线为`round4-code-v1.0.3` / exact commit `2854c10b6da56f650c91f45d9a685b98cdc02375`；本地已形成`round4-code-v1.1.0`候选 exact code commit `af6dac49044978d76aeca4d5fcb0d11856a1c104`，补齐全链smoke、离线Alpaca与普通DPO指标缺陷修复，尚未上传或运行。
+- 当前执行边界：4090-3旧exact commit的137-wheel离线包和Qwen/UltraFeedback/UltraChat三份资产已复核；4090→A100传输、逐文件SHA和`/root/envs/round4-py312`环境门禁均已通过。服务器审计发现缺口后已返回代码阶段；`v1.1.0`的exact commit、wheelhouse、新增Alpaca资产和新A100环境均待交接批准。formal训练仍按实验合同单独授权。
+- 锁定阶段：`SERVER_EXECUTION`、`RESULT_HANDOFF`与`NEXTCYCLE_DISCUSSION`锁定；当前修复版完成静态交接后才重新解锁smoke执行。
+- 下一阶段条件：`round4-code-v1.1.0`形成exact本地commit并完成静态交接，用户明确确认该版本可以提交服务器，进入`SERVER_EXECUTION`；服务器白名单执行完成或形成完整失败摘要后才进入`RESULT_HANDOFF`。
 
 ## 标识与交叉引用
 
