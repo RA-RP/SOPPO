@@ -41,6 +41,13 @@ judge profile保存在4090的`~/.config/soppo/judge_profiles.json`（权限0600�
 AlpacaEval输出，同时写出该臂独立的`JUDGE_REQUEST_<method>.json`。4090可在下一臂训练期间
 拉取该不可变输出并运行API judge；judge不得反向改变其余训练配置。
 
+## 4090 恢复式正式控制器
+
+`06_run_formal_controller_4090.sh RUN_ID`只在4090运行。它先等待已经启动的base输出，校验复制到
+4090的输出SHA和行数，再执行judge；之后严格按DPO、SSPO、StaticPE、FrozenPE顺序启动A100动作并
+立即judge。任一A100动作消失、manifest不匹配、传输或judge失败都会停止，不会跳到下一臂。A100始终
+不接触key或base URL；控制器只使用4090已有的SSH配置、judge profile和仓库外私有凭据。
+
 ## v2 执行门禁
 
 `00_*`、`01_*`、`02_*`的旧离线环境/资产脚本仍可复用，但必须用新的exact commit重新

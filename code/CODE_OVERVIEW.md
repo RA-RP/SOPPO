@@ -24,6 +24,7 @@
 | smoke | `code/scripts/round4/03_prepare_smoke.py`、`03_run_smoke_a100.sh`、`03_validate_smoke.py` | A100训练/merge/reload/生成；不读取API key、不调用judge |
 | 4090 judge配置 | `code/scripts/round4/04_run_api_judge_4090.sh`、`examples/evaluation/judge_{profiles,credentials}.example.json` | profile保存模型、`max_tokens`/`temperature`/logprob参数与变量名；权限600的仓库外credentials JSON保存多组key/base URL；环境变量可覆盖 |
 | formal准备与运行 | `code/scripts/round4/05_prepare_formal.py`、`05_run_formal_a100.sh` | 服务器生成计划、按base→四方法顺序运行；训练输出后生成805条并写入judge request，不在A100保存API key |
+| formal控制与评价 | `code/scripts/round4/06_run_formal_controller_4090.sh` | 4090等待/校验A100不可变输出，立即judge后再启动下一臂；任一传输、manifest或judge失败即停止 |
 
 ## StaticPE目标与状态
 
