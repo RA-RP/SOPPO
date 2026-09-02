@@ -33,7 +33,7 @@
 ## 当前活动阶段
 
 - 当前 cycle：`cycle-20260901-01` / Round4
-- 唯一活动阶段：`CODE_IMPLEMENTATION`
+- 唯一活动阶段：`SERVER_EXECUTION`
 - 当前入口：`code/CODE_OVERVIEW.md`
 - 批准基线：`human_read/theory/current_theory.md` `r4-theory-v2.0`与`human_read/exp/current_experiment.md` `round4-exp-v2.0`均于2026-09-02获用户明确通过；用户明确授权进入code阶段。
 - Round4范围：同一`Qwen/Qwen3-1.7B`、UltraFeedback/UltraChat默认各0.1、epoch1，对比DPO-label-only、SSPO、新StaticPE（SimPO单回答PE）和FrozenPE（原StaticPE双候选PE），并补充A100→4090分离的AlpacaEval兼容评价链。
@@ -41,9 +41,10 @@
 - 目标资源与流程：用户于2026-09-01确认亲自验证FusionOne存在8张A100，并决定先创建/占用2张；当前`A100-2` SSH目标呈现AutoDL风格入口，不能据此认定为同一FusionOne资源。该目标已核验为2×A100-PCIE-40GB、Python3.12.3/CUDA12.4可用，数据盘和文件存储未挂载；本轮经用户明确选择直接使用系统盘`/root`下的平级仓库外目录。
 - Round3边界：formal `round3-20260826-04`的旧五方法已完成并行政结项；拟议DPO-reward extension未运行，取消其继续执行。4090-3旧`runs/`和`envs/`已于2026-09-01按用户明确指令行政清空，不能再引用为现存证据。
 - 已执行代码：`round4-code-v2.0.0`及修复提交`92259df`、`98dc1aa`、`67ebed0`均于2026-09-02获用户明确批准并执行。`67ebed0`进入Qwen3模型前向，但梯度检查点包装器未兼容`functools.partial`，未完成优化step。
-- 当前代码候选：`round4-code-v2.0.4`（本次修复后的仓库`HEAD`），从partial展开到底层 bound method 后再读取模块并仅对可识别的可训练模块设置输入梯度；用户已授权自行提交、同步与迭代至 full-chain smoke 通过。
+- 已验证代码与 smoke：`cb2d54c`已在A100-2完成四臂2-step full-chain smoke；每臂均完成训练、eval、adapter保存、merge/reload、2条生成及4090真实API judge。StaticPE/FrozenPE的PE分支均被实际覆盖。该 smoke 仅验证链路，不构成方法结果。
+- 正式执行代码：`71b0a6cf347a86bed9ac1a0ae6b68f0ee3dc2500`（`round4-code-v2.0.5`）。它在已验证训练实现上新增可恢复的正式运行入口；用户于2026-09-02明确授权持续提交、同步、smoke通过后自动开始formal。A100-2已部署该 exact commit，formal开始前仍需由服务器入口生成不可变的实际计划。
 - 锁定阶段：`RESULT_HANDOFF`与`NEXTCYCLE_DISCUSSION`锁定。
-- 下一阶段条件：用户已授权本候选及其后续纯实现修复自动进入`SERVER_EXECUTION`；完整 smoke 通过后自动开始 formal，除非修复会改变实验语义、数据合同或需要新的外部权限。
+- 当前执行：建立`exp-20260902-02-round4-formal`证据索引后，在A100-2按冻结顺序运行base→DPO→SSPO→StaticPE→FrozenPE；每个不可变输出立即由4090-3调用primary judge评价。完成或终止后进入`RESULT_HANDOFF`，不得据中间结果调参或提前作科学结论。
 
 ## 标识与交叉引用
 

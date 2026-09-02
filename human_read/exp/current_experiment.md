@@ -5,10 +5,10 @@
 - Cycle：`cycle-20260901-01` / Round4
 - 实验版本：`round4-exp-v2.0`
 - 理论来源：`../theory/current_theory.md` `r4-theory-v2.0`，2026-09-02用户明确通过。
-- 当前唯一活动阶段：`CODE_IMPLEMENTATION`
+- 当前唯一活动阶段：`SERVER_EXECUTION`
 - 实验状态：`APPROVED`
 - 用户确认：2026-09-02，用户确认四方法合同、StaticPE SimPO-base loss、原StaticPE改名FrozenPE、超参数、A100/4090评价流水线及方法顺序，并要求开始正式执行。
-- 代码状态：用户已授权自行提交、同步与迭代直至 full-chain smoke 通过。`67ebed0`越过Trainer batch接口并进入Qwen3模型前向，却在自定义梯度检查点包装器处理`functools.partial`时停止，未完成优化step。当前候选为`round4-code-v2.0.4`，继续沿恢复型 smoke 边界执行。
+- 代码与执行状态：`cb2d54c`已在A100-2完成四臂2-step full-chain smoke；每臂训练、eval、adapter保存、merge/reload、2条生成和4090真实API judge均通过。正式入口提交为`71b0a6cf347a86bed9ac1a0ae6b68f0ee3dc2500`（`round4-code-v2.0.5`），已部署A100-2。用户于2026-09-02明确授权smoke通过后自动开始formal；当前正在创建正式运行的不可变计划，未根据smoke指标改变任何方法参数。
 
 `round4-exp-v1.0`保留为历史设计。旧执行环境在任何训练前因无效偏好行校验停止，相关证据位于`../../exp/exp-20260901-01-round4-server-prep/README.md`。
 
@@ -84,6 +84,6 @@ request bundle包含相对路径、输出SHA、行数、冻结instruction/baseli
 2. 用户明确确认新的exact code commit可以提交服务器；
 3. 4090构建新项目wheel与judge环境，复用并复核已有冻结资产；
 4. A100创建新的commit-bound venv，保留旧失败prepared目录，重跑filtered preprocessing；
-5. 完成服务器单元/合同测试与full-chain smoke；
-6. 用户确认smoke摘要后启动formal；
+5. 完成服务器单元/合同测试与full-chain smoke；已完成。
+6. 用户已授权smoke通过后自动启动formal；正在执行。
 7. 结果回传并进入`RESULT_HANDOFF`。

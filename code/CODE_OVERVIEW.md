@@ -1,10 +1,11 @@
-# Round4 v2.0.4 代码交接总览
+# Round4 v2.0.5 代码与服务器执行总览
 
 ## 状态
 
-- Cycle：`cycle-20260901-01` / Round4；当前阶段：`CODE_IMPLEMENTATION`。
+- Cycle：`cycle-20260901-01` / Round4；当前阶段：`SERVER_EXECUTION`。
 - 依据：`r4-theory-v2.0`、`round4-exp-v2.0`，均于2026-09-02获用户明确通过。
-- 当前候选：`round4-code-v2.0.4`（本次修复后的仓库`HEAD`）；用户已授权自行提交、同步与迭代直至 full-chain smoke 通过。
+- 已验证 smoke 代码：`cb2d54c`。A100-2四臂2-step full-chain smoke通过：训练、eval、adapter、merge/reload、2条生成与4090真实API judge均完成；StaticPE与FrozenPE的PE分支均有非零训练诊断。2条样本的WR/LC仅验证接口，不能用于比较方法。
+- 正式执行代码：`71b0a6cf347a86bed9ac1a0ae6b68f0ee3dc2500`（本总览对应提交）。其训练语义不变，新增`code/scripts/round4/05_prepare_formal.py`和`05_run_formal_a100.sh`，将每个formal运行绑定到数据、模型、exact commit与不可变输出路径；用户已明确授权连续执行。
 - 历史：用户于2026-09-02批准并执行`6afebd3`、`92259df`、`98dc1aa`与`67ebed0`。前三者分别在包导入、torchrun入口和Trainer batch接口停止；`67ebed0`已进入模型前向，却因Qwen3在`transformers==4.51.3`中将 decoder layer 调用包装为`functools.partial`，旧梯度检查点包装器假设`func.__self__`存在而停止。均未完成优化 step。`6b010b8`修复无效行过滤；旧失败产物保留，不被覆盖。
 
 ## 实现映射
@@ -22,6 +23,7 @@
 | A100生成 | `examples/evaluation/generate_alpacaeval_outputs.py` | non-thinking Qwen3、冻结instruction顺序、manifest SHA |
 | smoke | `code/scripts/round4/03_prepare_smoke.py`、`03_run_smoke_a100.sh`、`03_validate_smoke.py` | A100训练/merge/reload/生成；不读取API key、不调用judge |
 | 4090 judge配置 | `code/scripts/round4/04_run_api_judge_4090.sh`、`examples/evaluation/judge_{profiles,credentials}.example.json` | profile保存模型、`max_tokens`/`temperature`/logprob参数与变量名；权限600的仓库外credentials JSON保存多组key/base URL；环境变量可覆盖 |
+| formal准备与运行 | `code/scripts/round4/05_prepare_formal.py`、`05_run_formal_a100.sh` | 服务器生成计划、按base→四方法顺序运行；训练输出后生成805条并写入judge request，不在A100保存API key |
 
 ## StaticPE目标与状态
 
@@ -52,4 +54,4 @@ EMA state随checkpoint写入`staticpe_ema_state.json`并在resume恢复。
 数值/梯度与DDP一致性、EMA resume、两流sampler、2-step四臂full-chain smoke、A100→4090
 request/result绑定和正式805条流水线。
 
-本候选尚未在服务器运行。待用户确认新的 exact commit 后，须重新构建离线 wheelhouse 和 commit-bound 环境，并从四臂 2-step full-chain smoke 重新开始；此前的`6afebd3`与`92259df`运行不能外推为本候选已验证。
+服务器验证已完成`cb2d54c`四臂2-step full-chain smoke。`71b0a6c`的新增formal启动器只完成本地静态shell检查；实际计划生成、正式训练、805条生成和4090评价均必须在服务器留下独立证据。正式运行中的失败保持产物并记录，不以服务器现场改参绕过冻结合同。

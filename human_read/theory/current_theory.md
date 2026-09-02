@@ -4,7 +4,7 @@
 
 - Cycle：`cycle-20260901-01` / Round4
 - 理论版本：`r4-theory-v2.0`
-- 当前唯一活动阶段：`CODE_IMPLEMENTATION`
+- 当前唯一活动阶段：`SERVER_EXECUTION`
 - 状态：`APPROVED`
 - 用户确认：2026-09-02，用户明确确认 v2 方法方案、损失定义、超参数、A100/4090流水线及执行顺序，并要求“按着这个计划开始正式执行”。
 - 版本关系：`r4-theory-v1.0`保留为历史合同；其双回答 DPO-base `StaticPE` 自 v2 起更名为 `FrozenPE`。v2 新增的单回答 SimPO-base 方法使用名称 `StaticPE`。

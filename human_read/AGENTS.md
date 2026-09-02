@@ -24,14 +24,14 @@
 ## 当前状态
 
 - Cycle ID：`cycle-20260901-01` / Round4
-- 唯一活动阶段：`CODE_IMPLEMENTATION`
+- 唯一活动阶段：`SERVER_EXECUTION`
 - Round3交接：旧五方法formal已完成并行政结项；DPO-reward extension未运行且不再推进。4090-3旧`runs/`和`envs/`已于2026-09-01按用户明确指令行政清空。
 - 当前理论：`theory/current_theory.md` `r4-theory-v2.0`，2026-09-02用户明确通过。
 - 当前实验：`exp/current_experiment.md` `round4-exp-v2.0`，2026-09-02用户明确通过。
 - 当前范围：Qwen3-1.7B、UltraFeedback/UltraChat各0.1、epoch1，对比DPO、SSPO、StaticPE和FrozenPE；DPO effective batch16，其余三法effective batch64；目标评价为A100生成、4090 judge的AlpacaEval兼容WR/LC。
 - 已执行代码：`round4-code-v2.0.0`及修复提交`92259df`、`98dc1aa`、`67ebed0`均于2026-09-02获用户明确批准并在A100执行。`67ebed0`已进入Qwen3模型前向，但自定义梯度检查点包装器未兼容`functools.partial`而停止，未完成优化step。
-- 当前代码交接：`round4-code-v2.0.4`（本次修复后的仓库`HEAD`）；用户已明确授权自行提交、同步与迭代，直至 full-chain smoke 通过。
-- 当前执行边界：因服务器纯实现缺陷返回代码阶段；新exact commit未经确认前，上传、新环境、smoke与formal重新锁定。formal的既有意向不允许绕过新exact commit的代码交接门禁和full-chain smoke门禁。
+- 当前代码交接与 smoke：`cb2d54c`在A100-2完成四臂2-step full-chain smoke，训练/eval/merge/reload/生成与4090 API judge均通过；用户已明确授权通过后自动进入formal。smoke的2条输出只作链路检查，不作效果结论。
+- 当前执行代码：`71b0a6cf347a86bed9ac1a0ae6b68f0ee3dc2500`（`round4-code-v2.0.5`），只新增可恢复的formal入口；已部署至A100-2。正在建立`exp-20260902-02-round4-formal`并由服务器生成正式计划。
 - 目标硬件与流程：FusionOne 8×A100为用户已实机验证事实；先创建/占用2张，4090-3准备镜像/数据并经SSH传入，全部smoke与formal在同一2卡上顺序执行。具体显存/拓扑/映射仍待preflight。
 - `RESULT_HANDOFF`及其后阶段：锁定。
 
