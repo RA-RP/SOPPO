@@ -1,0 +1,1 @@
+2026-09-02: 用户明确批准 exact commit 98dc1aa3f4638d6d723d6afd89c0e77d4a45cdfd 提交服务器；明确要求不重复已通过的 smoke 前置阶段，直接从 torchrun 失败点恢复 full-chain smoke。
