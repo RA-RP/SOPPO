@@ -1,0 +1,1 @@
+2026-09-02: 用户明确批准 exact commit 67ebed0d01424ed4c07d3cb3949d587add4bd984，并明确授权后续自行提交 Git、同步服务器、迭代修复和继续执行，直至 Round4 full-chain smoke 全部通过；复用已通过前置产物，从 DPO 训练边界恢复。
