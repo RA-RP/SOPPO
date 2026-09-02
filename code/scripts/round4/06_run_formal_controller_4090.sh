@@ -20,7 +20,7 @@ MAX_WAIT_SECONDS="${ROUND4_CONTROLLER_MAX_WAIT_SECONDS:-259200}"
 fail() { echo "ERROR: $*" >&2; exit 1; }
 remote() { ssh -F "$A100_CONFIG" -o BatchMode=yes "$A100_HOST" "$@"; }
 
-[[ -x "$PYTHON" && -x "$JUDGE" ]] || fail "judge environment or script is unavailable"
+[[ -x "$PYTHON" && -f "$JUDGE" ]] || fail "judge environment or script is unavailable"
 [[ -r "$REFERENCE" ]] || fail "frozen AlpacaEval reference outputs are unavailable"
 [[ -r "$A100_CONFIG" ]] || fail "A100 SSH config is unavailable"
 [[ "$(remote "git -C '$A100_BASE/SOPPO' rev-parse HEAD")" == "$CODE_COMMIT" ]] || fail "A100 exact commit mismatch"
@@ -57,7 +57,7 @@ judge_method() {
     local method="$1"
     local target="$LOCAL_EXPORT/$method"
     copy_and_verify "$method"
-    "$JUDGE" primary "$target/alpacaeval_outputs.json" "$REFERENCE" "$target/judge-primary"
+    bash "$JUDGE" primary "$target/alpacaeval_outputs.json" "$REFERENCE" "$target/judge-primary"
     "$PYTHON" - "$target/judge-primary/JUDGE_RESULT.json" "$method" <<'PY'
 import json, sys
 payload = json.load(open(sys.argv[1], encoding="utf-8"))
