@@ -3,11 +3,12 @@
 ## 0. 当前状态与授权边界
 
 - Cycle：`cycle-20260901-01` / Round4
-- 当前唯一活动阶段：`SERVER_EXECUTION`
+- 当前唯一活动阶段：`CODE_IMPLEMENTATION`
 - 当前理论：`../human_read/theory/current_theory.md` `r4-theory-v1.0`，2026-09-01用户明确通过
 - 当前实验：`../human_read/exp/current_experiment.md` `round4-exp-v1.0`，2026-09-01用户明确通过
-- Round4代码候选：`round4-code-v1.1.0` / exact code commit `af6dac49044978d76aeca4d5fcb0d11856a1c104`；在已执行的`v1.0.3`基础上补齐全链smoke、离线AlpacaEval和DPO runtime指标缺陷修复
-- 当前代码交接：**APPROVED**；2026-09-02用户明确批准提交并执行exact code commit `af6dac49044978d76aeca4d5fcb0d11856a1c104`的smoke，并进一步批准smoke通过后按既定顺序执行formal
+- 已执行代码：`round4-code-v1.1.0` / exact code commit `af6dac49044978d76aeca4d5fcb0d11856a1c104`；依赖、四项固定资产和A100环境通过，但预处理严格校验在训练前失败
+- Round4代码候选：`round4-code-v1.1.1` / exact code commit `6b010b89d1c62aaa8a42af65d06b53d301b1aee8`；过滤固定源数据中的空/单边回答并记录审计，同时使资产索引SHA文件可跨主机校验
+- 当前代码交接：**PENDING USER CONFIRMATION**；`v1.1.1`尚未获准上传或执行，既有formal授权仍受新代码交接和完整smoke门禁约束
 
 本文件承担Round4实现映射与最终代码交接。Round3旧formal已行政结项，不改写为Round4入口；4090-3旧runs/envs已按用户指令行政清空。
 
@@ -40,16 +41,17 @@
 | 三方法formal YAML | `SSPO/examples/train/qwen3-1.7b-it/{dpo,sspo,staticpe}/` | DPO effective16，SSPO/StaticPE effective64；共同labeled eval view |
 | Alpaca输出入口 | `SSPO/examples/staticpe/generate_alpacaeval_outputs.py` | 已泛化到三方法；支持冻结本地JSON、固定前N条、merged模型本地重载和输出SHA manifest；待服务器验证 |
 | Round4全链smoke | `code/scripts/round4/03_run_smoke_a100.sh`及同目录`03_*`辅助脚本 | 已实现exact commit/env/asset门禁、预处理manifest、固定fixture、2-step训练/eval、merge/reload、每方法1条judge与aggregate-only验收；待服务器验证 |
+| Round4数据预处理与审计 | `SSPO/preprocessing_data/preprocessing_ultrachat.py`、`code/scripts/round4/03_verify_prepared.py` | `v1.1.1`在确定性0.1抽样后过滤空/单边回答，manifest升级为`round4-preprocessing-v2`并记录输入、丢弃原因和有效行数；待服务器复跑 |
 | 本地包与依赖 | `SSPO/pyproject.toml`、`SSPO/requirements.txt` | Python 3.12静态元数据检查通过；无服务器resolver/import证据 |
-| 4090离线wheelhouse | `code/scripts/round4/00_build_offline_wheelhouse.sh` | 已在exact code commit `2854c10…`生成并复核137-wheel、3.2GiB package；固定`setuptools==78.1.0`兼容AlpacaEval 0.6.2；构建后checkout clean |
-| A100离线venv | `code/scripts/round4/01_install_a100_env.sh` | `/root/envs/round4-py312`已通过pip check、核心imports、Python3.12.3、torch2.5.1+cu124、CUDA12.4与2 GPU门禁 |
-| 4090模型/数据冻结 | `code/scripts/round4/02_stage_hf_assets_4090.sh`、`02_stage_hf_assets.py` | 旧commit已完成Qwen/UltraFeedback/UltraChat共3份资产；新候选把三者revision硬冻结并新增`alpaca_eval@2edc6fad…`，新增资产尚未下载/传输 |
+| 4090离线wheelhouse | `code/scripts/round4/00_build_offline_wheelhouse.sh` | `af6dac4`已复用136个依赖wheel、重建项目wheel并通过137-wheel全量SHA；`v1.1.1`仍须重建唯一项目wheel并重新绑定commit |
+| A100离线venv | `code/scripts/round4/01_install_a100_env.sh` | 新环境`/root/envs/round4-py312-af6dac490449`已通过pip check、核心imports、Python3.12.3、torch2.5.1+cu124、CUDA12.4与2 GPU门禁；旧`/root/envs/round4-py312`不含commit标记且本轮不使用 |
+| 4090模型/数据冻结 | `code/scripts/round4/02_stage_hf_assets_4090.sh`、`02_stage_hf_assets.py` | `af6dac4`已固定并传输Qwen、UltraFeedback、UltraChat、AlpacaEval四资产，A100端42个payload逐文件SHA通过；`v1.1.1`把索引`.sha256`从源机绝对路径改为相对文件名 |
 
-Round4实现已获批开展；旧commit的离线resolver/wheelhouse、三份资产、A100安装/import和两卡可见性已通过服务器验收。`v1.1.0`候选仅完成本地静态检查，尚未构建、上传或运行；数值、DDP和gradient accumulation仍待smoke验收。
+`af6dac4`执行已完成wheelhouse、四资产和A100 exact-commit环境门禁。随后全量预处理写盘成功，但`03_verify_prepared.py`发现抽样数据含不满足ranking合同的记录：UltraFeedback训练抽样8条无效、共同eval 3条无效、UltraChat抽样3条空回答；因此在StaticPE候选生成和任何训练前停止。`v1.1.1`保持随机抽样结果不变，只在抽样后过滤这些行并把原因计入manifest；服务器复跑前仍需新代码交接确认。
 
 ### 2.1 smoke数据与执行映射
 
-- 全量预处理从已冻结UltraFeedback/UltraChat本地snapshot生成3个JSON和`ROUND4_PREPROCESS_MANIFEST.json`，再次验证来源revision、行类型、行数和SHA。
+- 全量预处理从已冻结UltraFeedback/UltraChat本地snapshot生成3个JSON和`ROUND4_PREPROCESS_MANIFEST.json`；`v2` manifest再次验证来源revision、过滤策略、输入/丢弃/有效行数、互斥行类型和SHA。
 - fixture固定为DPO 32条labeled、SSPO/StaticPE共享64条labeled+64条unlabeled、共同eval 8条labeled；DPO 32条是共享64条的子集。
 - smoke不改formal batch：DPO `1×2×GA8=16`，SSPO/StaticPE `4×2×GA8=64`；`max_steps=2`，step 1/2各eval一次。仅将mixed smoke sampler的每设备物理batch固定为`2 labeled+2 unlabeled`以覆盖分支。
 - StaticPE先从冻结初始化模型为64条unlabeled各生成一次固定B；任一空结果或exact duplicate都失败，不能缩小population后继续。
@@ -128,8 +130,8 @@ Round4实现已获批开展；旧commit的离线resolver/wheelhouse、三份资�
 
 任何账号、密码、token、内部地址或API key都不得写进源码、配置、文档、日志或镜像层。运维命令只使用占位符。
 
-静态复核：2026-09-02已对全部Round4 Bash入口执行`bash -n`、对本次涉及的10个Python文件执行标准库AST parse、执行`git diff --check`、阶段一致性和敏感信息模式检查；均通过。按本地控制面规则未导入项目、未运行数据/模型/test/smoke。
+静态复核：`v1.1.1`于2026-09-02对修改的Bash入口执行`bash -n`、对两个修改的Python文件执行标准库AST parse，并执行`git diff --check`与敏感信息模式检查；均通过。按本地控制面规则未导入项目、未运行数据/模型/test/smoke。服务器仍须复跑全量预处理、`v2` manifest验收和完整smoke。
 
-当前代码交接状态：**APPROVED，`round4-code-v1.1.0` / `af6dac49044978d76aeca4d5fcb0d11856a1c104`，2026-09-02用户明确批准提交并执行该exact版本的smoke。**
+当前代码交接状态：**PENDING USER CONFIRMATION，`round4-code-v1.1.1` / `6b010b89d1c62aaa8a42af65d06b53d301b1aee8`。**
 
-当前服务器边界：允许在4090构建`af6dac4` wheelhouse、补冻Alpaca资产、传至A100、安装新commit环境并启动三方法smoke；smoke全部通过后，formal已获授权按DPO→SSPO→StaticPE顺序执行，不能越过失败门禁。既有执行证据与本次新增状态见`../exp/exp-20260901-01-round4-server-prep/README.md`。
+当前服务器边界：`af6dac4`执行已在预处理验收失败处停止；不得上传或运行`6b010b8`。用户明确确认新exact commit后，才可增量重建项目wheel、创建新commit环境、保留并隔离失败prepared目录后重新预处理，再从三方法full-chain smoke开始；只有smoke全部通过才可按DPO→SSPO→StaticPE顺序执行formal。证据索引见`../exp/exp-20260901-01-round4-server-prep/README.md`。

@@ -24,13 +24,14 @@
 ## 当前状态
 
 - Cycle ID：`cycle-20260901-01` / Round4
-- 唯一活动阶段：`SERVER_EXECUTION`
+- 唯一活动阶段：`CODE_IMPLEMENTATION`
 - Round3交接：旧五方法formal已完成并行政结项；DPO-reward extension未运行且不再推进。4090-3旧`runs/`和`envs/`已于2026-09-01按用户明确指令行政清空。
 - 当前理论：`theory/current_theory.md` `r4-theory-v1.0`，2026-09-01用户明确通过。
 - 当前实验：`exp/current_experiment.md` `round4-exp-v1.0`，2026-09-01用户明确通过。
 - 当前范围：Qwen3-1.7B、UltraFeedback/UltraChat各0.1、epoch1，对比DPO、SSPO、StaticPE；DPO effective batch16，SSPO/StaticPE effective batch64；目标评价为AlpacaEval 2.0。
-- 代码交接：`round4-code-v1.1.0` / exact code commit `af6dac49044978d76aeca4d5fcb0d11856a1c104`，2026-09-02用户明确批准提交并执行该exact版本的smoke。
-- 当前执行边界：允许重建并传输`af6dac4` wheelhouse、新增冻结Alpaca资产、创建A100 exact-commit环境并运行三方法2-step全链smoke；用户于2026-09-02进一步批准formal，只有smoke通过后才按DPO→SSPO→StaticPE顺序执行。
+- 已执行代码：`round4-code-v1.1.0` / `af6dac49044978d76aeca4d5fcb0d11856a1c104`；依赖、四资产和A100环境通过，预处理严格校验因冻结源数据含少量空/单边回答而失败，三方法训练均未开始。
+- 当前代码交接：`round4-code-v1.1.1` / exact code commit `6b010b89d1c62aaa8a42af65d06b53d301b1aee8`，仅加入无效行过滤审计和可迁移资产摘要修复；状态为**PENDING USER CONFIRMATION**。
+- 当前执行边界：因服务器实现缺陷返回代码阶段，上传、新环境、smoke与formal重新锁定；formal的既有意向不允许绕过新exact commit的代码交接门禁和smoke门禁。
 - 目标硬件与流程：FusionOne 8×A100为用户已实机验证事实；先创建/占用2张，4090-3准备镜像/数据并经SSH传入，全部smoke与formal在同一2卡上顺序执行。具体显存/拓扑/映射仍待preflight。
 - `RESULT_HANDOFF`及其后阶段：锁定。
 

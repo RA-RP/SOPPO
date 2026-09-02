@@ -4,14 +4,15 @@
 
 - Experiment ID：`exp-20260901-01-round4-server-prep`
 - Cycle ID：`cycle-20260901-01`
-- 状态：服务器执行中
+- 状态：`af6dac4`服务器执行在预处理门禁失败后终止；已返回`CODE_IMPLEMENTATION`修复
 - 对应实验设计：`../../human_read/exp/current_experiment.md` `round4-exp-v1.0`
 - 对应理论：`../../human_read/theory/current_theory.md` `r4-theory-v1.0`
 - 理论批准版本与日期：`r4-theory-v1.0`，2026-09-01用户明确通过
 - 实验设计批准版本与日期：`round4-exp-v1.0`，2026-09-01用户明确通过
-- 代码版本/静态校验值：`round4-code-v1.1.0`，exact code commit `af6dac49044978d76aeca4d5fcb0d11856a1c104`
-- 代码交接状态与日期：用户明确确认提交并执行该exact commit的smoke，2026-09-02
-- 服务器执行授权与日期：smoke已明确授权，2026-09-02；用户随后明确批准smoke通过后的formal顺序执行，2026-09-02
+- 已执行代码版本：`round4-code-v1.1.0`，exact code commit `af6dac49044978d76aeca4d5fcb0d11856a1c104`
+- 当前修复候选：`round4-code-v1.1.1`，exact code commit `6b010b89d1c62aaa8a42af65d06b53d301b1aee8`
+- 代码交接状态与日期：`af6dac4`曾于2026-09-02获准执行；`6b010b8`为失败后纯实现修复，当前**PENDING USER CONFIRMATION**
+- 服务器执行授权与日期：新commit尚未获重新上传/执行确认；smoke与formal均重新锁定
 - 执行位置：4090-3联网准备面与2×A100容器执行面；本地未运行项目任务
 - 服务器运行手册：`../../../machine/CURRENT_STATE.md`、`../../../machine/4090-3/README.md`、`../../../machine/A800-8/README.md`
 
@@ -36,6 +37,15 @@
 
 以上已完成的环境事实只绑定旧exact commit `2854c10b…`。2026-09-02审计发现缺口后形成`round4-code-v1.1.0` / `af6dac4`，用户已明确批准提交并执行该exact版本的smoke；新wheelhouse、资产、环境与smoke结果须独立记录，不能把旧门禁外推为新版本已验证。
 
+## `af6dac4`新增执行事实与终止点
+
+- 4090-3 clean checkout绑定`af6dac49044978d76aeca4d5fcb0d11856a1c104`；复用136个不变依赖wheel，只重建项目wheel，最终137个wheel与package清单全量SHA通过。
+- 新增冻结`alpaca_eval@2edc6fad8be6b14ea7230aabfd08188da6b8b814`；连同既有模型、UltraFeedback和UltraChat，A100端共4项资产、42个payload文件、`6429762565`字节逐文件SHA通过。
+- A100通过离线Git bundle导入并clean detached checkout到`af6dac4`。新环境`/root/envs/round4-py312-af6dac490449`绑定该完整commit，并通过Python3.12.3、torch2.5.1+cu124、CUDA12.4、2×A100、核心imports与`pip check`。
+- 旧`/root/envs/round4-py312`保留但没有`ROUND4_CODE_COMMIT`标记，本轮不会使用；两个环境均约6.6GiB，当前磁盘余量充足，未执行删除。
+- 全量预处理成功生成3个JSON和`round4-preprocessing-v1` manifest，随后严格校验失败并停止。聚合审计显示：UltraFeedback训练抽样6113条中8条为空或仅有单侧回答，共同eval 2000条中3条缺少rejected；UltraChat抽样20786条中3条回答为空。StaticPE候选、DPO/SSPO/StaticPE训练、merge、生成和judge均未开始。
+- 失败数据与原始日志仅留服务器；本地没有回传任何样本行。当前代码候选`6b010b8`在确定性抽样后过滤无效行，把manifest升级为`v2`并记录输入/丢弃原因/有效行数，同时修复资产索引`.sha256`携带源机绝对路径的问题。
+
 ## 远程证据索引
 
 | 产物 | 服务器位置 | 本地保留 | 状态 |
@@ -49,10 +59,17 @@
 | 传输与A100逐文件复核日志 | 双端仓库外`platform_logs/round4/<exact_commit>/` | 否 | 已完成 |
 | A100离线环境与freeze | A100仓库外`envs/round4-py312/` | 否 | 已验证 |
 | A100环境安装日志 | A100仓库外`platform_logs/round4/<exact_commit>/env-install.log` | 否 | 已完成 |
+| `af6dac4`复用wheelhouse构建日志 | 4090仓库外`platform_logs/round4/af6dac49044978d76aeca4d5fcb0d11856a1c104/wheelhouse-build-reused.log` | 否 | 已完成并通过 |
+| 四资产索引与下载日志 | 4090仓库外`exports/round4-assets/af6dac49044978d76aeca4d5fcb0d11856a1c104/`、同commit平台日志 | 仅聚合数量/字节 | 已完成并通过 |
+| A100 exact-commit环境 | A100仓库外`envs/round4-py312-af6dac490449/` | 否 | 已完成并通过 |
+| 失败prepared数据 | A100仓库外`data/round4-v1/prepared/` | 否 | 保留，`v1`严格校验失败，不得用于训练 |
+| 前处理与失败校验日志 | A100仓库外`platform_logs/round4/af6dac49044978d76aeca4d5fcb0d11856a1c104/preparation/{preprocessing,prepared-verify}.log` | 仅本记录聚合摘要 | 已保留 |
 
 ## 当前未完成与阻塞
 
-- 新commit wheelhouse、新增冻结AlpacaEval资产、新A100 exact-commit环境、A100合同测试、2-step smoke、eval、merge/reload、Alpaca小样本和judge smoke均尚未开始。formal已获授权，但必须等待smoke全部通过；任一步失败则停止后续。
+- `af6dac4`的wheelhouse、冻结Alpaca资产和新A100环境已经通过；预处理验收失败导致2-step smoke、eval、merge/reload、Alpaca小样本与judge均未开始。
+- `6b010b8`尚未获得代码交接确认，不得上传或运行。确认后须建立新commit wheelhouse/环境，将失败prepared目录保留为独立证据后重新生成`v2` prepared数据，并从完整smoke重新开始。
+- A100非交互与登录环境当前都未发现`OPENAI_API_KEY`；即使数据修复通过，full-chain smoke也会在训练前fail closed。密钥只能由用户直接在服务器安全配置，不能写入仓库、日志或聊天。
 - A100数据盘/文件存储仍未挂载；本轮已按用户选择使用系统盘，容器重置/删除前必须把允许回传的摘要与远程证据索引交接完毕。
 
 ## 本地回传边界
@@ -64,5 +81,5 @@
 
 ## 结果交接
 
-- 当前为`SERVER_EXECUTION`，不是结果交接。
-- 只有全部smoke完成或形成完整失败摘要后，才进入`RESULT_HANDOFF`。
+- 当前因纯实现缺陷返回`CODE_IMPLEMENTATION`，不是结果交接。
+- 新代码完成交接后才能重进服务器执行；若用户选择不修复重跑，则以本节失败事实形成终止摘要并进入`RESULT_HANDOFF`。
