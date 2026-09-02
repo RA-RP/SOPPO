@@ -70,7 +70,8 @@
 - `6afebd3`于2026-09-02获用户明确批准并完成两次A100 smoke尝试。第一次在首个训练入口前因包内绝对导入无法解析停止；第二次以临时`PYTHONPATH`验证该路径后，预处理、fixture及FrozenPE候选构造均通过，但DPO在参数初始化前因`accelerate==1.0.1`不满足`transformers==4.51.3`对`data_seed`的`accelerate>=1.1.0`要求而停止。两次均未执行优化step、merge、生成或judge。
 - 随后用户明确批准`92259df`。该版本在4090与A100重建离线 wheelhouse/环境，并在DPO的`torchrun`入口启动时停止：`torchrun`将`launcher.py`作为文件执行，故包内相对导入缺少包上下文。仍未执行优化step、merge、生成或judge。
 - 用户随后明确批准`98dc1aa`并要求从失败点恢复，故复用了已校验的prepared数据、fixture和FrozenPE候选；其越过入口、进入DPO Trainer内部循环，却因`CustomDPOTrainer.get_batch_samples()`保持旧两参数签名而与`transformers==4.51.3`新增的`device`参数不兼容。仍未执行优化step、merge、生成或judge。
-- 这是纯 Trainer API 兼容缺陷，已返回`CODE_IMPLEMENTATION`形成`round4-code-v2.0.3`候选：DPO与KTO覆盖方法均对齐三参数接口。它须重新获得用户对新exact commit的代码交接确认，之后可继续复用同一恢复型 smoke 的前置数据，从DPO训练边界重新开始。
+- 用户随后明确授权自行提交、同步与迭代直到 full-chain smoke 通过。`67ebed0`已对齐 Trainer API 并进入 Qwen3 模型前向，但自定义梯度检查点包装器假设 layer 调用是 bound method；`transformers==4.51.3`实际传入`functools.partial(decoder_layer.__call__, ...)`，故读取`__self__`失败。仍未完成优化step、merge、生成或judge。
+- 当前`round4-code-v2.0.4`候选从partial展开到底层 bound method 后识别模块，保留“仅对可训练模块设置浮点输入 requires_grad”的原始语义。可继续复用同一恢复型 smoke 的前置数据，从DPO训练边界重新开始。
 - A100和4090的API judge安全配置仍须在full-chain smoke的4090阶段独立核验；密钥只能由用户直接在服务器安全配置，不能写入仓库、日志或聊天。
 - A100数据盘/文件存储仍未挂载；本轮已按用户选择使用系统盘，容器重置/删除前必须把允许回传的摘要与远程证据索引交接完毕。
 

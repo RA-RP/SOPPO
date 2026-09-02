@@ -83,9 +83,13 @@ def get_custom_gradient_checkpointing_func(gradient_checkpointing_func: Callable
 
     @wraps(gradient_checkpointing_func, assigned=WRAPPER_ASSIGNMENTS + ("__self__",))
     def custom_gradient_checkpointing_func(func: Callable, *args: Union["torch.Tensor", Any], **kwargs):
-        module: "torch.nn.Module" = func.__self__
+        bound_func = func
+        while isinstance(bound_func, partial):
+            bound_func = bound_func.func
 
-        if any(param.requires_grad for param in module.parameters()):
+        module = getattr(bound_func, "__self__", None)
+
+        if isinstance(module, torch.nn.Module) and any(param.requires_grad for param in module.parameters()):
             for arg in args:
                 if torch.is_tensor(arg) and torch.is_floating_point(arg):
                     arg.requires_grad_(True)

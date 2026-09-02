@@ -40,10 +40,10 @@
 - 已明确决定：StaticPE/FrozenPE `lambda=0.1`；每方法2 GPU、GA8；SSPO/StaticPE/FrozenPE每设备4、effective batch64；DPO每设备1、effective batch16。
 - 目标资源与流程：用户于2026-09-01确认亲自验证FusionOne存在8张A100，并决定先创建/占用2张；当前`A100-2` SSH目标呈现AutoDL风格入口，不能据此认定为同一FusionOne资源。该目标已核验为2×A100-PCIE-40GB、Python3.12.3/CUDA12.4可用，数据盘和文件存储未挂载；本轮经用户明确选择直接使用系统盘`/root`下的平级仓库外目录。
 - Round3边界：formal `round3-20260826-04`的旧五方法已完成并行政结项；拟议DPO-reward extension未运行，取消其继续执行。4090-3旧`runs/`和`envs/`已于2026-09-01按用户明确指令行政清空，不能再引用为现存证据。
-- 已执行代码：`round4-code-v2.0.0` / exact code commit `6afebd34d1a9c392adf97c6b85f3d57c117a9527`及修复提交`92259df7fa61fc5476e2980a09938622afbc1dfd`、`98dc1aa3f4638d6d723d6afd89c0e77d4a45cdfd`均于2026-09-02获用户明确批准并执行。`98dc1aa`越过入口并进入DPO Trainer内部循环，但`get_batch_samples`与`transformers==4.51.3`的`device`参数签名不兼容，未执行任何优化step。
-- 当前代码候选：`round4-code-v2.0.3`（本次修复后的仓库`HEAD`），使DPO/KTO的`get_batch_samples`与冻结的 Transformers 4.51.3 三参数接口一致；待用户代码交接确认，上传、重建环境、smoke和formal全部锁定。
+- 已执行代码：`round4-code-v2.0.0`及修复提交`92259df`、`98dc1aa`、`67ebed0`均于2026-09-02获用户明确批准并执行。`67ebed0`进入Qwen3模型前向，但梯度检查点包装器未兼容`functools.partial`，未完成优化step。
+- 当前代码候选：`round4-code-v2.0.4`（本次修复后的仓库`HEAD`），从partial展开到底层 bound method 后再读取模块并仅对可识别的可训练模块设置输入梯度；用户已授权自行提交、同步与迭代至 full-chain smoke 通过。
 - 锁定阶段：`RESULT_HANDOFF`与`NEXTCYCLE_DISCUSSION`锁定。
-- 下一阶段条件：完成`round4-code-v2.0.3`静态交接并由用户明确确认该exact commit可提交服务器，方可重新进入`SERVER_EXECUTION`；之后仍须先通过完整smoke才可执行formal。
+- 下一阶段条件：用户已授权本候选及其后续纯实现修复自动进入`SERVER_EXECUTION`；完整 smoke 通过后自动开始 formal，除非修复会改变实验语义、数据合同或需要新的外部权限。
 
 ## 标识与交叉引用
 
