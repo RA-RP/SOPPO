@@ -8,7 +8,7 @@
 - 当前唯一活动阶段：`CODE_IMPLEMENTATION`
 - 实验状态：`APPROVED`
 - 用户确认：2026-09-02，用户确认四方法合同、StaticPE SimPO-base loss、原StaticPE改名FrozenPE、超参数、A100/4090评价流水线及方法顺序，并要求开始正式执行。
-- 代码状态：用户于2026-09-02明确批准并执行`round4-code-v2.0.0` / `6afebd3`及其后`92259df`的smoke；后者解决前两项环境/导入缺陷后，在DPO的`torchrun`入口启动时因`launcher.py`相对导入缺少包上下文停止，未执行优化step。当前返回`CODE_IMPLEMENTATION`，`round4-code-v2.0.2`待形成新的exact commit和用户代码交接确认；服务器执行重新锁定。
+- 代码状态：用户于2026-09-02明确批准并执行`round4-code-v2.0.0` / `6afebd3`及其后`92259df`、`98dc1aa`的smoke；`98dc1aa`越过DPO的`torchrun`入口，在Trainer内部循环因`get_batch_samples`与`transformers==4.51.3`的`device`参数签名不兼容停止，未执行优化step。当前返回`CODE_IMPLEMENTATION`，`round4-code-v2.0.3`待形成新的exact commit和用户代码交接确认；服务器执行重新锁定。
 
 `round4-exp-v1.0`保留为历史设计。旧执行环境在任何训练前因无效偏好行校验停止，相关证据位于`../../exp/exp-20260901-01-round4-server-prep/README.md`。
 

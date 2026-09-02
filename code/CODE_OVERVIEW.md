@@ -1,11 +1,11 @@
-# Round4 v2.0.2 代码交接总览
+# Round4 v2.0.3 代码交接总览
 
 ## 状态
 
 - Cycle：`cycle-20260901-01` / Round4；当前阶段：`CODE_IMPLEMENTATION`。
 - 依据：`r4-theory-v2.0`、`round4-exp-v2.0`，均于2026-09-02获用户明确通过。
-- 当前候选：`round4-code-v2.0.2`（本次修复后的仓库`HEAD`）；服务器上传、环境创建、smoke和formal均锁定，等待用户明确确认新的 exact commit 可以提交服务器。
-- 历史：用户于2026-09-02批准并执行`6afebd3`与`92259df`。`6afebd3`在DPO优化前因仓库绝对导入与`accelerate==1.0.1`版本约束冲突停止；`92259df`已解决两者并通过新环境、预处理、fixture和FrozenPE候选构造，却在`torchrun`以文件路径执行`launcher.py`时因相对导入缺少包上下文停止。三次均未执行优化 step。`6b010b8`修复无效行过滤；旧失败产物保留，不被覆盖。
+- 当前候选：`round4-code-v2.0.3`（本次修复后的仓库`HEAD`）；服务器上传、环境创建、smoke和formal均锁定，等待用户明确确认新的 exact commit 可以提交服务器。
+- 历史：用户于2026-09-02批准并执行`6afebd3`、`92259df`与`98dc1aa`。`6afebd3`在DPO优化前因仓库绝对导入与`accelerate==1.0.1`版本约束冲突停止；`92259df`在`torchrun`执行`launcher.py`时因相对导入缺少包上下文停止；`98dc1aa`越过入口并进入 Trainer 内循环，但`CustomDPOTrainer.get_batch_samples`沿用旧版 Transformers 的两参数签名，而`transformers==4.51.3`新增`device`参数。三者均未执行优化 step。`6b010b8`修复无效行过滤；旧失败产物保留，不被覆盖。
 
 ## 实现映射
 

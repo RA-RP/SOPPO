@@ -227,11 +227,11 @@ class CustomDPOTrainer(DPOTrainer):
         return super()._get_eval_sampler(eval_dataset)
 
     @override
-    def get_batch_samples(self, epoch_iterator, num_batches):
+    def get_batch_samples(self, epoch_iterator, num_batches, device):
         r"""
         Replaces the method of KTO Trainer with the one of the standard Trainer.
         """
-        return Trainer.get_batch_samples(self, epoch_iterator, num_batches)
+        return Trainer.get_batch_samples(self, epoch_iterator, num_batches, device)
 
     def odds_ratio_loss(self, chosen_logps: "torch.Tensor", rejected_logps: "torch.Tensor") -> "torch.Tensor":
         r"""
