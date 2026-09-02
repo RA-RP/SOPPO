@@ -1045,8 +1045,8 @@ class CustomDPOTrainer(DPOTrainer):
         }
 
     @override
-    def _save_checkpoint(self, model, trial, metrics=None):
-        super()._save_checkpoint(model, trial, metrics)
+    def _save_checkpoint(self, model, trial):
+        super()._save_checkpoint(model, trial)
         if self.loss_type != "staticpe" or not self.is_world_process_zero():
             return
 
